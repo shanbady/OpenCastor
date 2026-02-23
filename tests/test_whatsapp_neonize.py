@@ -121,6 +121,9 @@ def _make_channel(config: dict = None):
         ]
         ch._self_chat_mode = bool(config.get("self_chat_mode", True))
         ch._group_policy = config.get("group_policy", "disabled")
+        ch._group_name_filter = config.get("group_name_filter") or None
+        ch._group_jids = [str(j).strip() for j in config.get("group_jids", []) if j]
+        ch._group_name_cache = {}
         ch._ack_reaction = config.get("ack_reaction")
         ch._pairing_requests = {}
         # ← key: replace _dispatch so no asyncio involved
@@ -267,6 +270,92 @@ class TestGroupPolicy:
         fake_client = mock.MagicMock()
         ch._handle_incoming(fake_client, msg)
         ch._dispatch.assert_called_once()
+
+    def test_group_jid_filter_allows_matching_jid(self):
+        ch = _make_channel({"group_policy": "open", "group_jids": ["120363000000001234"]})
+        msg = _make_message_event(
+            is_from_me=False,
+            chat_user="120363000000001234",
+            chat_server="g.us",
+            text="move forward",
+        )
+        fake_client = mock.MagicMock()
+        ch._handle_incoming(fake_client, msg)
+        ch._dispatch.assert_called_once()
+
+    def test_group_jid_filter_blocks_non_matching_jid(self):
+        ch = _make_channel({"group_policy": "open", "group_jids": ["120363000000001234"]})
+        msg = _make_message_event(
+            is_from_me=False,
+            chat_user="999999999999",
+            chat_server="g.us",
+            text="move forward",
+        )
+        fake_client = mock.MagicMock()
+        ch._handle_incoming(fake_client, msg)
+        ch._dispatch.assert_not_called()
+
+    def test_group_name_filter_allows_matching_name(self):
+        ch = _make_channel({"group_policy": "open", "group_name_filter": "alex"})
+        msg = _make_message_event(
+            is_from_me=False,
+            chat_user="120363000000001234",
+            chat_server="g.us",
+            text="go forward",
+        )
+        fake_client = mock.MagicMock()
+        # Simulate get_group_info returning a group named "🤖 alex commands"
+        mock_info = mock.MagicMock()
+        mock_info.GroupName.Name = "🤖 alex commands"
+        fake_client.get_group_info.return_value = mock_info
+        ch._handle_incoming(fake_client, msg)
+        ch._dispatch.assert_called_once()
+
+    def test_group_name_filter_blocks_non_matching_name(self):
+        ch = _make_channel({"group_policy": "open", "group_name_filter": "alex"})
+        msg = _make_message_event(
+            is_from_me=False,
+            chat_user="120363000000001234",
+            chat_server="g.us",
+            text="go forward",
+        )
+        fake_client = mock.MagicMock()
+        mock_info = mock.MagicMock()
+        mock_info.GroupName.Name = "family chat"
+        fake_client.get_group_info.return_value = mock_info
+        ch._handle_incoming(fake_client, msg)
+        ch._dispatch.assert_not_called()
+
+    def test_group_name_filter_case_insensitive(self):
+        ch = _make_channel({"group_policy": "open", "group_name_filter": "ALEX"})
+        msg = _make_message_event(
+            is_from_me=False,
+            chat_user="120363000000001234",
+            chat_server="g.us",
+            text="stop",
+        )
+        fake_client = mock.MagicMock()
+        mock_info = mock.MagicMock()
+        mock_info.GroupName.Name = "alex robot"
+        fake_client.get_group_info.return_value = mock_info
+        ch._handle_incoming(fake_client, msg)
+        ch._dispatch.assert_called_once()
+
+    def test_group_name_cache_avoids_repeated_api_calls(self):
+        ch = _make_channel({"group_policy": "open", "group_name_filter": "alex"})
+        mock_info = mock.MagicMock()
+        mock_info.GroupName.Name = "alex"
+        fake_client = mock.MagicMock()
+        fake_client.get_group_info.return_value = mock_info
+
+        msg = _make_message_event(
+            is_from_me=False, chat_user="120363abc", chat_server="g.us", text="hi"
+        )
+        ch._handle_incoming(fake_client, msg)
+        ch._handle_incoming(fake_client, msg)
+
+        # get_group_info should only be called once due to caching
+        assert fake_client.get_group_info.call_count == 1
 
 
 # =====================================================================

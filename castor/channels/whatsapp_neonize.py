@@ -18,6 +18,8 @@ RCAN config block (under channels.whatsapp):
       - "+19169967105"
     self_chat_mode: true          # owner can message their own number → robot responds
     group_policy: disabled        # allowlist | open | disabled
+    group_name_filter: "alex"     # only respond to groups whose name contains this string
+    group_jids: []                # explicit group JID allowlist (overrides group_name_filter)
     ack_reaction: "👀"            # optional reaction emoji on receipt
 """
 
@@ -72,12 +74,19 @@ class WhatsAppChannel(BaseChannel):
     """WhatsApp messaging via neonize — OpenClaw-style access control.
 
     Config keys (all optional, under channels.whatsapp):
-        dm_policy    : "allowlist" | "pairing" | "open"  (default: allowlist)
-        allow_from   : list of E.164 phone numbers allowed to DM
-        self_chat_mode : bool — owner can message their own number (default: true)
-        group_policy : "allowlist" | "open" | "disabled"  (default: disabled)
-        ack_reaction : emoji to react with on receipt (default: none)
-        session_db   : path to neonize SQLite session file
+        dm_policy         : "allowlist" | "pairing" | "open"  (default: allowlist)
+        allow_from        : list of E.164 phone numbers allowed to DM
+        self_chat_mode    : bool — owner can message their own number (default: true)
+        group_policy      : "allowlist" | "open" | "disabled"  (default: disabled)
+        group_name_filter : str — only respond to groups whose name contains this substring
+                            (case-insensitive). E.g. "alex" matches groups named "alex",
+                            "🤖 alex commands", etc.
+        group_jids        : list of group JID user parts to restrict to
+                            (e.g. ["120363XXXXXXXXXX"]). Overrides group_name_filter when set.
+                            Tip: set group_policy:open temporarily and check gateway logs to
+                            find your group's JID, then switch to group_jids.
+        ack_reaction      : emoji to react with on receipt (default: none)
+        session_db        : path to neonize SQLite session file
     """
 
     name = "whatsapp"
@@ -107,6 +116,15 @@ class WhatsAppChannel(BaseChannel):
         self._group_policy: str = config.get("group_policy", "disabled")
         self._ack_reaction: Optional[str] = config.get("ack_reaction")
 
+        # Group filtering: name-based (substring) or explicit JID allowlist
+        self._group_name_filter: Optional[str] = config.get("group_name_filter") or None
+        self._group_jids: List[str] = [
+            str(j).strip() for j in config.get("group_jids", []) if j
+        ]
+
+        # Cache for group JID → subject lookups (avoids repeated API calls)
+        self._group_name_cache: dict = {}  # {chat_user: str | None}
+
         # Pending pairing requests: {normalized_number: code}
         self._pairing_requests: dict = {}
 
@@ -115,6 +133,9 @@ class WhatsAppChannel(BaseChannel):
             f"dm_policy={self._dm_policy}, "
             f"allow_from={self._allow_from or '(none)'}, "
             f"self_chat={self._self_chat_mode}, "
+            f"group_policy={self._group_policy}, "
+            f"group_jids={self._group_jids or '(none)'}, "
+            f"group_name_filter={self._group_name_filter!r}, "
             f"session={self._session_db}"
         )
 
@@ -221,6 +242,36 @@ class WhatsAppChannel(BaseChannel):
                         return
                 # open: fall through
 
+                # ── Group JID / name filter ────────────────────────────────
+                # Always log the group JID so users can find it for configuration
+                if self._group_jids:
+                    # Explicit JID allowlist: fast path, no API call needed
+                    if chat_user not in self._group_jids:
+                        self.logger.debug(
+                            f"Group message skipped — JID {chat_user}@g.us not in group_jids"
+                        )
+                        return
+                elif self._group_name_filter:
+                    # Name-based filter: fetch group subject (cached)
+                    group_subject = self._get_group_name(client, chat_user)
+                    self.logger.info(
+                        f"Group message from JID={chat_user}@g.us name={group_subject!r}"
+                    )
+                    if group_subject is None or self._group_name_filter.lower() not in group_subject.lower():
+                        self.logger.debug(
+                            f"Group message skipped — "
+                            f"name {group_subject!r} doesn't match filter {self._group_name_filter!r}"
+                        )
+                        return
+                else:
+                    # No filter: log JID to help users configure it
+                    group_subject = self._get_group_name(client, chat_user)
+                    self.logger.info(
+                        f"Group message from JID={chat_user}@g.us name={group_subject!r} "
+                        f"(tip: set group_jids: [\"{chat_user}\"] or "
+                        f"group_name_filter: \"{group_subject or chat_user}\" to filter)"
+                    )
+
             # ── Self-chat handling (DMs only) ────────────────────────────
             # When the owner messages their own number (WhatsApp "Saved Messages"),
             # IsFromMe is True. Allow through if self_chat_mode is on.
@@ -325,6 +376,28 @@ class WhatsAppChannel(BaseChannel):
             return text
         except Exception as exc:
             self.logger.error("WhatsApp audio transcription failed: %s", exc)
+            return None
+
+    def _get_group_name(self, client, chat_user: str) -> Optional[str]:
+        """Fetch and cache the subject (display name) of a WhatsApp group.
+
+        Returns the group name string, or None if it can't be fetched.
+        """
+        if chat_user in self._group_name_cache:
+            return self._group_name_cache[chat_user]
+
+        try:
+            from neonize.utils.jid import build_jid
+
+            jid = build_jid(chat_user, "g.us")
+            info = client.get_group_info(jid)
+            # GroupInfo.GroupName is a sub-message; .Name is the actual string
+            subject = getattr(info.GroupName, "Name", None) or str(info.GroupName) or None
+            self._group_name_cache[chat_user] = subject
+            return subject
+        except Exception as exc:
+            self.logger.debug(f"Could not fetch group info for {chat_user}: {exc}")
+            self._group_name_cache[chat_user] = None
             return None
 
     def _handle_pairing_request(self, client, chat_jid, sender_number: str, message):

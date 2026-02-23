@@ -2796,7 +2796,6 @@ def _execute_action(action: dict):
             action.get("angular", 0.0),
         )
     elif action_type == "nav_waypoint":
-        import threading
         from castor.nav import WaypointNav
 
         distance_m = float(action.get("distance_m", 0.0))

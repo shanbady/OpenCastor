@@ -289,12 +289,14 @@ Returns 503 if no voice engine available, 422 on invalid audio format.
 ## Navigation
 
 ### POST /api/nav/waypoint
-Dead-reckoning navigation move via `WaypointNav`.
+Dead-reckoning navigation move via `WaypointNav`. Returns immediately with a `job_id`; poll `/api/nav/status` for completion.
 
 Request:
 ```json
 {"distance_m": 1.5, "heading_deg": 90.0, "speed": 0.6}
 ```
+
+**Brain-triggered nav**: When the AI brain produces `{"type":"nav_waypoint","distance_m":float,"heading_deg":float}` in its action JSON (e.g. from a "move forward 1 inch" WhatsApp command), `_execute_action()` in `api.py` also dispatches to `WaypointNav` via a daemon thread — same dead-reckoning logic, no REST round-trip needed.
 
 ### GET /api/nav/status
 Current navigation job status.

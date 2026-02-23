@@ -25,6 +25,8 @@ All LLM adapters subclass `BaseProvider`. Key methods:
 - System prompt forces strict JSON output only
 - `_clean_json()` strips markdown fences from LLM responses
 - `think_stream()` yields text chunks; all providers implement it (Anthropic CLI path yields a single chunk)
+- `_caps: List[str]` — RCAN capability names (e.g. `["nav","teleop","vision"]`); set by `api.py` after brain init from `rcan_protocol.capabilities`; injected into `build_messaging_prompt()` so the brain knows which action types to use
+- `_robot_name: str` — robot name from `metadata.robot_name`; set by `api.py` after brain init; used in `build_messaging_prompt()` persona line
 
 ### Available Providers
 
@@ -452,6 +454,31 @@ Manages N simultaneous camera captures.
 - `POST /api/stream/webrtc/offer` — SDP offer/answer exchange via aiortc
 - ICE server config in RCAN: `network.ice_servers`
 - Graceful fallback to MJPEG if aiortc not installed
+
+---
+
+## WhatsApp Channel (`castor/channels/whatsapp_neonize.py`)
+
+- Connects via neonize QR-code scan (pin: `neonize==0.3.13.post0`)
+- Dispatches incoming messages to `_handle_channel_message("whatsapp", chat_id, text)`
+- **Group routing** — two optional RCAN config keys control which groups the bot responds to:
+  - `group_jids: ["<JID>"]` — exact JID allowlist (fast path, no API call); preferred for production
+  - `group_name_filter: "substring"` — case-insensitive substring match on group subject; fetched once per JID and cached in `_group_name_cache`
+  - If neither is set, all groups are accepted (with a log tip to set one)
+- `self_chat_mode: false` — skip messages the bot sent to itself in DMs (group messages always pass)
+- `dm_policy: open|closed` — whether to respond to direct messages
+
+```yaml
+channels:
+  whatsapp:
+    enabled: true
+    group_policy: open
+    dm_policy: open
+    self_chat_mode: false
+    group_jids:
+      - "120363407179315671"   # JID logged on first message; use for precision
+    # group_name_filter: alex  # alternative: substring match on group name
+```
 
 ---
 

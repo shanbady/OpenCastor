@@ -58,8 +58,8 @@ docker compose up
 
 | Class | File | Purpose |
 |---|---|---|
-| `Thought` | `castor/providers/base.py` | AI reasoning step: `raw_text` + `action` dict |
-| `BaseProvider` | `castor/providers/base.py` | LLM adapter ABC: `think()`, `think_stream()`, `health_check()` |
+| `Thought` | `castor/providers/base.py` | AI reasoning step: `raw_text` + `action` dict (`type`: move/stop/wait/grip/nav_waypoint) |
+| `BaseProvider` | `castor/providers/base.py` | LLM adapter ABC: `think()`, `think_stream()`, `health_check()`; `_caps`/`_robot_name` set by api.py |
 | `DriverBase` | `castor/drivers/base.py` | Hardware driver ABC: `move()`, `stop()`, `close()`, `health_check()` |
 | `BaseChannel` | `castor/channels/base.py` | Messaging integration ABC: `start()`, `stop()`, `send_message()` |
 | `CastorFS` | `castor/fs/__init__.py` | Unix-style VFS with capability permissions, memory tiers, e-stop |
@@ -92,11 +92,11 @@ Key functions: `resolve_provider_key()`, `resolve_channel_credentials()`, `list_
 
 ## Providers & Drivers
 
-**Providers** (`castor/providers/`): Google Gemini, OpenAI GPT-4.1, Anthropic Claude, Ollama, HuggingFace, llama.cpp, MLX, Vertex AI. All implement `think(image_bytes, instruction) -> Thought`.
+**Providers** (`castor/providers/`): Google Gemini, OpenAI GPT-4.1, Anthropic Claude, Ollama, HuggingFace, llama.cpp, MLX, Vertex AI, OpenRouter, Groq, VLA, ONNX, Kimi, MiniMax, Qwen, SentenceTransformers. All implement `think(image_bytes, instruction) -> Thought`. After brain init, `api.py` sets `brain._caps` (from `rcan_protocol.capabilities`) and `brain._robot_name` (from `metadata.robot_name`) so `build_messaging_prompt()` includes the correct action vocabulary (e.g. `nav_waypoint` when `nav` capability is active).
 
 **Drivers** (`castor/drivers/`): PCA9685 (I2C PWM/Amazon kits), Dynamixel (Protocol 2.0), CompositeDriver (multi-driver routing), ROS2Driver (Twist publisher, mock mode).
 
-**Channels** (`castor/channels/`): WhatsApp (neonize QR), WhatsApp (Twilio), Telegram, Discord, Slack, MQTT, Home Assistant.
+**Channels** (`castor/channels/`): WhatsApp (neonize QR; `group_jids`/`group_name_filter` for per-robot group routing), WhatsApp (Twilio), Telegram, Discord, Slack, MQTT, Home Assistant.
 
 ## Configuration (RCAN)
 
@@ -215,7 +215,7 @@ pip install -e ".[dev]"
 pytest tests/
 ```
 
-**Current**: 3381 tests, 8 skipped, 0 failures (125+ test files)
+**Current**: 3387 tests, 8 skipped, 0 failures (125+ test files)
 
 Key fixture: `_reset_state_and_env` (autouse in `test_api_endpoints.py`) resets all `AppState` fields before every test including `thought_history = deque(maxlen=50)`, `learner = None`, `offline_fallback = None`, and clears `_command_history`/`_webhook_history`.
 

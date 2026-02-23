@@ -299,9 +299,9 @@ OpenCastor/
 
 | Subsystem | Path | Purpose |
 |-----------|------|---------|
-| Providers | `castor/providers/` | 9 LLM adapters (Gemini, GPT-4.1, Claude, Ollama, HuggingFace, llama.cpp, MLX, Vertex, OpenRouter) |
+| Providers | `castor/providers/` | 16 LLM adapters (Gemini, GPT-4.1, Claude, Ollama, HuggingFace, llama.cpp, MLX, Vertex, OpenRouter, Groq, VLA, ONNX, Kimi, MiniMax, Qwen, SentenceTransformers); `_caps`+`_robot_name` injected by api.py for prompt context |
 | Drivers | `castor/drivers/` | Hardware: PCA9685, Dynamixel, CompositeDriver, ROS2 bridge |
-| Channels | `castor/channels/` | Messaging: WhatsApp (neonize/Twilio), Telegram, Discord, Slack, MQTT, Home Assistant |
+| Channels | `castor/channels/` | Messaging: WhatsApp (neonize/Twilio, `group_jids`/`group_name_filter` routing), Telegram, Discord, Slack, MQTT, Home Assistant |
 | VFS | `castor/fs/` | Unix-inspired virtual filesystem with capabilities, memory tiers, e-stop |
 | Safety | `castor/safety/` | Anti-subversion, BoundsChecker, WorkAuthority, GuardianAgent |
 | RCAN | `castor/rcan/` | Protocol: RURI addressing, RBAC (5 roles), JWT auth, mDNS discovery |

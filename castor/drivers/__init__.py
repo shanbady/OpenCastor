@@ -51,6 +51,18 @@ def get_driver(config: dict):
         from castor.drivers.simulation_driver import SimulationDriver
 
         return SimulationDriver(driver_config)
+    elif protocol == "gpio":
+        from castor.drivers.gpio_driver import GPIODriver
+
+        return GPIODriver(driver_config)
+    elif protocol == "stepper":
+        from castor.drivers.stepper_driver import StepperDriver
+
+        return StepperDriver(driver_config)
+    elif protocol in ("odrive", "vesc"):
+        from castor.drivers.odrive_driver import ODriveDriver
+
+        return ODriveDriver(driver_config)
     else:
         logger.warning(f"Unknown driver protocol: {protocol}. Running without hardware.")
         return None

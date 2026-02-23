@@ -3459,6 +3459,134 @@ async def setup_save_config(body: _SetupSaveConfigRequest):
         raise HTTPException(status_code=500, detail={"error": str(exc)})
 
 
+# ── Privacy Mode ──────────────────────────────────────────────────────────────
+
+
+@app.get("/api/privacy/mode/status", dependencies=[Depends(verify_token)])
+async def privacy_mode_status():
+    from castor.privacy_mode import get_privacy_mode
+
+    return get_privacy_mode().status()
+
+
+@app.post("/api/privacy/mode/enable", dependencies=[Depends(verify_token)])
+async def privacy_mode_enable():
+    from castor.privacy_mode import get_privacy_mode
+
+    get_privacy_mode().enable()
+    return {"ok": True, "enabled": True}
+
+
+@app.post("/api/privacy/mode/disable", dependencies=[Depends(verify_token)])
+async def privacy_mode_disable():
+    from castor.privacy_mode import get_privacy_mode
+
+    get_privacy_mode().disable()
+    return {"ok": True, "enabled": False}
+
+
+# ── Voice Loop ────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/voice/loop/start", dependencies=[Depends(verify_token)])
+async def voice_loop_start():
+    from castor.voice_loop import get_voice_loop
+
+    loop = get_voice_loop(brain=state.brain)
+    loop.start()
+    return {"ok": True, "state": loop.state}
+
+
+@app.post("/api/voice/loop/stop", dependencies=[Depends(verify_token)])
+async def voice_loop_stop():
+    from castor.voice_loop import get_voice_loop
+
+    loop = get_voice_loop()
+    loop.stop()
+    return {"ok": True, "state": loop.state}
+
+
+@app.get("/api/voice/loop/status", dependencies=[Depends(verify_token)])
+async def voice_loop_status():
+    from castor.voice_loop import get_voice_loop
+
+    loop = get_voice_loop()
+    return {"running": loop.running, "state": loop.state, "stats": loop.stats}
+
+
+# ── INA219 Battery Monitor ────────────────────────────────────────────────────
+
+
+@app.get("/api/battery", dependencies=[Depends(verify_token)])
+async def battery_read():
+    from castor.ina219 import get_monitor
+
+    mon = get_monitor()
+    reading = mon.read()
+    return reading
+
+
+@app.get("/api/battery/latest", dependencies=[Depends(verify_token)])
+async def battery_latest():
+    from castor.ina219 import get_monitor
+
+    mon = get_monitor()
+    return {"mode": mon.mode, **mon.latest}
+
+
+@app.post("/api/battery/start_poll", dependencies=[Depends(verify_token)])
+async def battery_start_poll(interval_s: float = 1.0):
+    from castor.ina219 import get_monitor
+
+    mon = get_monitor()
+    mon.start(poll_interval_s=interval_s)
+    return {"ok": True, "interval_s": interval_s}
+
+
+# ── RCAN Config Generator ─────────────────────────────────────────────────────
+
+
+@app.post("/api/config/generate", dependencies=[Depends(verify_token)])
+async def generate_rcan_config_endpoint(request: Request):
+    body = await request.json()
+    description = (body.get("description") or "").strip()
+    if not description:
+        raise HTTPException(status_code=422, detail={"error": "description required"})
+
+    from castor.rcan_generator import generate_rcan_config
+
+    brain = _get_active_brain()
+    yaml_str = generate_rcan_config(description, brain=brain)
+    return {"yaml": yaml_str, "char_count": len(yaml_str)}
+
+
+@app.get("/api/config/generate/templates", dependencies=[Depends(verify_token)])
+async def generate_rcan_templates():
+    from castor.rcan_generator import list_templates
+
+    return {"templates": list_templates()}
+
+
+# ── Teams / Matrix webhook inbound ────────────────────────────────────────────
+
+
+@app.post("/webhooks/teams")
+async def teams_webhook(request: Request):
+    body = await request.json()
+    channel = state.channels.get("teams")
+    if not channel:
+        raise HTTPException(status_code=503, detail={"error": "Teams channel not active"})
+    reply = channel.handle_bot_activity(body)
+    # Return Bot Framework activity response
+    return {"type": "message", "text": reply} if reply else {}
+
+
+@app.post("/webhooks/matrix")
+async def matrix_webhook(request: Request):
+    """Placeholder for Matrix push gateway events (sync is handled by matrix-nio directly)."""
+    return {"ok": True}
+
+
 @app.on_event("shutdown")
 async def on_shutdown():
     # Close WebRTC peers

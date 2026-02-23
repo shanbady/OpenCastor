@@ -1,5 +1,6 @@
 from .anthropic_provider import AnthropicProvider
 from .google_provider import GoogleProvider
+from .groq_provider import GroqProvider
 from .huggingface_provider import HuggingFaceProvider
 from .llamacpp_provider import LlamaCppProvider
 from .mlx_provider import MLXProvider
@@ -10,6 +11,7 @@ __all__ = [
     "get_provider",
     "AnthropicProvider",
     "GoogleProvider",
+    "GroqProvider",
     "HuggingFaceProvider",
     "LlamaCppProvider",
     "MLXProvider",
@@ -49,6 +51,8 @@ def _builtin_get_provider(config: dict):
         from .onnx_provider import ONNXProvider
 
         return ONNXProvider(config)
+    elif provider_name == "groq":
+        return GroqProvider(config)
     else:
         raise ValueError(f"Unknown AI provider: {provider_name}")
 

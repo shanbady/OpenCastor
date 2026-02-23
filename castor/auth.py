@@ -20,6 +20,7 @@ PROVIDER_AUTH_MAP: Dict[str, tuple] = {
     "openai": ("OPENAI_API_KEY", "api_key"),
     "anthropic": ("ANTHROPIC_API_KEY", "api_key"),
     "openrouter": ("OPENROUTER_API_KEY", "api_key"),
+    "groq": ("GROQ_API_KEY", "api_key"),
     "ollama": ("OLLAMA_BASE_URL", "url"),
     "vertex_ai": ("VERTEX_PROJECT", "vertex_project"),
 }
@@ -47,6 +48,16 @@ CHANNEL_AUTH_MAP: Dict[str, list] = {
         ("MQTT_BROKER_HOST", "broker_host"),
         ("MQTT_USERNAME", "username"),
         ("MQTT_PASSWORD", "password"),
+    ],
+    "teams": [
+        ("TEAMS_WEBHOOK_URL", "webhook_url"),
+        ("TEAMS_APP_ID", "app_id"),
+        ("TEAMS_APP_PASSWORD", "app_password"),
+    ],
+    "matrix": [
+        ("MATRIX_HOMESERVER_URL", "homeserver_url"),
+        ("MATRIX_USER_ID", "user_id"),
+        ("MATRIX_ACCESS_TOKEN", "access_token"),
     ],
 }
 

@@ -1,0 +1,52 @@
+rcan_version: "1.1.0"
+
+metadata:
+  robot_name: "Groq-Speed-Rover"
+  robot_uuid: "00000000-0000-0000-0000-000000000021"
+  author: "OpenCastor Default"
+  license: "Apache-2.0"
+  description: >
+    High-speed rover preset using Groq's ultra-low-latency cloud inference.
+    Llama 3.3 70B with sub-100ms response times. Ideal for time-critical
+    teleoperation and reactive obstacle avoidance.
+    Requires: GROQ_API_KEY from console.groq.com (free tier available)
+  tags:
+    - mobile
+    - rover
+    - groq
+    - fast
+    - llama
+
+agent:
+  provider: "groq"
+  model: "llama-3.3-70b-versatile"
+  vision_enabled: true
+  latency_budget_ms: 100
+  safety_stop: true
+
+camera:
+  type: "usb"
+  fps: 30
+
+drivers:
+  - id: wheels
+    protocol: mock
+    note: "Replace with pca9685 or dynamixel for real motors"
+
+physics:
+  type: "differential_drive"
+  dof: 2
+
+safety:
+  obstacle_stop_cm: 30
+  estop_on_startup: false
+
+network:
+  telemetry_stream: true
+  allow_remote_override: true
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, nav, teleop, chat]
+  enable_mdns: true
+  enable_jwt: false

@@ -74,6 +74,20 @@ def _register_builtin_channels():
     except ImportError:
         logger.debug("HomeAssistant channel unavailable (aiohttp not installed)")
 
+    try:
+        from castor.channels.teams_channel import TeamsChannel
+
+        _CHANNEL_CLASSES["teams"] = TeamsChannel
+    except ImportError:
+        logger.debug("Teams channel unavailable")
+
+    try:
+        from castor.channels.matrix_channel import MatrixChannel
+
+        _CHANNEL_CLASSES["matrix"] = MatrixChannel
+    except ImportError:
+        logger.debug("Matrix channel unavailable (matrix-nio not installed)")
+
 
 def get_available_channels() -> List[str]:
     """Return names of channels whose SDKs are installed."""

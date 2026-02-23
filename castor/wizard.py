@@ -194,6 +194,11 @@ PROVIDER_AUTH = {
         "label": "MLX (Apple Silicon)",
         "desc": "Native GPU, 400+ tok/s on Mac",
     },
+    "groq": {
+        "env_var": "GROQ_API_KEY",
+        "label": "Groq (Ultra-Fast)",
+        "desc": "Sub-second LLM inference · console.groq.com",
+    },
     # ── Chinese models (OpenAI-compatible APIs) ────────────────────────────
     "moonshot": {
         "env_var": "MOONSHOT_API_KEY",
@@ -220,6 +225,7 @@ PROVIDER_ORDER = [
     "ollama",
     "llamacpp",
     "mlx",
+    "groq",
     "moonshot",
     "minimax",
 ]
@@ -351,6 +357,33 @@ MODELS = {
             "label": "Kimi k2.5 (32K context)",
             "desc": "Longer context, bilingual",
             "tags": ["long-context", "bilingual"],
+        },
+    ],
+    "groq": [
+        {
+            "id": "llama-3.3-70b-versatile",
+            "label": "Llama 3.3 70B Versatile",
+            "desc": "Best quality, ultra-fast Groq inference",
+            "tags": ["fast", "reasoning"],
+            "recommended": True,
+        },
+        {
+            "id": "llama-3.1-8b-instant",
+            "label": "Llama 3.1 8B Instant",
+            "desc": "Smallest, fastest, lowest cost",
+            "tags": ["fast", "lightweight"],
+        },
+        {
+            "id": "gemma2-9b-it",
+            "label": "Gemma 2 9B",
+            "desc": "Google Gemma on Groq hardware",
+            "tags": ["fast", "google"],
+        },
+        {
+            "id": "mixtral-8x7b-32768",
+            "label": "Mixtral 8x7B",
+            "desc": "MoE model, 32K context",
+            "tags": ["fast", "long-context"],
         },
     ],
     "minimax": [

@@ -81,6 +81,74 @@ st.markdown(
 
   /* compact dataframe */
   [data-testid="stDataFrame"] { font-size: 0.8rem; }
+
+  /* ── enhanced metric cards ── */
+  [data-testid="stMetric"] {
+    background: #161b22 !important;
+    border-radius: 8px !important;
+    padding: 12px 16px !important;
+    border: 1px solid #21262d !important;
+    border-left: 3px solid #58a6ff !important;
+    transition: border-left-color 0.3s;
+  }
+  [data-testid="stMetricValue"] { font-size: 1.05rem !important; font-weight: 600 !important; }
+  [data-testid="stMetricLabel"] { font-size: 0.7rem !important; color: #8b949e !important; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ── glowing status dots ── */
+  .status-bar { padding: 10px 18px !important; }
+  .dot-green  { display:inline-block; width:10px; height:10px; border-radius:50%;
+                background:#3fb950; box-shadow: 0 0 6px #3fb950; margin-right:4px; }
+  .dot-red    { display:inline-block; width:10px; height:10px; border-radius:50%;
+                background:#f85149; box-shadow: 0 0 6px #f85149; margin-right:4px; }
+  .dot-yellow { display:inline-block; width:10px; height:10px; border-radius:50%;
+                background:#d29922; box-shadow: 0 0 5px #d29922; margin-right:4px; }
+  .dot-grey   { display:inline-block; width:10px; height:10px; border-radius:50%;
+                background:#6e7681; margin-right:4px; }
+
+  /* ── camera offline pulsing border ── */
+  @keyframes cam-pulse {
+    0%   { border-color: #f85149; box-shadow: 0 0 0px #f85149; }
+    50%  { border-color: #ff7b72; box-shadow: 0 0 8px #f85149; }
+    100% { border-color: #f85149; box-shadow: 0 0 0px #f85149; }
+  }
+  .cam-offline { animation: cam-pulse 2s ease-in-out infinite; }
+
+  /* ── command panel background ── */
+  .command-panel {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 8px;
+  }
+
+  /* ── log viewer terminal feel ── */
+  .log-terminal {
+    background: #0d1117 !important;
+    border: 1px solid #21262d !important;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
+    font-size: 0.72rem !important;
+    color: #3fb950 !important;
+    overflow-y: auto;
+    max-height: 260px;
+  }
+
+  /* ── section divider accent ── */
+  .section-header {
+    color: #e6edf3;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-left: 3px solid #58a6ff;
+    padding-left: 8px;
+    margin: 12px 0 6px 0;
+  }
+  .section-header.green { border-left-color: #3fb950; }
+  .section-header.orange { border-left-color: #d29922; }
+  .section-header.red { border-left-color: #f85149; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -239,7 +307,7 @@ left_col, right_col = st.columns([3, 2], gap="medium")
 with left_col:
     # ── Live camera ──────────────────────────────────────────────
     st.markdown(
-        '<p class="panel-title">📷 Live Camera — OAK-D USB3 · 640×480 @ 30fps</p>',
+        '<p class="section-header green">📷 Live Camera — OAK-D USB3 · 640×480 @ 30fps</p>',
         unsafe_allow_html=True,
     )
 
@@ -247,14 +315,26 @@ with left_col:
     _tok = st.session_state.api_token
     _mjpeg_url = f"{_mjpeg_base}?token={_tok}" if _tok else _mjpeg_base
 
-    # Embed MJPEG via HTML img tag (token in URL so browser can load it)
-    cam_border = "#3fb950" if cam_ok else "#f85149"
+    # Embed MJPEG via HTML img tag.
+    # IMPORTANT: Replace 127.0.0.1/localhost with window.location.hostname via JS
+    # so remote browsers (not on the Pi) can reach the stream.
+    cam_border_cls = "cam-offline" if not cam_ok else ""
+    cam_border_style = "border:2px solid #3fb950;" if cam_ok else "border:2px solid #f85149;"
+    _gw_port = GW.split(":")[-1] if ":" in GW else "8000"
+    _tok_js = _tok.replace('"', '\\"') if _tok else ""
     st.components.v1.html(
         f"""
-<div style="background:#0d1117;border:2px solid {cam_border};border-radius:8px;
+<style>
+@keyframes cam-pulse {{
+  0%   {{ border-color:#f85149; box-shadow:0 0 0px #f85149; }}
+  50%  {{ border-color:#ff7b72; box-shadow:0 0 8px #f85149; }}
+  100% {{ border-color:#f85149; box-shadow:0 0 0px #f85149; }}
+}}
+.cam-wrap {{ animation: {'cam-pulse 2s ease-in-out infinite' if not cam_ok else 'none'}; }}
+</style>
+<div class="cam-wrap" style="background:#0d1117;{cam_border_style}border-radius:8px;
             overflow:hidden;aspect-ratio:4/3;max-height:420px;position:relative;">
-  <img id="cam"
-       src="{_mjpeg_url}"
+  <img id="cam" src=""
        style="width:100%;height:100%;object-fit:cover;display:block;"
        onerror="document.getElementById('cam-err').style.display='flex';
                 this.style.display='none';" />
@@ -264,14 +344,30 @@ with left_col:
               font-family:monospace;font-size:0.85rem;background:#0d1117;">
     <div style="font-size:2rem;margin-bottom:8px;">📷</div>
     <div>No camera signal</div>
-    <div style="margin-top:4px;font-size:0.7rem;color:#6e7681;">{_mjpeg_base}</div>
+    <div id="cam-url-err" style="margin-top:4px;font-size:0.7rem;color:#6e7681;"></div>
   </div>
 </div>
 <div style="margin-top:4px;font-family:monospace;font-size:0.7rem;color:#6e7681;">
-  Stream: <a href="{_mjpeg_url}" target="_blank" style="color:#58a6ff;">{_mjpeg_base}</a>
+  Stream: <a id="cam-link" href="#" target="_blank" style="color:#58a6ff;">resolving…</a>
 </div>
+<script>
+(function() {{
+  var tok = "{_tok_js}";
+  var port = "{_gw_port}";
+  var host = window.location.hostname;
+  var proto = window.location.protocol;
+  var base = proto + "//" + host + ":" + port + "/api/stream/mjpeg";
+  var url = tok ? base + "?token=" + encodeURIComponent(tok) : base;
+  var img = document.getElementById("cam");
+  var link = document.getElementById("cam-link");
+  var errUrl = document.getElementById("cam-url-err");
+  if (img)  {{ img.src = url; }}
+  if (link) {{ link.href = url; link.textContent = base; }}
+  if (errUrl) {{ errUrl.textContent = base; }}
+}})();
+</script>
 """,
-        height=440,
+        height=460,
     )
 
     # ── Depth obstacle badges (Issue #117) ──────────────────────
@@ -292,7 +388,7 @@ with left_col:
     st.divider()
 
     # ── Command input ─────────────────────────────────────────────
-    st.markdown('<p class="panel-title">💬 Command</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">💬 Command</p>', unsafe_allow_html=True)
 
     # Voice button (server-side mic via local STT)
     if st.button("🎤 Speak"):
@@ -370,51 +466,90 @@ with left_col:
             )
         st.rerun()
 
+    # ── Live Logs ─────────────────────────────────────────────────
+    st.divider()
+    st.markdown(
+        '<p class="section-header green">📋 Live Logs</p>',
+        unsafe_allow_html=True,
+    )
+    with st.expander(f"Gateway log — last 40 lines (refreshes every {refresh_s}s)", expanded=True):
+        from pathlib import Path as _Path
+        _log_lines: list = []
+        for _log_candidate in [
+            "/tmp/alex_gateway.log",
+            "/tmp/bob_gateway.log",
+            "/tmp/castor_gateway.log",
+        ]:
+            try:
+                _raw = _Path(_log_candidate).read_text(errors="replace")
+                _log_lines = _raw.splitlines()[-40:]
+                break
+            except Exception:
+                continue
+        if _log_lines:
+            st.code("\n".join(_log_lines), language=None)
+        else:
+            st.caption("No gateway log found — checked /tmp/alex_gateway.log, /tmp/bob_gateway.log")
+
 # ═══════════════════════════════════════════════════════════════════
 # RIGHT COLUMN — status panels (mirrors terminal watch)
 # ═══════════════════════════════════════════════════════════════════
 with right_col:
     # ── Status & Telemetry ────────────────────────────────────────
-    st.markdown('<p class="panel-title">⚡ Status & Telemetry</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">⚡ Status & Telemetry</p>', unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
+    speaker_ok = str(proc.get("speaker", "")).lower() in ("online", "true", "ok")
+    _today = (usage.get("daily") or [{}])[-1] if usage.get("daily") else {}
+    _today_tokens = _today.get("total_tokens", 0)
+    _today_cost = _today.get("cost_usd", 0.0)
+
+    c1, c2, c3 = st.columns(3)
     c1.metric("Uptime", _fmt_uptime(uptime))
     c2.metric("Loops", str(loop_count))
-    c1.metric("Latency", f"{avg_lat:.0f} ms" if avg_lat else "—")
-    c2.metric("Camera", "live ●" if cam_ok else "offline ○")
-    speaker_ok = str(proc.get("speaker", "")).lower() in ("online", "true", "ok")
-    c1.metric("Speaker", "online" if speaker_ok else "offline")
+    c3.metric("Latency", f"{avg_lat:.0f} ms" if avg_lat else "—")
+    c1.metric("Camera", "live ●" if cam_ok else "offline ○")
+    c2.metric("Speaker", "online" if speaker_ok else "offline")
+    c3.metric("Tokens", f"{_today_tokens:,}" if _today_tokens else "0")
 
     last_thought = str(proc.get("last_thought") or "")
     if last_thought:
         st.caption(f"💭 {last_thought[:80]}{'…' if len(last_thought) > 80 else ''}")
 
-    # ── Token usage (today) ───────────────────────────────────────
-    _today = (usage.get("daily") or [{}])[-1] if usage.get("daily") else {}
-    _today_tokens = _today.get("total_tokens", 0)
-    _today_cost = _today.get("cost_usd", 0.0)
-    c2.metric("Tokens Today", f"{_today_tokens:,}" if _today_tokens else "0")
-    c1.metric("Cost Today ($)", f"${_today_cost:.4f}" if _today_cost else "$0.0000")
-
     st.divider()
 
-    # ── Driver ───────────────────────────────────────────────────
-    st.markdown('<p class="panel-title">🦾 Driver</p>', unsafe_allow_html=True)
-    drv_ok = driver.get("ok")
-    drv_mode = driver.get("mode", "?")
-    drv_type = driver.get("driver_type", "PCA9685")
-    drv_err = driver.get("error", "")
+    # ── Driver + Battery (side by side) ─────────────────────────
+    _drv_bat_col, _bat_col = st.columns(2)
 
-    dc1, dc2 = st.columns(2)
-    dc1.metric("Mode", drv_mode.capitalize() if drv_mode else "—")
-    dc2.metric("Type", drv_type or "—")
-    if drv_err:
-        st.caption(f"ℹ️ {drv_err[:64]}")
+    with _drv_bat_col:
+        st.markdown('<p class="section-header orange">🦾 Driver</p>', unsafe_allow_html=True)
+        drv_ok = driver.get("ok")
+        drv_mode = driver.get("mode", "?")
+        drv_type = driver.get("driver_type", "PCA9685")
+        drv_err = driver.get("error", "")
+        dc1, dc2 = st.columns(2)
+        dc1.metric("Mode", drv_mode.capitalize() if drv_mode else "—")
+        dc2.metric("Type", (drv_type or "—").replace("PCA9685RC", "RC").replace("Driver", ""))
+        if drv_err:
+            st.caption(f"ℹ️ {drv_err[:52]}")
+
+    _bat = _get("/api/battery/latest")
+    with _bat_col:
+        st.markdown('<p class="section-header green">🔋 Battery</p>', unsafe_allow_html=True)
+        if _bat.get("available", False) or _bat.get("voltage_v") is not None:
+            _bv = _bat.get("voltage_v")
+            _bc = _bat.get("current_ma")
+            _bp = _bat.get("power_mw")
+            _bat1, _bat2 = st.columns(2)
+            _bat1.metric("Voltage", f"{_bv:.1f}V" if _bv is not None else "—")
+            _bat2.metric("Current", f"{_bc:.0f}mA" if _bc is not None else "—")
+            st.metric("Power", f"{_bp:.0f}mW" if _bp is not None else "—")
+        else:
+            st.caption("No sensor")
 
     st.divider()
 
     # ── Channels ─────────────────────────────────────────────────
-    st.markdown('<p class="panel-title">📡 Channels</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">📡 Channels</p>', unsafe_allow_html=True)
     ch_avail = status.get("channels_available", {})
     ch_active = set(channels_active)
 
@@ -445,48 +580,49 @@ with right_col:
 
     st.divider()
 
-    # ── Learner stats ─────────────────────────────────────────────
-    st.markdown('<p class="panel-title">🧠 Learner (Sisyphus)</p>', unsafe_allow_html=True)
-    if learner.get("available"):
-        lc1, lc2 = st.columns(2)
-        lc1.metric("Episodes", learner.get("episodes_analyzed", 0))
-        lc2.metric("Applied", learner.get("improvements_applied", 0))
-        lc1.metric("Rejected", learner.get("improvements_rejected", 0))
-        avg_dur = learner.get("avg_duration_ms")
-        lc2.metric("Avg cycle", f"{avg_dur:.0f} ms" if avg_dur else "—")
-    else:
-        st.caption("No learner data yet — run a few commands first")
+    # ── Learner + Cache (side by side) ───────────────────────────
+    _lrn_col, _cch_col = st.columns(2)
+
+    with _lrn_col:
+        st.markdown('<p class="section-header">🧠 Learner</p>', unsafe_allow_html=True)
+        if learner.get("available"):
+            lc1, lc2 = st.columns(2)
+            lc1.metric("Episodes", learner.get("episodes_analyzed", 0))
+            lc2.metric("Applied", learner.get("improvements_applied", 0))
+            lc1.metric("Rejected", learner.get("improvements_rejected", 0))
+            avg_dur = learner.get("avg_duration_ms")
+            lc2.metric("Avg cycle", f"{avg_dur:.0f}ms" if avg_dur else "—")
+        else:
+            st.caption("No data yet")
+
+    _cs = _get("/api/cache/stats")
+    with _cch_col:
+        st.markdown('<p class="section-header">⚡ Cache</p>', unsafe_allow_html=True)
+        if _cs.get("entries") is not None:
+            _cc1, _cc2 = st.columns(2)
+            _cc1.metric("Hit rate", f"{_cs.get('hit_rate_pct', 0):.1f}%")
+            _cc2.metric("Entries", _cs.get("entries", 0))
+        else:
+            st.caption("No data")
 
     st.divider()
 
     # ── Offline fallback ─────────────────────────────────────────
     fb = status.get("offline_fallback", {})
     if fb.get("enabled"):
-        st.markdown('<p class="panel-title">🔌 Offline Fallback</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-header">🔌 Offline Fallback</p>', unsafe_allow_html=True)
         fc1, fc2 = st.columns(2)
         fc1.metric("Using fallback", "Yes" if fb.get("using_fallback") else "No")
         fc2.metric("Provider", fb.get("fallback_provider", "—"))
 
-    # ── Battery (INA219 / ADS1115) ────────────────────────────────
-    _bat = _get("/api/battery/latest")
-    if _bat.get("available", False) or _bat.get("voltage_v") is not None:
-        st.markdown('<p class="panel-title">🔋 Battery</p>', unsafe_allow_html=True)
-        _bv = _bat.get("voltage_v")
-        _bc = _bat.get("current_ma")
-        _bp = _bat.get("power_mw")
-        _bat1, _bat2, _bat3 = st.columns(3)
-        _bat1.metric("Voltage", f"{_bv:.2f} V" if _bv is not None else "—")
-        _bat2.metric("Current", f"{_bc:.1f} mA" if _bc is not None else "—")
-        _bat3.metric("Power", f"{_bp:.0f} mW" if _bp is not None else "—")
-
     # ── Object Detection ─────────────────────────────────────────
     _det = _get("/api/detection/latest")
     if _det.get("detections") is not None:
-        st.markdown('<p class="panel-title">👁 Detection</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-header">👁 Detection</p>', unsafe_allow_html=True)
         _dets = _det.get("detections", [])
         _dlat = _det.get("latency_ms", 0)
         _dmode = _det.get("mode", "mock")
-        st.caption(f"Mode: {_dmode} | Latency: {_dlat:.0f} ms | Objects: {len(_dets)}")
+        st.caption(f"Mode: {_dmode} · {_dlat:.0f}ms · {len(_dets)} objects")
         if _dets:
             for _d in _dets[:5]:
                 _conf = _d.get("confidence", 0)
@@ -494,19 +630,11 @@ with right_col:
                 _color = "🟢" if _conf > 0.7 else "🟡"
                 st.write(f"{_color} **{_cls}** ({_conf:.0%})")
         else:
-            st.caption("No objects detected")
-
-    # ── Cache Stats ──────────────────────────────────────────────
-    _cs = _get("/api/cache/stats")
-    if _cs.get("entries") is not None:
-        st.markdown('<p class="panel-title">⚡ Response Cache</p>', unsafe_allow_html=True)
-        _cc1, _cc2 = st.columns(2)
-        _cc1.metric("Hit rate", f"{_cs.get('hit_rate_pct', 0):.1f}%")
-        _cc2.metric("Entries", _cs.get("entries", 0))
+            st.caption("None detected")
 
 # ── BOTTOM — command history ──────────────────────────────────────────────────
 st.divider()
-st.markdown('<p class="panel-title">🕒 Recent Commands</p>', unsafe_allow_html=True)
+st.markdown('<p class="section-header">🕒 Recent Commands</p>', unsafe_allow_html=True)
 
 history_entries = hist.get("history", [])
 if history_entries:

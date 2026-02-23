@@ -13,9 +13,17 @@
 nodes:
   - name: alex
     host: alex.local
-    ip: 192.168.68.91
+    ip: 192.168.68.85
     port: 8000
     token: ea3c155db3cdc1a3221a7ebfe683954d85924784a5e87a45accbd848c3497b4f
     rcan: ~/OpenCastor/alex.rcan.yaml
     tags: [rpi5, camera, i2c, rover]
     added: "2026-02-21"
+  - name: bob
+    host: localhost
+    ip: 127.0.0.1
+    port: 8001
+    token: c0c700dddec89e27cd98cc53189620acad01032acc67a849
+    rcan: ~/OpenCastor/bob.rcan.yaml
+    tags: [dev, local, dashboard]
+    added: "2026-02-22"

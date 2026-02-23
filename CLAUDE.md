@@ -267,5 +267,5 @@ See `CONTRIBUTING.md` for detailed examples and templates.
 - PCA9685: won't respond until powered (external power rail)
 - OAK-D: `pip install depthai==3.3.0` + `sudo udevadm control --reload-rules`
 - USB speaker: `~/.asoundrc` → `defaults.pcm.card 2`; set `SDL_AUDIODRIVER=alsa` + `AUDIODEV=plughw:2,0`
-- **Neonize pin**: Always `neonize==0.3.10` — v0.3.14+ breaks with system protobuf 5.x
+- **Neonize pin**: `neonize==0.3.13.post0` — 0.3.10.post6 gets `err-client-outdated 405` from WhatsApp. 0.3.11+ needs protobuf 6.x (soft conflict with google-ai libs, safe when Google is not primary provider)
 - Dashboard: use `OPENCASTOR_API_TOKEN=... python -m streamlit run castor/dashboard.py --server.fileWatcherType none`

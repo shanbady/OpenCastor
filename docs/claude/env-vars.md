@@ -149,9 +149,9 @@ Copy `.env.example` to `.env` and fill in what you need.
 - `picamera2`
 
 ### Neonize Version Pin
-**Always use `neonize==0.3.10`**. Versions 0.3.14+ require `protobuf>=6.32.1` which conflicts with system `protobuf 5.x`.
+**Use `neonize==0.3.13.post0`** (updated from 0.3.10). Earlier versions (≤0.3.10.post6) receive `err-client-outdated 405` from WhatsApp servers. Versions 0.3.11+ require `protobuf>=6.x` which shows a soft conflict with `google-ai-generativelanguage 0.6.15`, but does not affect runtime when Google is not the primary provider.
 
-Fix: `pip install "neonize==0.3.10" -q`
+Fix: `pip install "neonize==0.3.13.post0" -q`
 
 ---
 

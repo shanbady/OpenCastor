@@ -63,6 +63,22 @@ def get_driver(config: dict):
         from castor.drivers.odrive_driver import ODriveDriver
 
         return ODriveDriver(driver_config)
+    elif protocol == "imu":
+        from castor.drivers.imu_driver import IMUDriver
+
+        return IMUDriver(
+            bus=int(driver_config.get("i2c_bus", 1)),
+            address=int(driver_config["i2c_address"], 16) if "i2c_address" in driver_config else None,
+            model=driver_config.get("model", "auto"),
+        )
+    elif protocol == "lidar":
+        from castor.drivers.lidar_driver import LidarDriver
+
+        return LidarDriver(
+            port=driver_config.get("port"),
+            baud=driver_config.get("baud"),
+            timeout=driver_config.get("timeout"),
+        )
     else:
         logger.warning(f"Unknown driver protocol: {protocol}. Running without hardware.")
         return None

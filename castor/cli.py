@@ -1158,6 +1158,38 @@ def cmd_export(args) -> None:
     print_export_summary(output, args.format)
 
 
+def cmd_export_finetune(args) -> None:
+    """Export episode memory as a fine-tuning dataset (#172)."""
+    from castor.finetune import EpisodeFinetuneExporter
+    from castor.memory import EpisodeMemory
+
+    db = os.getenv("CASTOR_MEMORY_DB", os.path.expanduser("~/.castor/memory.db"))
+    mem = EpisodeMemory(db_path=db)
+    exporter = EpisodeFinetuneExporter(mem)
+
+    stats = exporter.stats(limit=args.limit)
+    print(
+        f"\n  Episode memory: {stats['total_episodes']} total, "
+        f"{stats['with_action']} with action, "
+        f"avg latency {stats['avg_latency_ms']:.0f} ms"
+    )
+
+    if stats["total_episodes"] == 0:
+        print("  No episodes found. Run the robot first to collect data.\n")
+        return
+
+    output_path = args.output or f"robot_dataset.{args.format}.jsonl"
+    count = exporter.export_to_file(
+        output_path,
+        fmt=args.format,
+        limit=args.limit,
+        require_action=args.require_action,
+    )
+    size_kb = os.path.getsize(output_path) / 1024
+    print(f"\n  Exported {count} records to: {output_path}")
+    print(f"  Format: {args.format}  |  Size: {size_kb:.1f} KB\n")
+
+
 # ---------------------------------------------------------------------------
 # OpenClaw-inspired command handlers (batch 4)
 # ---------------------------------------------------------------------------
@@ -2805,6 +2837,33 @@ def main() -> None:
         "--format", choices=["zip", "json"], default="zip", help="Export format (default: zip)"
     )
 
+    p_finetune = sub.add_parser(
+        "export-finetune",
+        help="Export episode memory as a fine-tuning dataset (Alpaca / ChatML / ShareGPT)",
+        epilog=(
+            "Examples:\n"
+            "  castor export-finetune --format chatml --output dataset.jsonl\n"
+            "  castor export-finetune --format alpaca --limit 500 --require-action\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_finetune.add_argument(
+        "--format",
+        choices=["jsonl", "alpaca", "sharegpt", "chatml"],
+        default="chatml",
+        help="Fine-tuning format (default: chatml)",
+    )
+    p_finetune.add_argument("--output", "-o", default=None, help="Output file path")
+    p_finetune.add_argument(
+        "--limit", type=int, default=1000, help="Max episodes to export (default: 1000)"
+    )
+    p_finetune.add_argument(
+        "--require-action",
+        dest="require_action",
+        action="store_true",
+        help="Only export episodes that have a parsed action",
+    )
+
     # --- OpenClaw-inspired commands (batch 4) ---
 
     # castor approvals
@@ -3275,6 +3334,7 @@ def main() -> None:
         "fleet": cmd_fleet,
         "agents": cmd_agents,
         "export": cmd_export,
+        "export-finetune": cmd_export_finetune,
         # Batch 4 (OpenClaw-inspired)
         "approvals": cmd_approvals,
         "schedule": cmd_schedule,

@@ -467,6 +467,43 @@ with right_col:
         fc1.metric("Using fallback", "Yes" if fb.get("using_fallback") else "No")
         fc2.metric("Provider", fb.get("fallback_provider", "—"))
 
+    # ── Battery (INA219 / ADS1115) ────────────────────────────────
+    _bat = _get("/api/battery/latest")
+    if _bat.get("available", False) or _bat.get("voltage_v") is not None:
+        st.markdown('<p class="panel-title">🔋 Battery</p>', unsafe_allow_html=True)
+        _bv = _bat.get("voltage_v")
+        _bc = _bat.get("current_ma")
+        _bp = _bat.get("power_mw")
+        _bat1, _bat2, _bat3 = st.columns(3)
+        _bat1.metric("Voltage", f"{_bv:.2f} V" if _bv is not None else "—")
+        _bat2.metric("Current", f"{_bc:.1f} mA" if _bc is not None else "—")
+        _bat3.metric("Power", f"{_bp:.0f} mW" if _bp is not None else "—")
+
+    # ── Object Detection ─────────────────────────────────────────
+    _det = _get("/api/detection/latest")
+    if _det.get("detections") is not None:
+        st.markdown('<p class="panel-title">👁 Detection</p>', unsafe_allow_html=True)
+        _dets = _det.get("detections", [])
+        _dlat = _det.get("latency_ms", 0)
+        _dmode = _det.get("mode", "mock")
+        st.caption(f"Mode: {_dmode} | Latency: {_dlat:.0f} ms | Objects: {len(_dets)}")
+        if _dets:
+            for _d in _dets[:5]:
+                _conf = _d.get("confidence", 0)
+                _cls = _d.get("class", "?")
+                _color = "🟢" if _conf > 0.7 else "🟡"
+                st.write(f"{_color} **{_cls}** ({_conf:.0%})")
+        else:
+            st.caption("No objects detected")
+
+    # ── Cache Stats ──────────────────────────────────────────────
+    _cs = _get("/api/cache/stats")
+    if _cs.get("entries") is not None:
+        st.markdown('<p class="panel-title">⚡ Response Cache</p>', unsafe_allow_html=True)
+        _cc1, _cc2 = st.columns(2)
+        _cc1.metric("Hit rate", f"{_cs.get('hit_rate_pct', 0):.1f}%")
+        _cc2.metric("Entries", _cs.get("entries", 0))
+
 # ── BOTTOM — command history ──────────────────────────────────────────────────
 st.divider()
 st.markdown('<p class="panel-title">🕒 Recent Commands</p>', unsafe_allow_html=True)

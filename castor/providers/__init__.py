@@ -17,6 +17,7 @@ __all__ = [
     "MLXProvider",
     "OllamaProvider",
     "OpenAIProvider",
+    "OpenRouterProvider",
     "VertexAIProvider",
     "VLAProvider",
 ]
@@ -58,6 +59,10 @@ def _builtin_get_provider(config: dict):
         from .vla_provider import VLAProvider
 
         return VLAProvider(config)
+    elif provider_name in ("openrouter", "open_router"):
+        from .openrouter_provider import OpenRouterProvider
+
+        return OpenRouterProvider(config)
     else:
         raise ValueError(f"Unknown AI provider: {provider_name}")
 

@@ -3706,6 +3706,109 @@ async def sim_config(sim: str):
     return PlainTextResponse(xml_or_sdf)
 
 
+# ── Reactive Avoidance ────────────────────────────────────────────────────────
+
+
+@app.get("/api/avoidance/status", dependencies=[Depends(verify_token)])
+async def avoidance_status():
+    from castor.avoidance import get_avoider
+
+    return get_avoider(driver=state.driver).status()
+
+
+@app.post("/api/avoidance/enable", dependencies=[Depends(verify_token)])
+async def avoidance_enable():
+    from castor.avoidance import get_avoider
+
+    get_avoider().enable()
+    return {"ok": True, "enabled": True}
+
+
+@app.post("/api/avoidance/disable", dependencies=[Depends(verify_token)])
+async def avoidance_disable():
+    from castor.avoidance import get_avoider
+
+    get_avoider().disable()
+    return {"ok": True, "enabled": False}
+
+
+# ── LLM Response Cache ────────────────────────────────────────────────────────
+
+
+@app.get("/api/cache/stats", dependencies=[Depends(verify_token)])
+async def cache_stats():
+    from castor.response_cache import get_cache
+
+    return get_cache().stats()
+
+
+@app.post("/api/cache/clear", dependencies=[Depends(verify_token)])
+async def cache_clear():
+    from castor.response_cache import get_cache
+
+    deleted = get_cache().clear()
+    return {"ok": True, "deleted": deleted}
+
+
+@app.post("/api/cache/enable", dependencies=[Depends(verify_token)])
+async def cache_enable():
+    from castor.response_cache import get_cache
+
+    get_cache().enable()
+    return {"ok": True, "enabled": True}
+
+
+@app.post("/api/cache/disable", dependencies=[Depends(verify_token)])
+async def cache_disable():
+    from castor.response_cache import get_cache
+
+    get_cache().disable()
+    return {"ok": True, "enabled": False}
+
+
+# ── IMU ───────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/imu/latest", dependencies=[Depends(verify_token)])
+async def imu_latest():
+    from castor.drivers.imu_driver import get_imu
+
+    return get_imu().read()
+
+
+@app.get("/api/imu/calibrate", dependencies=[Depends(verify_token)])
+async def imu_calibrate():
+    from castor.drivers.imu_driver import get_imu
+
+    return get_imu().calibrate()
+
+
+# ── Lidar ─────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/lidar/scan", dependencies=[Depends(verify_token)])
+async def lidar_scan():
+    import time as _time
+
+    from castor.drivers.lidar_driver import get_lidar
+
+    t0 = _time.monotonic()
+    lidar = get_lidar()
+    scan = lidar.scan()
+    return {
+        "scan": scan,
+        "latency_ms": round((_time.monotonic() - t0) * 1000, 1),
+        "mode": lidar.health_check().get("mode", "unknown"),
+    }
+
+
+@app.get("/api/lidar/obstacles", dependencies=[Depends(verify_token)])
+async def lidar_obstacles():
+    from castor.drivers.lidar_driver import get_lidar
+
+    return get_lidar().obstacles()
+
+
 @app.on_event("shutdown")
 async def on_shutdown():
     # Close WebRTC peers

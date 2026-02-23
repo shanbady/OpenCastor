@@ -2795,6 +2795,27 @@ def _execute_action(action: dict):
             action.get("linear", 0.0),
             action.get("angular", 0.0),
         )
+    elif action_type == "nav_waypoint":
+        import threading
+        from castor.nav import WaypointNav
+
+        distance_m = float(action.get("distance_m", 0.0))
+        heading_deg = float(action.get("heading_deg", 0.0))
+        speed = float(action.get("speed", 0.6))
+        job_id = str(_uuid.uuid4())
+        state.nav_job = {"job_id": job_id, "running": True, "result": None}
+
+        def _run_nav():
+            try:
+                nav = WaypointNav(state.driver, state.config or {})
+                result = nav.execute(distance_m, heading_deg, speed)
+                state.nav_job = {"job_id": job_id, "running": False, "result": result}
+            except Exception as exc:
+                logger.warning(f"Nav job {job_id} failed: {exc}")
+                state.nav_job = {"job_id": job_id, "running": False, "result": {"ok": False, "error": str(exc)}}
+
+        threading.Thread(target=_run_nav, daemon=True).start()
+        logger.info(f"Nav waypoint started: job={job_id} distance={distance_m}m heading={heading_deg}°")
     elif action_type == "stop":
         state.driver.stop()
     elif action_type == "grip":

@@ -163,6 +163,15 @@ class BaseProvider(ABC):
             '  "what do you see / camera"      → describe camera/vision status',
             '  "what can you do / help"        → list available commands',
         ]
+        if caps and "nav" in caps:
+            command_lines.insert(
+                3,
+                '  "move forward/back N inches/cm/m" → {"type":"nav_waypoint","distance_m":float,"heading_deg":0}',
+            )
+            command_lines.insert(
+                4,
+                '  "turn left/right N degrees"        → {"type":"nav_waypoint","distance_m":0,"heading_deg":±float}',
+            )
         # Only include nav/teleop commands if those caps are active
         if caps and not any(c in caps for c in ["nav", "teleop", "chat"]):
             command_lines = command_lines[3:]  # keep stop/wait/status only

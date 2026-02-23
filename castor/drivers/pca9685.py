@@ -145,16 +145,23 @@ class PCA9685RCDriver(DriverBase):
         time.sleep(0.5)  # give the ESC time to recognise the neutral signal
         logger.info("ESC armed (neutral throttle sent)")
 
-    def move(self, linear_x: float = 0.0, angular_z: float = 0.0):
+    def move(self, linear: float = 0.0, angular: float = 0.0,
+             linear_x: float | None = None, angular_z: float | None = None):
         """
         Drive the RC car.
 
         Args:
-            linear_x:  Throttle, -1.0 (full reverse) to 1.0 (full forward).
-            angular_z: Steering, -1.0 (full left) to 1.0 (full right).
+            linear:    Throttle, -1.0 (full reverse) to 1.0 (full forward).
+            angular:   Steering, -1.0 (full left) to 1.0 (full right).
+            linear_x:  Alias for linear (legacy).
+            angular_z: Alias for angular (legacy).
         """
-        linear_x = max(-1.0, min(1.0, linear_x))
-        angular_z = max(-1.0, min(1.0, angular_z))
+        if linear_x is not None:
+            linear = linear_x
+        if angular_z is not None:
+            angular = angular_z
+        linear_x = max(-1.0, min(1.0, linear))
+        angular_z = max(-1.0, min(1.0, angular))
 
         # --- Throttle ---
         if abs(linear_x) < self.thr_deadzone:
@@ -248,10 +255,15 @@ class PCA9685Driver(DriverBase):
         self.motor_left.decay_mode = motor.SLOW_DECAY
         self.motor_right.decay_mode = motor.SLOW_DECAY
 
-    def move(self, linear_x: float = 0.0, angular_z: float = 0.0):
+    def move(self, linear: float = 0.0, angular: float = 0.0,
+             linear_x: float | None = None, angular_z: float | None = None):
         """Arcade-drive mixing."""
-        left_speed = max(-1.0, min(1.0, linear_x - angular_z))
-        right_speed = max(-1.0, min(1.0, linear_x + angular_z))
+        if linear_x is not None:
+            linear = linear_x
+        if angular_z is not None:
+            angular = angular_z
+        left_speed = max(-1.0, min(1.0, linear - angular))
+        right_speed = max(-1.0, min(1.0, linear + angular))
 
         if self.motor_left is None:
             logger.info(f"[MOCK] L={left_speed:.2f} R={right_speed:.2f}")

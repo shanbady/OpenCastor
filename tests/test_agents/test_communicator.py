@@ -149,6 +149,22 @@ class TestCommunicatorObserveAct:
         result = run(a.act({"message": None}))
         assert result["action"] == "idle"
 
+
+    def test_act_returns_structured_intent(self):
+        state = SharedState()
+        a = make_agent(state)
+        result = run(a.act({"message": "go forward"}))
+        assert "structured_intent" in result
+        assert result["structured_intent"]["intent"]["keyword"] == "go"
+
+    def test_act_blocked_by_policy(self):
+        state = SharedState()
+        a = make_agent(state)
+        result = run(a.act({"message": "enter restricted lab"}))
+        assert result["action"] == "blocked"
+        assert result["policy"]["allowed"] is False
+        assert result["policy"]["explanation_id"].startswith("EXP-")
+
     def test_act_appends_conversation_history(self):
         a = make_agent()
         run(a.act({"message": "go forward"}))

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from .base import BaseAgent
 from .shared_state import SharedState
+from castor.command_interpreter import get_command_interpreter
 
 logger = logging.getLogger("OpenCastor.Agents.Communicator")
 
@@ -86,6 +87,7 @@ class CommunicatorAgent(BaseAgent):
         self._conversation_history: List[str] = []
         self._last_intent: Optional[str] = None
         self._last_routed_to: Optional[str] = None
+        self._interpreter = get_command_interpreter()
 
     # ------------------------------------------------------------------
     # Public helpers (also useful in tests and channels)
@@ -100,11 +102,7 @@ class CommunicatorAgent(BaseAgent):
 
         Returns the matching keyword or ``"unknown"`` if none match.
         """
-        lower = text.lower().strip()
-        for keyword, _ in _INTENT_ROUTING:
-            if keyword in lower:
-                return keyword
-        return "unknown"
+        return self._interpreter.parse_intent(text).get("keyword", "unknown")
 
     def route_intent(self, intent: str, text: str) -> Optional[str]:
         """Publish a routed task to SharedState for the appropriate agent.
@@ -150,8 +148,35 @@ class CommunicatorAgent(BaseAgent):
             return {"action": "idle", "agent": self.name}
 
         self._conversation_history.append(msg)
-        intent = self.parse_intent(msg)
+        interpreted = self._interpreter.interpret(msg)
+        intent = interpreted["intent"]["keyword"]
         self._last_intent = intent
+
+        # Log explanation IDs mapped to policy decisions for auditability.
+        safety = interpreted["safety"]
+        self._state.set(
+            f"swarm.policy_decision.{safety['explanation_id']}",
+            self._interpreter.decision_records.get(safety["explanation_id"], {}),
+        )
+        self._state.set("swarm.last_structured_intent", interpreted)
+
+        if not interpreted["execution_allowed"]:
+            alt = safety.get("alternatives") or []
+            alternatives = " | ".join(alt)
+            response = (
+                f"[{safety['explanation_id']}] Policy {safety['policy_id']} blocked this command: "
+                f"{safety['rationale']} Safe alternatives: {alternatives}"
+            ).strip()
+            self._state.set("swarm.incoming_message", None)
+            self._state.set("swarm.communicator_response", response)
+            return {
+                "action": "blocked",
+                "intent": intent,
+                "routed_to": None,
+                "message": msg,
+                "policy": safety,
+            }
+
         target = self.route_intent(intent, msg)
         self._last_routed_to = target
 
@@ -167,4 +192,5 @@ class CommunicatorAgent(BaseAgent):
             "intent": intent,
             "routed_to": target,
             "message": msg,
+            "structured_intent": interpreted,
         }

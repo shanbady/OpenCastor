@@ -149,6 +149,30 @@ class TestHandleMessage:
         result = self._run(ch.handle_message("chat1", "ping"))
         assert result is None
 
+
+    def test_dry_run_requires_confirmation(self):
+        events = []
+
+        def callback(name, chat_id, text):
+            events.append(text)
+            return "executed"
+
+        ch = StubChannel({}, on_message=callback)
+        preview = self._run(ch.handle_message("u1", "--dry-run go forward"))
+        assert "Dry-run plan" in preview
+        assert events == []
+
+        result = self._run(ch.handle_message("u1", "confirm"))
+        assert result == "executed"
+        assert events == ["go forward"]
+
+    def test_policy_block_includes_alternatives(self):
+        ch = StubChannel({}, on_message=lambda *_: "ok")
+        result = self._run(ch.handle_message("u1", "enter restricted lab"))
+        assert "I cannot execute" in result
+        assert "Safe alternatives" in result
+        assert "EXP-" in result
+
     def test_callback_exception_type_error(self):
         def bad_callback(name, chat_id, text):
             raise TypeError("wrong type")

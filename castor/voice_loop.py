@@ -27,6 +27,8 @@ import threading
 import time
 from typing import Callable, Optional
 
+from castor.command_interpreter import get_command_interpreter
+
 logger = logging.getLogger("OpenCastor.VoiceLoop")
 
 _singleton: Optional["VoiceAssistantLoop"] = None
@@ -41,11 +43,15 @@ class VoiceAssistantLoop:
         brain=None,
         on_command: Optional[Callable[[str], str]] = None,
         hotword: str = "hey castor",
+        dry_run_mode: bool = False,
     ):
         self._brain = brain
         self._on_command = on_command
         self._hotword = hotword
         self._running = False
+        self._dry_run_mode = dry_run_mode
+        self._pending_confirmation: Optional[str] = None
+        self._interpreter = get_command_interpreter()
         self._thread: Optional[threading.Thread] = None
         self._state = "idle"  # idle | waiting | listening | processing | speaking
         self._stats = {
@@ -67,6 +73,7 @@ class VoiceAssistantLoop:
 
     def stop(self):
         self._running = False
+        self._pending_confirmation = None
         self._state = "idle"
         logger.info("VoiceAssistantLoop stopped")
 
@@ -120,9 +127,9 @@ class VoiceAssistantLoop:
                 logger.info("STT: %r (%.0f ms)", text, stt_ms)
                 self._state = "processing"
 
-                # 2. LLM
+                # 2. Command interpreter + LLM
                 t1 = time.monotonic()
-                reply = self._llm(text)
+                reply = self._handle_command(text)
                 llm_ms = (time.monotonic() - t1) * 1000
                 self._stats["avg_llm_ms"] = 0.9 * self._stats["avg_llm_ms"] + 0.1 * llm_ms
                 logger.info("LLM: %r (%.0f ms)", (reply or "")[:80], llm_ms)
@@ -188,6 +195,53 @@ class VoiceAssistantLoop:
             logger.error("Audio record error: %s", exc)
             return b""
 
+
+    def _handle_command(self, text: str) -> str:
+        incoming = (text or "").strip()
+        if incoming.lower() == "cancel" and self._pending_confirmation:
+            self._pending_confirmation = None
+            return "Cancelled pending dry-run plan."
+
+        if incoming.lower() == "confirm" and self._pending_confirmation:
+            text = self._pending_confirmation
+            self._pending_confirmation = None
+            interpreted = self._interpreter.interpret(text, dry_run=False)
+        else:
+            dry_run = self._dry_run_mode or incoming.lower().startswith("--dry-run")
+            text = (
+                incoming[len("--dry-run") :].strip()
+                if incoming.lower().startswith("--dry-run")
+                else incoming
+            )
+            interpreted = self._interpreter.interpret(text, dry_run=dry_run)
+
+        safety = interpreted["safety"]
+        logger.info(
+            "Voice command explanation_id=%s policy=%s decision=%s",
+            safety["explanation_id"],
+            safety["policy_id"],
+            "allow" if interpreted["execution_allowed"] else "deny",
+        )
+
+        if not interpreted["execution_allowed"]:
+            alts = "; ".join(safety.get("alternatives") or [])
+            return (
+                f"[{safety['explanation_id']}] I cannot do that. {safety['rationale']} "
+                f"Safe alternatives: {alts}"
+            )
+
+        if interpreted.get("dry_run"):
+            self._pending_confirmation = text
+            steps = " ".join(
+                [
+                    f"Step {i}: {step}"
+                    for i, step in enumerate(interpreted.get("plan", []), start=1)
+                ]
+            )
+            return f"[{safety['explanation_id']}] Dry-run plan. {steps} Say confirm to execute or cancel."
+
+        return self._llm(text)
+
     def _llm(self, text: str) -> str:
         if self._on_command:
             try:
@@ -216,10 +270,16 @@ def get_voice_loop(
     brain=None,
     on_command: Optional[Callable[[str], str]] = None,
     hotword: str = "hey castor",
+    dry_run_mode: bool = False,
 ) -> VoiceAssistantLoop:
     """Return the process-wide VoiceAssistantLoop singleton."""
     global _singleton
     with _lock:
         if _singleton is None:
-            _singleton = VoiceAssistantLoop(brain=brain, on_command=on_command, hotword=hotword)
+            _singleton = VoiceAssistantLoop(
+                brain=brain,
+                on_command=on_command,
+                hotword=hotword,
+                dry_run_mode=dry_run_mode,
+            )
     return _singleton

@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import Callable, Deque, Dict, Optional
 
+from castor.command_interpreter import get_command_interpreter
+
 logger = logging.getLogger("OpenCastor.Channels")
 
 # Default rate limit: 10 messages per 60 seconds per chat_id
@@ -50,6 +52,9 @@ class BaseChannel(ABC):
             "window_seconds", config.get("rate_limit_window", _DEFAULT_RATE_WINDOW)
         )
         self._rate_timestamps: Dict[str, Deque[float]] = defaultdict(deque)
+        self._interpreter = get_command_interpreter()
+        self._dry_run_mode: bool = bool(config.get("dry_run_mode", False))
+        self._pending_confirmations: Dict[str, Dict[str, str]] = {}
 
     def _check_rate_limit(self, chat_id: str) -> bool:
         """Return True if the message is within the rate limit, False if throttled."""
@@ -66,6 +71,26 @@ class BaseChannel(ABC):
 
         q.append(now)
         return True
+
+
+    def _render_blocked_message(self, safety: dict) -> str:
+        alternatives = safety.get("alternatives") or []
+        alt_text = "; ".join(alternatives) if alternatives else "No safe alternatives available."
+        return (
+            f"[{safety['explanation_id']}] I cannot execute that request. "
+            f"Policy: {safety['policy_id']}. Reason: {safety['rationale']}. "
+            f"Safe alternatives: {alt_text}"
+        )
+
+    def _render_dry_run_preview(self, interpreted: dict) -> str:
+        lines = [
+            f"[{interpreted['safety']['explanation_id']}] Dry-run plan:",
+            f"Intent: {interpreted['intent']['keyword']} -> {interpreted['intent']['target_agent'] or 'unrouted'}",
+        ]
+        for i, step in enumerate(interpreted.get("plan", []), start=1):
+            lines.append(f"  {i}. {step}")
+        lines.append("Reply 'confirm' to execute, or 'cancel' to abort.")
+        return "\n".join(lines)
 
     async def handle_message(self, chat_id: str, text: str) -> Optional[str]:
         """
@@ -88,6 +113,36 @@ class BaseChannel(ABC):
 
         if self._on_message_callback:
             try:
+                incoming = (text or "").strip()
+                if incoming.lower() == "cancel" and chat_id in self._pending_confirmations:
+                    self._pending_confirmations.pop(chat_id, None)
+                    return "Cancelled pending dry-run plan."
+
+                if incoming.lower() == "confirm" and chat_id in self._pending_confirmations:
+                    pending = self._pending_confirmations.pop(chat_id)
+                    text = pending["text"]
+                    interpreted = self._interpreter.interpret(text, dry_run=False)
+                else:
+                    dry_run = self._dry_run_mode or incoming.lower().startswith("--dry-run")
+                    actual_text = incoming[len("--dry-run") :].strip() if incoming.lower().startswith("--dry-run") else incoming
+                    interpreted = self._interpreter.interpret(actual_text, dry_run=dry_run)
+                    text = actual_text
+
+                self.logger.info(
+                    "[%s] explanation_id=%s policy=%s decision=%s",
+                    self.name,
+                    interpreted["safety"]["explanation_id"],
+                    interpreted["safety"]["policy_id"],
+                    "allow" if interpreted["execution_allowed"] else "deny",
+                )
+
+                if not interpreted["execution_allowed"]:
+                    return self._render_blocked_message(interpreted["safety"])
+
+                if interpreted.get("dry_run"):
+                    self._pending_confirmations[chat_id] = {"text": text}
+                    return self._render_dry_run_preview(interpreted)
+
                 # Push message into shared session store for multi-channel routing
                 try:
                     from castor.channels.session import get_session_store

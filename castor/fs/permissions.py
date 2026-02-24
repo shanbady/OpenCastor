@@ -183,14 +183,14 @@ class PermissionTable:
                 required_caps=Cap.DEVICE_ACCESS,
             ),
         )
-        # /dev/motor -- needs MOTOR_WRITE to write
-        # "api" is granted write so that POST /api/action (direct motor control)
-        # and POST /cap/teleop work.  The required_caps gate (MOTOR_WRITE) still
-        # applies, so arbitrary low-privilege callers are blocked.
+        # /dev/motor -- needs MOTOR_WRITE to write.
+        # "channel" must have rw- so that WhatsApp/Telegram/Discord commands
+        # can drive hardware; the required_caps=MOTOR_WRITE gate is the actual
+        # safety control (channel principal holds MOTOR_WRITE).
         self.set_acl(
             "/dev/motor",
             ACL(
-                {"brain": "rw-", "driver": "rw-", "api": "rw-", "channel": "---"},
+                {"brain": "rw-", "driver": "rw-", "api": "rw-", "channel": "rw-"},
                 required_caps=Cap.MOTOR_WRITE,
             ),
         )

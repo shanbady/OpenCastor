@@ -520,8 +520,9 @@ class TestCastorFS:
         fs.boot()
         # Brain can write to /dev/motor
         assert fs.write("/dev/motor", {"linear": 0.5}, principal="brain")
-        # Channel cannot
-        assert not fs.write("/dev/motor", {"linear": 0.5}, principal="channel")
+        # Channel can write to /dev/motor (holds MOTOR_WRITE cap); the
+        # required_caps gate is the security control, not explicit ACL denial.
+        assert fs.write("/dev/motor", {"linear": 0.5}, principal="channel")
 
     def test_estop(self):
         fs = CastorFS()

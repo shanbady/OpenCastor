@@ -776,6 +776,19 @@ def main():
     set_shared_fs(fs)
     logger.info("Virtual Filesystem Online")
 
+    # 1d. SECURITY POSTURE CHECK (attestation / measured boot)
+    try:
+        from castor.security_posture import publish_attestation
+
+        posture = publish_attestation(fs)
+        if posture and posture.get("mode") == "degraded":
+            logger.warning(
+                "Security posture is degraded (%s)",
+                ",".join(posture.get("reasons", [])) or "attestation_unavailable",
+            )
+    except Exception as e:
+        logger.debug(f"Security posture check skipped: {e}")
+
     # 1c. CONSTRUCT RURI
     try:
         from castor.rcan.ruri import RURI

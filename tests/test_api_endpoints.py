@@ -312,6 +312,14 @@ class TestStatusEndpoint:
         assert resp.json()["last_thought"]["raw_text"] == "hello"
 
 
+    def test_status_includes_security_posture_when_fs_available(self, client, api_mod):
+        api_mod.state.fs = _make_mock_fs()
+        api_mod.state.fs.ns.read.side_effect = lambda path: (
+            {"mode": "degraded", "verified": False} if path == "/proc/safety" else None
+        )
+        body = client.get("/api/status").json()
+        assert body["security_posture"]["mode"] == "degraded"
+
 # =====================================================================
 # POST /api/command
 # =====================================================================

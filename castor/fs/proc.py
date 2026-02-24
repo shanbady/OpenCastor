@@ -49,6 +49,7 @@ class ProcFS:
         self.ns.mkdir("/proc/loop")
         self.ns.mkdir("/proc/brain")
         self.ns.mkdir("/proc/hw")
+        self.ns.mkdir("/proc/safety")
 
         self.ns.write("/proc/uptime", 0.0)
         self.ns.write("/proc/status", "booting")
@@ -84,6 +85,12 @@ class ProcFS:
         self.ns.write("/proc/hw/driver", "none")
         self.ns.write("/proc/hw/camera", "offline")
         self.ns.write("/proc/hw/speaker", "offline")
+
+        # Security posture state (updated by runtime boot checks)
+        self.ns.write("/proc/safety/mode", "unknown")
+        self.ns.write("/proc/safety/attestation", None)
+        self.ns.write("/proc/safety/attestation_status", "unknown")
+        self.ns.write("/proc/safety/attestation_token", None)
 
         # RCAN protocol state
         self.ns.mkdir("/proc/rcan")
@@ -180,5 +187,10 @@ class ProcFS:
                 "driver": self.ns.read("/proc/hw/driver"),
                 "camera": self.ns.read("/proc/hw/camera"),
                 "speaker": self.ns.read("/proc/hw/speaker"),
+            },
+            "safety": {
+                "mode": self.ns.read("/proc/safety/mode"),
+                "attestation_status": self.ns.read("/proc/safety/attestation_status"),
+                "attestation": self.ns.read("/proc/safety/attestation"),
             },
         }

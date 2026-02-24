@@ -46,6 +46,7 @@ from castor.auth import (
     load_dotenv_if_available,
 )
 from castor.fs import CastorFS
+from castor.security_posture import publish_attestation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -404,6 +405,9 @@ async def get_status(request: Request):
         "last_thought": state.last_thought,
         "audit_log_path": str(DEFAULT_AUDIT_LOG_PATH.expanduser()),
     }
+
+    if state.fs:
+        payload["security_posture"] = state.fs.ns.read("/proc/safety")
 
     # Provider health check — routed through active brain (respects fallback),
     # cached for 30 s to avoid flooding a quota-exhausted primary provider.
@@ -3046,6 +3050,12 @@ async def on_startup():
                 state.fs.boot(state.config)
                 set_shared_fs(state.fs)
             logger.info("Virtual Filesystem online")
+
+            # Security posture check (attestation token + degraded mode flag)
+            try:
+                publish_attestation(state.fs)
+            except Exception as _sec_exc:
+                logger.debug("Security posture check skipped: %s", _sec_exc)
 
             # Construct RURI from config
             try:

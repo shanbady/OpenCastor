@@ -30,6 +30,9 @@ class WaypointNav:
         physics = config.get("physics", {})
         self.wheel_circumference_m: float = float(physics.get("wheel_circumference_m", 0.21))
         self.turn_time_per_deg_s: float = float(physics.get("turn_time_per_deg_s", 0.011))
+        # Minimum drive duration so ESC / motor has time to respond.
+        # RC ESCs typically need 150-300ms to spool up; short pulses produce no movement.
+        self.min_drive_s: float = float(physics.get("min_drive_s", 0.4))
         self._safety_stop: bool = bool(config.get("safety_stop", False))
         self._log = logger
 
@@ -70,14 +73,11 @@ class WaypointNav:
 
             # --- DRIVE phase ---
             if distance_m != 0:
-                drive_duration = (
-                    abs(distance_m) / self.wheel_circumference_m
-                ) * 1.0  # 1 revolution per circumference at full-speed baseline
-                # Adjust for speed: at full speed we'd cover wheel_circumference in 1 s
-                # but our unit is already in time, scale by speed factor
-                # More precisely: time = distance / (speed * max_linear_speed)
-                # We treat wheel_circumference_m as distance per second at speed=1.0
                 drive_duration = abs(distance_m) / (self.wheel_circumference_m * max(speed, 0.01))
+                # Enforce minimum drive time so the ESC/motor has time to respond.
+                # RC ESCs need ~150-400ms to spool up; below min_drive_s the wheels
+                # won't visibly move even though the command is sent correctly.
+                drive_duration = max(drive_duration, self.min_drive_s)
                 linear = speed if distance_m > 0 else -speed
                 self._log.debug(
                     f"Driving {distance_m}m (linear={linear:.2f}, duration={drive_duration:.3f}s)"

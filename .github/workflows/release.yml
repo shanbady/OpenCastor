@@ -9,7 +9,7 @@
 #      - Owner: craigm26
 #      - Repository: OpenCastor
 #      - Workflow name: release.yml
-#      - Environment name: release
+#      - Environment name: pypi
 #   3. Save. No API token needed after this.
 #
 # The publish job tries OIDC first, then falls back to PYPI_API_TOKEN secret.
@@ -142,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "Publish to PyPI (OIDC)"
     timeout-minutes: 10
-    environment: release
+    environment: pypi
     permissions:
       id-token: write
     steps:
@@ -166,14 +166,14 @@ jobs:
           twine check dist/*
 
       - name: Publish to PyPI (Trusted Publisher / OIDC)
-        id: publish-oidc
+        id: publish_oidc
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         continue-on-error: true
         with:
           skip-existing: true
 
       - name: Publish to PyPI (API token fallback)
-        if: steps.publish-oidc.outcome == 'failure'
+        if: steps.publish_oidc.outcome == 'failure'
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}

@@ -3,7 +3,7 @@
 # Supports: macOS, Debian/Ubuntu, Fedora/RHEL, Arch, Alpine, Raspberry Pi
 set -euo pipefail
 
-VERSION="2026.2.23.14"
+VERSION="2026.2.26.0"
 REPO_URL="https://github.com/craigm26/OpenCastor.git"
 INSTALL_DIR="${OPENCASTOR_DIR:-$HOME/opencastor}"
 
@@ -122,11 +122,11 @@ check_python_version() {
   local major minor
   major="${ver%%.*}"
   minor="${ver#*.}"
-  [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]
+  [ "$major" -eq 3 ] && [ "$minor" -ge 10 ] && [ "$minor" -lt 13 ]
 }
 
 find_python() {
-  for py in python3.13 python3.12 python3.11 python3.10 python3; do
+  for py in python3.12 python3.11 python3.10 python3; do
     if check_python_version "$py"; then
       echo "$py"
       return 0
@@ -218,8 +218,8 @@ esac
 
 # ── Verify Python ─────────────────────────────────────
 PYTHON=$(find_python) || {
-  err "Python 3.10+ is required but not found."
-  err "Install Python 3.10+ and re-run this script."
+  err "A compatible Python version (3.10 - 3.12) is required but not found."
+  err "Install Python 3.10, 3.11, or 3.12 and re-run this script."
   exit 1
 }
 ok "Using $PYTHON ($($PYTHON --version 2>&1))"

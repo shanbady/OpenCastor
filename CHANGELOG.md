@@ -5,6 +5,24 @@ All notable changes to OpenCastor are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [CalVer](https://calver.org/) versioning: `YYYY.M.DD.PATCH`.
 
+## [2026.2.26.3] - 2026-02-26 🚀 Release: Google Setup Hardening + Catalog Expansion Follow-up
+
+### Added
+- **Google model preflight regression coverage** — added focused wizard tests for model-available/no-fallback, unavailable-model fallback, missing-credentials no-op, exception no-op, and `used_fallback` tracking in preflight return state.
+
+### Changed
+- **Google preflight fallback accounting** — `ensure_provider_preflight()` now sets `used_fallback=True` when Google model preflight switches to a different model.
+- **Google model availability probe guardrails** — `_ensure_google_model_ready()` now runs availability probing only when `GOOGLE_API_KEY` is present/configured, avoiding misleading ADC-only checks for this Gemini provider path.
+- **Google auth flow clarity** — wizard auth text and flow now keep ADC sign-in optional while explicitly requiring Gemini API key capture for model invocations in this provider.
+- **Release/version metadata sync** — synchronized runtime, installer, docs, and site touchpoints to `v2026.2.26.3` (`VERSION="2026.2.26.3"` in installer).
+
+### Documentation / Website
+- Updated release/version labels in README and website surfaces (`site/index.html`, `site/docs.html`, `site/about.html`, `site/styles.css`) to `v2026.2.26.3`.
+- Refreshed CLI recipe docs examples to current release version where they displayed "current/latest" version outputs.
+
+### Validation
+- `.\.venv\Scripts\python.exe -m pytest -q tests/test_wizard_models.py tests/test_setup_catalog.py` → **55 passed**
+
 ## [2026.2.26.2] - 2026-02-26 🚀 Release: ESP32 + LEGO Runtime Support, Setup/Wizard Expansion, Docs/Site Refresh
 
 ### Added

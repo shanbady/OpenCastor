@@ -115,7 +115,7 @@ The manifest is the metadata file for your recipe. It's used by `castor hub brow
   "use_case": "One sentence: what does this robot actually do day-to-day?",
   "created": "2026-02-15T10:00:00Z",
   "version": "1.0.0",
-  "opencastor_version": "2026.2.17.7",
+  "opencastor_version": "2026.2.26.3",
   "files": {
     "config": "config.rcan.yaml",
     "readme": "README.md",

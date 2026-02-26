@@ -1,6 +1,7 @@
 """Tests for the redesigned wizard: provider/model separation and secondary models."""
 
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from castor.wizard import (
     MODELS,
@@ -10,11 +11,13 @@ from castor.wizard import (
     _build_agent_config,
     _check_google_adc,
     _check_huggingface_token,
+    _ensure_google_model_ready,
     _google_auth_flow,
     _huggingface_auth_flow,
     choose_model,
     choose_provider_step,
     choose_secondary_models,
+    ensure_provider_preflight,
     generate_preset_config,
 )
 
@@ -98,7 +101,7 @@ class TestChooseModel:
     @patch("builtins.input", return_value="2")
     def test_select_second_model(self, _):
         m = choose_model("google")
-        assert m["id"] == "gemini-2.5-pro"
+        assert m["id"] == "gemini-3.1-flash"
 
     @patch("builtins.input", return_value="3")
     def test_select_third_openai(self, _):
@@ -123,7 +126,7 @@ class TestBuildAgentConfig:
         assert cfg["env_var"] == "ANTHROPIC_API_KEY"
 
     def test_google_config(self):
-        model = MODELS["google"][1]
+        model = next(m for m in MODELS["google"] if m["id"] == "gemini-2.5-pro")
         cfg = _build_agent_config("google", model)
         assert cfg["provider"] == "google"
         assert cfg["model"] == "gemini-2.5-pro"
@@ -185,13 +188,16 @@ class TestGoogleAuthFlow:
             with patch.dict("os.environ", {}, clear=True):
                 assert _check_google_adc() is False
 
-    @patch("builtins.input", return_value="1")
+    @patch("builtins.input", side_effect=["1", "fake-key"])
     def test_google_adc_already_present(self, _, tmp_path):
         with patch("castor.wizard._check_google_adc", return_value=True):
-            with patch("castor.wizard._write_env_var") as mock_write:
-                result = _google_auth_flow("GOOGLE_API_KEY")
+            with patch("castor.wizard._validate_api_key", return_value=True):
+                with patch("castor.wizard.input_secret", return_value="fake-key"):
+                    with patch("castor.wizard._write_env_var") as mock_write:
+                        result = _google_auth_flow("GOOGLE_API_KEY")
         assert result is True
-        mock_write.assert_called_with("GOOGLE_AUTH_MODE", "adc")
+        mock_write.assert_any_call("GOOGLE_AUTH_MODE", "adc")
+        mock_write.assert_any_call("GOOGLE_API_KEY", "fake-key")
 
     @patch("builtins.input", side_effect=["2", "fake-key"])
     def test_google_api_key_fallback(self, _):
@@ -200,6 +206,85 @@ class TestGoogleAuthFlow:
                 result = _google_auth_flow("GOOGLE_API_KEY")
         assert result is True
         mock_write.assert_any_call("GOOGLE_API_KEY", "fake-key")
+
+
+class TestGoogleModelPreflight:
+    class _ModelItem:
+        def __init__(self, name):
+            self.name = name
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True)
+    def test_model_available_unchanged(self):
+        model_info = {"id": "gemini-3.1-flash", "label": "Gemini 3.1 Flash"}
+        model_items = [self._ModelItem("models/gemini-3.1-flash")]
+        mock_configure = Mock()
+        mock_list_models = Mock(return_value=model_items)
+        fake_genai = SimpleNamespace(configure=mock_configure, list_models=mock_list_models)
+        with patch.dict(
+            "sys.modules",
+            {"google": SimpleNamespace(generativeai=fake_genai), "google.generativeai": fake_genai},
+        ):
+            result = _ensure_google_model_ready(model_info)
+        assert result == model_info
+        mock_configure.assert_called_once_with(api_key="test-key")
+        mock_list_models.assert_called_once()
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True)
+    def test_model_unavailable_falls_back_to_recommended(self):
+        model_info = {"id": "gemma-3-27b-it", "label": "Gemma 3 27B Instruct"}
+        model_items = [self._ModelItem("models/gemini-2.5-flash")]
+        fake_genai = SimpleNamespace(configure=Mock(), list_models=Mock(return_value=model_items))
+        with patch.dict(
+            "sys.modules",
+            {"google": SimpleNamespace(generativeai=fake_genai), "google.generativeai": fake_genai},
+        ):
+            result = _ensure_google_model_ready(model_info)
+
+        fallback = next((m for m in MODELS["google"] if m.get("recommended")), None)
+        assert fallback is not None
+        assert result["id"] == fallback["id"]
+        assert result["id"] != model_info["id"]
+
+    @patch.dict("os.environ", {"GOOGLE_AUTH_MODE": "adc"}, clear=True)
+    def test_missing_api_key_skips_check_and_keeps_model(self):
+        model_info = {"id": "gemini-3.1-flash", "label": "Gemini 3.1 Flash"}
+        fake_genai = SimpleNamespace(configure=Mock(), list_models=Mock())
+        with patch.dict(
+            "sys.modules",
+            {"google": SimpleNamespace(generativeai=fake_genai), "google.generativeai": fake_genai},
+        ):
+            result = _ensure_google_model_ready(model_info)
+        assert result == model_info
+        fake_genai.configure.assert_not_called()
+        fake_genai.list_models.assert_not_called()
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True)
+    def test_list_models_exception_keeps_model(self):
+        model_info = {"id": "gemini-3.1-flash", "label": "Gemini 3.1 Flash"}
+        fake_genai = SimpleNamespace(
+            configure=Mock(),
+            list_models=Mock(side_effect=RuntimeError("boom")),
+        )
+        with patch.dict(
+            "sys.modules",
+            {"google": SimpleNamespace(generativeai=fake_genai), "google.generativeai": fake_genai},
+        ):
+            result = _ensure_google_model_ready(model_info)
+        assert result == model_info
+
+    def test_ensure_provider_preflight_sets_used_fallback_for_google(self):
+        original = {"id": "gemma-3-27b-it", "label": "Gemma 3 27B Instruct"}
+        with patch(
+            "castor.wizard._ensure_google_model_ready",
+            return_value={"id": "gemini-3.1-pro", "label": "Gemini 3.1 Pro"},
+        ):
+            provider, model, used_fallback, stack_id = ensure_provider_preflight(
+                "google", original, stack_id="test_stack"
+            )
+        assert provider == "google"
+        assert model["id"] == "gemini-3.1-pro"
+        assert used_fallback is True
+        assert stack_id == "test_stack"
 
 
 class TestHuggingFaceAuthFlow:

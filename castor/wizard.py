@@ -273,8 +273,15 @@ def _select_model_default(provider_key: str, model_id: str):
 def ensure_provider_preflight(provider_key, model_info, stack_id=None, session_id=None):
     """Run provider preflight and optionally guide install/fallback."""
     if provider_key == "google":
+        original_model_id = model_info.get("id") if isinstance(model_info, dict) else None
         model_info = _ensure_google_model_ready(model_info)
-        return provider_key, model_info, False, stack_id
+        new_model_id = model_info.get("id") if isinstance(model_info, dict) else None
+        used_fallback = (
+            original_model_id is not None
+            and new_model_id is not None
+            and new_model_id != original_model_id
+        )
+        return provider_key, model_info, used_fallback, stack_id
 
     if provider_key != "apple":
         return provider_key, model_info, False, stack_id
@@ -678,26 +685,20 @@ def _run_gcloud_login():
         return False
 
 
-
 def _ensure_google_model_ready(model_info):
     """Validate selected Google model availability and auto-fallback for first-run success."""
     model_id = str(model_info.get("id", ""))
     if not model_id:
         return model_info
 
+    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    if not api_key:
+        return model_info
+
     try:
         import google.generativeai as genai
 
-        configured = False
-        api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-        if api_key:
-            genai.configure(api_key=api_key)
-            configured = True
-        elif os.getenv("GOOGLE_AUTH_MODE", "").lower() == "adc" and _check_google_adc():
-            configured = True
-
-        if not configured:
-            return model_info
+        genai.configure(api_key=api_key)
 
         available_ids = set()
         for item in genai.list_models():
@@ -721,15 +722,20 @@ def _ensure_google_model_ready(model_info):
 
     return model_info
 
+
 def _google_auth_flow(env_var):
-    """Handle Google auth: ADC/OAuth or API key."""
+    """Handle Google auth: optional ADC guidance plus required Gemini API key."""
     print(f"\n{Colors.GREEN}--- AUTHENTICATION (Google) ---{Colors.ENDC}")
     print("  How would you like to authenticate with Google?")
-    print("  [1] Google AI Studio subscription (sign in with Google account)")
-    print("  [2] API key (paste GOOGLE_API_KEY)")
-    print("  Tip: AI Studio/ADC usually exposes the broadest Gemini + Gemma model access.")
+    print("  [1] Google Cloud / Vertex AI via ADC (gcloud sign-in)")
+    print(f"  [2] API key for Gemini via Google AI Studio (paste {env_var})")
+    print(
+        "  Tip: This Gemini provider uses GOOGLE_API_KEY. "
+        "ADC is for separate Vertex-style provider paths."
+    )
 
     auth_choice = input_default("Selection", "1").strip()
+    adc_ready = False
 
     if auth_choice == "1":
         # Check for existing ADC
@@ -738,25 +744,39 @@ def _google_auth_flow(env_var):
                 f"\n  {Colors.GREEN}[OK]{Colors.ENDC} Google Application Default Credentials found."
             )
             _write_env_var("GOOGLE_AUTH_MODE", "adc")
-            return True
+            adc_ready = True
 
         # Try gcloud login
-        result = _run_gcloud_login()
-        if result is True:
+        if not adc_ready:
+            result = _run_gcloud_login()
+            if result is True:
+                print(
+                    f"\n  {Colors.GREEN}[OK]{Colors.ENDC} "
+                    f"Signed in! Using Application Default Credentials."
+                )
+                _write_env_var("GOOGLE_AUTH_MODE", "adc")
+                adc_ready = True
+            elif result == "not_installed":
+                print(
+                    f"\n  {Colors.WARNING}gcloud CLI not found.{Colors.ENDC} "
+                    f"Continuing with API key setup."
+                )
+                print(
+                    f"  Install: {Colors.BOLD}https://cloud.google.com/sdk/docs/install{Colors.ENDC}"
+                )
+                print(
+                    f"  Then run: {Colors.BOLD}gcloud auth application-default login{Colors.ENDC}\n"
+                )
+            else:
+                print(
+                    f"  {Colors.WARNING}Login failed.{Colors.ENDC} Continuing with API key setup."
+                )
+
+        if adc_ready:
             print(
-                f"\n  {Colors.GREEN}[OK]{Colors.ENDC} "
-                f"Signed in! Using Application Default Credentials."
+                f"  {Colors.GREEN}[OK]{Colors.ENDC} "
+                f"ADC is set. For this Gemini provider, {env_var} is still required for model calls."
             )
-            _write_env_var("GOOGLE_AUTH_MODE", "adc")
-            return True
-        elif result == "not_installed":
-            print(
-                f"\n  {Colors.WARNING}gcloud CLI not found.{Colors.ENDC} Falling back to API key."
-            )
-            print(f"  Install: {Colors.BOLD}https://cloud.google.com/sdk/docs/install{Colors.ENDC}")
-            print(f"  Then run: {Colors.BOLD}gcloud auth application-default login{Colors.ENDC}\n")
-        else:
-            print(f"  {Colors.WARNING}Login failed.{Colors.ENDC} Falling back to API key.")
 
     # Fall through to API key
     print("\n  Your Google API key is needed.")

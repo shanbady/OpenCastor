@@ -285,7 +285,9 @@ def _load_session(session_id: str) -> SetupSession:
     return SetupSession(**payload)
 
 
-def _record_timeline(session: SetupSession, event: str, payload: Optional[dict[str, Any]] = None) -> None:
+def _record_timeline(
+    session: SetupSession, event: str, payload: Optional[dict[str, Any]] = None
+) -> None:
     session.timeline.append(
         {
             "ts": _now_iso(),
@@ -338,7 +340,9 @@ def find_resumable_setup_session(max_age_hours: int = 24) -> Optional[Dict[str, 
         return None
 
     cutoff = time.time() - float(max_age_hours * 3600)
-    candidates = sorted(SETUP_SESSION_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(
+        SETUP_SESSION_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     for path in candidates:
         if path.stat().st_mtime < cutoff:
             continue
@@ -500,7 +504,9 @@ def _apple_stack_preflight(model_profile: Optional[str]) -> Dict[str, Any]:
         "ok": bool(raw.get("ok", False)),
         "reason_code": reason_code,
         "issues": list(raw.get("issues", [])),
-        "actions": list(raw.get("actions") or REASON_ACTIONS.get(reason_code, REASON_ACTIONS["UNKNOWN"])),
+        "actions": list(
+            raw.get("actions") or REASON_ACTIONS.get(reason_code, REASON_ACTIONS["UNKNOWN"])
+        ),
         "checks": checks,
         "device": raw.get("device") or detect_device_info(),
         "fallback_stacks": list(raw.get("fallback_stacks", [])),
@@ -581,8 +587,16 @@ def _mlx_stack_preflight(model_profile: Optional[str]) -> Dict[str, Any]:
     if not failed:
         reason_code = "READY"
     else:
-        priority = ["DEVICE_NOT_ELIGIBLE", "SDK_MISSING", "MODEL_NOT_READY", "RUNTIME_UNAVAILABLE", "UNKNOWN"]
-        reason_code = next((rc for rc in priority if any(c.reason_code == rc for c in failed)), "UNKNOWN")
+        priority = [
+            "DEVICE_NOT_ELIGIBLE",
+            "SDK_MISSING",
+            "MODEL_NOT_READY",
+            "RUNTIME_UNAVAILABLE",
+            "UNKNOWN",
+        ]
+        reason_code = next(
+            (rc for rc in priority if any(c.reason_code == rc for c in failed)), "UNKNOWN"
+        )
     return {
         "ok": len(failed) == 0,
         "reason_code": reason_code,
@@ -649,7 +663,9 @@ def _ollama_stack_preflight(model_profile: Optional[str]) -> Dict[str, Any]:
         reason_code = "READY"
     else:
         priority = ["RUNTIME_UNAVAILABLE", "MODEL_NOT_READY", "UNKNOWN"]
-        reason_code = next((rc for rc in priority if any(c.reason_code == rc for c in failed)), "UNKNOWN")
+        reason_code = next(
+            (rc for rc in priority if any(c.reason_code == rc for c in failed)), "UNKNOWN"
+        )
     return {
         "ok": len(failed) == 0,
         "reason_code": reason_code,
@@ -709,8 +725,7 @@ def run_preflight(
     auto_install_result: Optional[dict[str, Any]] = None
     if auto_install and not adapter["ok"]:
         missing_sdk = any(
-            (not check.ok) and check.reason_code == "SDK_MISSING"
-            for check in adapter["checks"]
+            (not check.ok) and check.reason_code == "SDK_MISSING" for check in adapter["checks"]
         )
         if missing_sdk and (stack == "apple_native" or provider_name == "apple"):
             install_ok, install_detail = _install_apple_sdk()
@@ -733,7 +748,9 @@ def run_preflight(
         "actions": list(adapter.get("actions", [])),
         "checks": checks_payload,
         "device": adapter.get("device") or detect_device_info(),
-        "fallback_stacks": list(adapter.get("fallback_stacks") or _stack_fallbacks(stack, detect_device_info())),
+        "fallback_stacks": list(
+            adapter.get("fallback_stacks") or _stack_fallbacks(stack, detect_device_info())
+        ),
         "model_profile": model_profile,
     }
     if auto_install_result is not None:
@@ -849,7 +866,9 @@ def generate_preset_config(
     secondary_models: Optional[list[dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Generate RCAN config from a preset and setup selections."""
-    preset_path = Path(__file__).resolve().parent.parent / "config" / "presets" / f"{preset_name}.rcan.yaml"
+    preset_path = (
+        Path(__file__).resolve().parent.parent / "config" / "presets" / f"{preset_name}.rcan.yaml"
+    )
 
     if preset_path.exists():
         config = yaml.safe_load(preset_path.read_text()) or {}
@@ -1191,7 +1210,9 @@ def get_setup_metrics(config: Optional[dict[str, Any]] = None) -> Dict[str, Any]
         total_runs=total,
         first_run_success_rate=float(success_count / total),
         median_time_to_remediation_ms=float(
-            (sorted(remediation_values)[len(remediation_values) // 2]) if remediation_values else 0.0
+            (sorted(remediation_values)[len(remediation_values) // 2])
+            if remediation_values
+            else 0.0
         ),
         fallback_success_rate=float((fallback_success / fallback_total) if fallback_total else 0.0),
         setup_abandonment_rate=float(abandoned_count / total),

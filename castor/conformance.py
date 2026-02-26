@@ -42,8 +42,7 @@ KNOWN_PHYSICS_TYPES = frozenset(
 )
 
 PROVIDER_ENV_VARS: dict[str, list[str]] = {
-    name: ([env_var] if env_var else [])
-    for name, env_var in get_provider_env_var_map().items()
+    name: ([env_var] if env_var else []) for name, env_var in get_provider_env_var_map().items()
 }
 PROVIDER_ENV_VARS.setdefault("claude_oauth", ["ANTHROPIC_API_KEY"])
 PROVIDER_ENV_VARS.setdefault("huggingface", ["HF_TOKEN"])

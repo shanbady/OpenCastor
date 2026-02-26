@@ -117,7 +117,9 @@ class AppleProvider(BaseProvider):
         try:
             is_available, reason = self._model.is_available()
             if not is_available:
-                reason_name = getattr(reason, "name", str(reason) if reason is not None else "UNKNOWN")
+                reason_name = getattr(
+                    reason, "name", str(reason) if reason is not None else "UNKNOWN"
+                )
                 return {
                     "ok": False,
                     "latency_ms": round((time.time() - t0) * 1000, 1),

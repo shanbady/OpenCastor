@@ -408,10 +408,7 @@ def authenticate_provider(provider_key, *, already_authed=None):
                 print(f"  {Colors.GREEN}[OK]{Colors.ENDC} Apple model is available.")
             else:
                 reason = preflight.get("reason", "UNKNOWN")
-                print(
-                    f"  {Colors.WARNING}[WARN]{Colors.ENDC} "
-                    f"Apple model not ready ({reason})."
-                )
+                print(f"  {Colors.WARNING}[WARN]{Colors.ENDC} Apple model not ready ({reason}).")
         already_authed.add(provider_key)
         return True
 
@@ -2302,10 +2299,14 @@ def main():
     if quickstart:
         resumable = find_resumable_setup_session()
         if resumable:
-            resume_default = input_default(
-                "Resume previous interrupted setup session? (y/n)",
-                "y",
-            ).strip().lower()
+            resume_default = (
+                input_default(
+                    "Resume previous interrupted setup session? (y/n)",
+                    "y",
+                )
+                .strip()
+                .lower()
+            )
             if resume_default in ("y", "yes", ""):
                 resumed = resume_setup_session(resumable["session_id"])
                 setup_session_id = resumed["session_id"]
@@ -2357,10 +2358,14 @@ def main():
         # Step 4: Provider
         provider_key = stack_provider
         if selected_stack:
-            use_stack_provider = input_default(
-                f"Use stack provider '{stack_provider}'? (y/n)",
-                "y",
-            ).strip().lower()
+            use_stack_provider = (
+                input_default(
+                    f"Use stack provider '{stack_provider}'? (y/n)",
+                    "y",
+                )
+                .strip()
+                .lower()
+            )
             if use_stack_provider not in ("y", "yes", ""):
                 provider_key = choose_provider_step(default=stack_provider)
         else:

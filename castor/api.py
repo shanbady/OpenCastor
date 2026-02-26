@@ -3796,7 +3796,9 @@ async def setup_test_provider(body: _SetupTestProviderRequest):
 
         env_var = resolve_provider_env_var(provider_name)
         if not env_var:
-            raise HTTPException(status_code=400, detail={"error": f"Unknown provider: {body.provider}"})
+            raise HTTPException(
+                status_code=400, detail={"error": f"Unknown provider: {body.provider}"}
+            )
 
         # Test by importing the provider and calling health_check
         import os as _os

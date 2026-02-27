@@ -71,15 +71,18 @@ class PCA9685RCDriver(DriverBase):
       - I2C SDA/SCL -> Raspberry Pi GPIO 2/3
 
     Config keys (from RCAN ``drivers[0]``):
-      - steering_channel   (default 0)
-      - steering_center_us (default 1500)
-      - steering_range_us  (default 500)  -- +/- from center
-      - steering_invert    (default false)
-      - throttle_channel   (default 1)
-      - throttle_neutral_us(default 1500)
-      - throttle_max_us    (default 2000)
-      - throttle_min_us    (default 1000)
-      - throttle_deadzone  (default 0.05)
+      - steering_channel      (default 0)
+      - steering_center_us    (default 1500)
+      - steering_range_us     (default 500)  -- +/- from center
+      - steering_invert       (default false)
+      - throttle_channel      (default 1)
+      - throttle_neutral_us   (default 1500)
+      - throttle_max_us       (default 2000)
+      - throttle_min_us       (default 1000)
+      - throttle_deadzone     (default 0.05)
+      - esc_reverse_arming    (default true) -- send neutral pulse before reverse
+      - esc_arm_neutral_ms    (default 200)  -- neutral pulse duration (ms)
+      - esc_double_tap_reverse(default false)-- repeat neutral→reverse twice (some ESCs need it)
     """
 
     def __init__(self, config: Dict):
@@ -98,6 +101,14 @@ class PCA9685RCDriver(DriverBase):
         self.thr_deadzone = config.get("throttle_deadzone", 0.05)
 
         self.freq = config.get("frequency", 50)
+
+        # ESC reverse-arming config
+        self.esc_reverse_arming = config.get("esc_reverse_arming", True)
+        self.esc_arm_neutral_ms = config.get("esc_arm_neutral_ms", 200)
+        self.esc_double_tap_reverse = config.get("esc_double_tap_reverse", False)
+
+        # Track last linear command to detect forward→reverse transitions
+        self._last_linear: float = 0.0
 
         # Validate configured pulse widths against safety bounds
         for label, val in [
@@ -168,6 +179,34 @@ class PCA9685RCDriver(DriverBase):
         linear_x = max(-1.0, min(1.0, linear))
         angular_z = max(-1.0, min(1.0, angular))
 
+        # --- ESC reverse arming ---
+        # Most hobby ESCs ignore reverse pulses unless they receive a brief
+        # neutral pulse first.  Some require two neutral→reverse cycles
+        # ("double-tap").  We only do this on the forward→reverse transition.
+        transitioning_to_reverse = (
+            linear_x < -self.thr_deadzone
+            and self._last_linear >= -self.thr_deadzone
+        )
+        if self.esc_reverse_arming and transitioning_to_reverse:
+            if self.pca is not None:
+                logger.info(
+                    f"ESC reverse-arm: neutral pulse {self.esc_arm_neutral_ms} ms"
+                )
+                self._set_pulse(self.thr_ch, self.thr_neutral)
+                time.sleep(self.esc_arm_neutral_ms / 1000.0)
+                if self.esc_double_tap_reverse:
+                    # Send the reverse pulse once, back to neutral, then again
+                    reverse_us = self.thr_neutral + linear_x * (self.thr_neutral - self.thr_min)
+                    self._set_pulse(self.thr_ch, reverse_us)
+                    time.sleep(self.esc_arm_neutral_ms / 1000.0)
+                    self._set_pulse(self.thr_ch, self.thr_neutral)
+                    time.sleep(self.esc_arm_neutral_ms / 1000.0)
+                    logger.info("ESC double-tap complete, sending final reverse pulse")
+            else:
+                logger.info(
+                    f"[MOCK RC] ESC reverse-arm: neutral {self.esc_arm_neutral_ms} ms"
+                )
+
         # --- Throttle ---
         if abs(linear_x) < self.thr_deadzone:
             thr_us = self.thr_neutral
@@ -179,6 +218,8 @@ class PCA9685RCDriver(DriverBase):
         # --- Steering ---
         direction = -1.0 if self.steer_invert else 1.0
         steer_us = self.steer_center + angular_z * self.steer_range * direction
+
+        self._last_linear = linear_x
 
         if self.pca is None:
             logger.info(f"[MOCK RC] throttle={thr_us:.0f}us  steer={steer_us:.0f}us")

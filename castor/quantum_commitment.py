@@ -64,7 +64,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 
-def build_commitment_engine(config: Dict[str, Any]) -> Optional["CommitmentEngine"]:
+def build_commitment_engine(config: Dict[str, Any]) -> Optional[CommitmentEngine]:
     """Build a CommitmentEngine from the RCAN config dict.
 
     Returns ``None`` if:
@@ -141,7 +141,7 @@ def build_commitment_engine(config: Dict[str, Any]) -> Optional["CommitmentEngin
 # ---------------------------------------------------------------------------
 
 
-def cli_verify(engine: Optional["CommitmentEngine"]) -> None:
+def cli_verify(engine: Optional[CommitmentEngine]) -> None:
     """Print chain verification result."""
     if engine is None:
         print("Quantum commitment not enabled.")
@@ -157,7 +157,7 @@ def cli_verify(engine: Optional["CommitmentEngine"]) -> None:
         print(f"❌ Chain broken at record index {broken}. Possible tampering.")
 
 
-def cli_stats(engine: Optional["CommitmentEngine"]) -> None:
+def cli_stats(engine: Optional[CommitmentEngine]) -> None:
     """Print engine statistics."""
     if engine is None:
         print("Quantum commitment not enabled.")
@@ -166,7 +166,7 @@ def cli_stats(engine: Optional["CommitmentEngine"]) -> None:
     print(json.dumps(engine.stats(), indent=2))
 
 
-def cli_export(engine: Optional["CommitmentEngine"]) -> None:
+def cli_export(engine: Optional[CommitmentEngine]) -> None:
     """Print JSONL export of all records."""
     if engine is None:
         print("Quantum commitment not enabled.")
@@ -174,7 +174,7 @@ def cli_export(engine: Optional["CommitmentEngine"]) -> None:
     print(engine.export_jsonl())
 
 
-def cli_proof(engine: Optional["CommitmentEngine"], record_id: str) -> None:
+def cli_proof(engine: Optional[CommitmentEngine], record_id: str) -> None:
     """Print proof bundle for a specific record."""
     if engine is None:
         print("Quantum commitment not enabled.")

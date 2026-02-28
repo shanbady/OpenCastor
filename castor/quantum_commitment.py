@@ -56,7 +56,7 @@ try:
 except ImportError:
     _QUANTUMLINK_AVAILABLE = False
     CommitmentEngine = None  # type: ignore[assignment,misc]
-    KeyMode = None           # type: ignore[assignment]
+    KeyMode = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +163,7 @@ def cli_stats(engine: Optional[CommitmentEngine]) -> None:
         print("Quantum commitment not enabled.")
         return
     import json
+
     print(json.dumps(engine.stats(), indent=2))
 
 
@@ -180,6 +181,7 @@ def cli_proof(engine: Optional[CommitmentEngine], record_id: str) -> None:
         print("Quantum commitment not enabled.")
         return
     import json
+
     proof = engine.export_proof(record_id)
     if proof:
         print(json.dumps(proof, indent=2))

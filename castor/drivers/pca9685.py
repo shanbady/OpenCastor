@@ -184,14 +184,11 @@ class PCA9685RCDriver(DriverBase):
         # neutral pulse first.  Some require two neutral→reverse cycles
         # ("double-tap").  We only do this on the forward→reverse transition.
         transitioning_to_reverse = (
-            linear_x < -self.thr_deadzone
-            and self._last_linear >= -self.thr_deadzone
+            linear_x < -self.thr_deadzone and self._last_linear >= -self.thr_deadzone
         )
         if self.esc_reverse_arming and transitioning_to_reverse:
             if self.pca is not None:
-                logger.info(
-                    f"ESC reverse-arm: neutral pulse {self.esc_arm_neutral_ms} ms"
-                )
+                logger.info(f"ESC reverse-arm: neutral pulse {self.esc_arm_neutral_ms} ms")
                 self._set_pulse(self.thr_ch, self.thr_neutral)
                 time.sleep(self.esc_arm_neutral_ms / 1000.0)
                 if self.esc_double_tap_reverse:
@@ -203,9 +200,7 @@ class PCA9685RCDriver(DriverBase):
                     time.sleep(self.esc_arm_neutral_ms / 1000.0)
                     logger.info("ESC double-tap complete, sending final reverse pulse")
             else:
-                logger.info(
-                    f"[MOCK RC] ESC reverse-arm: neutral {self.esc_arm_neutral_ms} ms"
-                )
+                logger.info(f"[MOCK RC] ESC reverse-arm: neutral {self.esc_arm_neutral_ms} ms")
 
         # --- Throttle ---
         if abs(linear_x) < self.thr_deadzone:

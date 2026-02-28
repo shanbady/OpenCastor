@@ -26,7 +26,10 @@ import logging
 import os
 import threading
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
+
+if TYPE_CHECKING:
+    from castor.quantum_commitment import CommitmentEngine  # noqa: F401
 
 logger = logging.getLogger("OpenCastor.Audit")
 
@@ -39,11 +42,38 @@ def _hash_entry(line: str) -> str:
 
 
 class AuditLog:
-    """Append-only, hash-chained audit logger for significant robot events."""
+    """Append-only, hash-chained audit logger for significant robot events.
+
+    Optionally enhanced with cryptographic commitment via QuantumLink-Sim.
+    When a CommitmentEngine is attached, every audit entry is also sealed into
+    a QKD-keyed (or hybrid) commitment chain, making tampering detectable even
+    if the audit file itself is modified.
+
+    Attach via::
+
+        from castor.quantum_commitment import build_commitment_engine
+        engine = build_commitment_engine(config)
+        audit = get_audit()
+        audit.attach_commitment_engine(engine)
+    """
 
     def __init__(self, log_path: str = None):
         self._path = log_path or _AUDIT_FILE
         self._lock = threading.Lock()
+        self._commitment_engine: Optional[Any] = None  # CommitmentEngine | None
+
+    def attach_commitment_engine(self, engine: Optional[Any]) -> None:
+        """Attach a CommitmentEngine for cryptographic audit sealing.
+
+        Args:
+            engine: A started CommitmentEngine, or None to disable.
+        """
+        self._commitment_engine = engine
+        if engine is not None:
+            logger.info(
+                "Quantum commitment attached to AuditLog (mode=%s)",
+                getattr(engine, "mode", "?"),
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -87,6 +117,18 @@ class AuditLog:
                 entry["prev_hash"] = "GENESIS"
             else:
                 entry["prev_hash"] = _hash_entry(last)
+
+            # Cryptographic commitment (non-blocking; uses pre-generated pool key)
+            if self._commitment_engine is not None:
+                try:
+                    record = self._commitment_engine.commit(entry)
+                    entry["commitment_id"] = record.id
+                    entry["commitment_mode"] = record.key_mode
+                    if record.qber is not None:
+                        entry["commitment_qber"] = round(record.qber, 6)
+                    entry["commitment_secure"] = record.key_secure
+                except Exception as exc:
+                    logger.warning("Commitment failed (non-fatal): %s", exc)
 
             try:
                 with open(self._path, "a") as f:
@@ -132,6 +174,21 @@ class AuditLog:
     # ------------------------------------------------------------------
     # Chain verification
     # ------------------------------------------------------------------
+
+    def verify_quantum_chain(self) -> Tuple[bool, Optional[int]]:
+        """Verify the cryptographic commitment chain (QuantumLink-Sim).
+
+        Separate from ``verify_chain()`` which checks the SHA-256 hash chain
+        in the audit log file.  This verifies the HMAC commitment chain held
+        in-memory by the CommitmentEngine.
+
+        Returns:
+            ``(True, None)`` if intact or commitment is disabled.
+            ``(False, idx)`` index of first broken commitment link.
+        """
+        if self._commitment_engine is None:
+            return True, None
+        return self._commitment_engine.verify_chain()
 
     def verify_chain(self) -> Tuple[bool, Optional[int]]:
         """Walk the log and verify every hash link.

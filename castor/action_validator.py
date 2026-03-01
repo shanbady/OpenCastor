@@ -122,8 +122,11 @@ class ActionValidator:
 
     def __init__(self, custom_schemas: Optional[Dict[str, dict]] = None) -> None:
         self._schemas: Dict[str, dict] = {**_ACTION_SCHEMAS}
+        self._schema_sources: Dict[str, str] = {t: "builtin" for t in _ACTION_SCHEMAS}
         if custom_schemas:
             self._schemas.update(custom_schemas)
+            for t in custom_schemas:
+                self._schema_sources[t] = "rcan_config"
 
     # ------------------------------------------------------------------
     # Public API
@@ -207,6 +210,16 @@ class ActionValidator:
         """Return a sorted list of known action type names."""
         return sorted(self._schemas.keys())
 
+    def schema_source_for(self, action_type: str) -> str:
+        """Return the source of the schema for *action_type*.
+
+        Returns:
+            ``"builtin"`` — schema is part of OpenCastor's built-in vocabulary.
+            ``"rcan_config"`` — schema was loaded from the RCAN ``action_schemas`` block.
+            ``"unknown"`` — no schema registered for this action type.
+        """
+        return self._schema_sources.get(action_type, "unknown")
+
 
 # ---------------------------------------------------------------------------
 # Module-level singleton helpers
@@ -247,3 +260,36 @@ def validate_action(action: Dict[str, Any]) -> ValidationResult:
         :class:`ValidationResult`
     """
     return get_validator().validate(action)
+
+
+def init_from_config(config: Dict[str, Any]) -> ActionValidator:
+    """Initialise the singleton validator with custom schemas from RCAN *config*.
+
+    Reads the ``action_schemas`` mapping from the RCAN config dict and merges
+    any entries with the built-in action schemas.  Custom entries take
+    precedence over built-ins with the same action type name.
+
+    Usage in RCAN config::
+
+        action_schemas:
+          spray:
+            type: object
+            required: [type]
+            properties:
+              type: {type: string}
+              duration_s: {type: number, minimum: 0}
+
+    Args:
+        config: RCAN agent config dict (the top-level mapping).
+
+    Returns:
+        The (re-)initialised :class:`ActionValidator` singleton.
+    """
+    raw: Dict[str, dict] = config.get("action_schemas") or {}
+    if raw:
+        logger.info(
+            "ActionValidator: loading %d custom schema(s) from RCAN config: %s",
+            len(raw),
+            list(raw.keys()),
+        )
+    return get_validator(custom_schemas=raw if raw else None)

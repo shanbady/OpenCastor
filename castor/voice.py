@@ -29,6 +29,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from typing import Optional
 
@@ -42,6 +43,7 @@ _HAS_OPENAI: Optional[bool] = None
 _HAS_WHISPER_LOCAL: Optional[bool] = None
 _HAS_WHISPER_CPP: Optional[bool] = None
 _HAS_SPEECH_RECOGNITION: Optional[bool] = None
+_HAS_WAKE_WORD: Optional[bool] = None
 
 
 def _probe_openai() -> bool:
@@ -105,6 +107,40 @@ def _probe_speech_recognition() -> bool:
         except ImportError:
             _HAS_SPEECH_RECOGNITION = False
     return _HAS_SPEECH_RECOGNITION
+
+
+def _probe_wake_word() -> bool:
+    """Check whether a wake-word backend is available.
+
+    Detection order:
+        1. ``WAKE_WORD_BIN=mock`` → always available (for testing).
+        2. ``openwakeword`` package importable → available.
+        3. ``pvporcupine`` package importable → available.
+        4. Otherwise → not available.
+
+    Caches the result in the module-level ``_HAS_WAKE_WORD`` flag.
+    """
+    global _HAS_WAKE_WORD
+    if _HAS_WAKE_WORD is None:
+        if os.getenv("WAKE_WORD_BIN") == "mock":
+            _HAS_WAKE_WORD = True
+            return _HAS_WAKE_WORD
+        try:
+            import openwakeword  # noqa: F401
+
+            _HAS_WAKE_WORD = True
+            return _HAS_WAKE_WORD
+        except ImportError:
+            pass
+        try:
+            import pvporcupine  # noqa: F401
+
+            _HAS_WAKE_WORD = True
+            return _HAS_WAKE_WORD
+        except ImportError:
+            pass
+        _HAS_WAKE_WORD = False
+    return _HAS_WAKE_WORD
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +325,7 @@ def _convert_to_wav(audio_bytes: bytes, src_format: str) -> Optional[bytes]:
 # Public API
 # ---------------------------------------------------------------------------
 
-_VALID_ENGINES = ("auto", "whisper_api", "whisper_local", "whisper_cpp", "google")
+_VALID_ENGINES = ("auto", "whisper_api", "whisper_local", "whisper_cpp", "google", "wake_word")
 
 # Heuristic confidence scores per engine
 _ENGINE_CONFIDENCE: dict[str, float] = {
@@ -400,3 +436,276 @@ def available_engines() -> list[str]:
     if _probe_speech_recognition():
         engines.append("google")
     return engines
+
+
+# ---------------------------------------------------------------------------
+# Wake-word detection
+# ---------------------------------------------------------------------------
+
+# Environment variable defaults
+_WAKE_WORD_SENSITIVITY_DEFAULT: float = 0.5
+_WAKE_WORD_MODEL_DEFAULT: str = "hey_jarvis"
+
+
+class WakeWordDetector:
+    """Lightweight wrapper around wake-word detection backends.
+
+    Supports ``openwakeword``, ``pvporcupine``, and a mock mode
+    (``WAKE_WORD_BIN=mock``) for testing without hardware or libraries.
+
+    Usage::
+
+        detector = WakeWordDetector(sensitivity=0.6, model="hey_jarvis")
+        detector.start(callback=lambda text: print("Wake word triggered:", text))
+        # … do other work …
+        detector.stop()
+
+    Environment variables:
+        WAKE_WORD_BIN         — set to ``"mock"`` to enable mock mode.
+        WAKE_WORD_SENSITIVITY — float 0–1 (default 0.5).
+        WAKE_WORD_MODEL       — model name or path (default ``"hey_jarvis"``).
+    """
+
+    def __init__(self, sensitivity: float = 0.5, model: str = "hey_jarvis") -> None:
+        self._sensitivity = sensitivity
+        self._model = model
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def start(self, callback=None) -> None:  # type: ignore[override]
+        """Start background microphone listener.
+
+        Args:
+            callback: Called with a single string argument when the wake word
+                      is detected.  If ``None``, triggers are silently discarded.
+        """
+        if self._thread is not None and self._thread.is_alive():
+            logger.debug("WakeWordDetector: already running — ignoring start()")
+            return
+
+        self._stop_event.clear()
+
+        if os.getenv("WAKE_WORD_BIN") == "mock":
+            self._thread = threading.Thread(
+                target=self._mock_loop,
+                args=(callback,),
+                daemon=True,
+            )
+            self._thread.start()
+            logger.debug("WakeWordDetector: mock mode started")
+            return
+
+        if _probe_wake_word():
+            # Real backend dispatch — openwakeword takes priority
+            try:
+                import openwakeword  # noqa: F401
+
+                self._thread = threading.Thread(
+                    target=self._openwakeword_loop,
+                    args=(callback,),
+                    daemon=True,
+                )
+                self._thread.start()
+                logger.info(
+                    "WakeWordDetector: openwakeword backend started (model=%s, sensitivity=%.2f)",
+                    self._model,
+                    self._sensitivity,
+                )
+                return
+            except ImportError:
+                pass
+
+            try:
+                import pvporcupine  # noqa: F401
+
+                self._thread = threading.Thread(
+                    target=self._pvporcupine_loop,
+                    args=(callback,),
+                    daemon=True,
+                )
+                self._thread.start()
+                logger.info(
+                    "WakeWordDetector: pvporcupine backend started (model=%s, sensitivity=%.2f)",
+                    self._model,
+                    self._sensitivity,
+                )
+                return
+            except ImportError:
+                pass
+
+        logger.warning(
+            "WakeWordDetector: no wake-word library available "
+            "(install openwakeword or pvporcupine, or set WAKE_WORD_BIN=mock). "
+            "Listener not started."
+        )
+
+    def stop(self) -> None:
+        """Stop the background listener thread."""
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+        logger.debug("WakeWordDetector: stopped")
+
+    @property
+    def running(self) -> bool:
+        """True if the background listener thread is active."""
+        return self._thread is not None and self._thread.is_alive()
+
+    # ------------------------------------------------------------------
+    # Internal loops
+    # ------------------------------------------------------------------
+
+    def _mock_loop(self, callback) -> None:  # type: ignore[override]
+        """Mock loop: fires callback once every 60 s until stopped."""
+        while not self._stop_event.is_set():
+            # Wait up to 60 s, checking stop every second
+            for _ in range(60):
+                if self._stop_event.is_set():
+                    return
+                time.sleep(1)
+            if not self._stop_event.is_set():
+                logger.debug("WakeWordDetector: mock wake word triggered")
+                if callback is not None:
+                    try:
+                        callback("mock wake word")
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("WakeWordDetector: callback raised: %s", exc)
+
+    def _openwakeword_loop(self, callback) -> None:  # type: ignore[override]
+        """Listener loop using the openwakeword backend."""
+        try:
+            import numpy as np
+            import openwakeword
+
+            oww_model = openwakeword.Model(
+                wakeword_models=[self._model],
+                inference_framework="tflite",
+            )
+            chunk_size = 1280  # 80 ms at 16 kHz
+
+            try:
+                import pyaudio
+
+                pa = pyaudio.PyAudio()
+                stream = pa.open(
+                    rate=16000,
+                    channels=1,
+                    format=pyaudio.paInt16,
+                    input=True,
+                    frames_per_buffer=chunk_size,
+                )
+                try:
+                    while not self._stop_event.is_set():
+                        raw = stream.read(chunk_size, exception_on_overflow=False)
+                        pcm = np.frombuffer(raw, dtype=np.int16)
+                        prediction = oww_model.predict(pcm)
+                        for ww, score in prediction.items():
+                            if score >= self._sensitivity:
+                                logger.info(
+                                    "WakeWordDetector: wake word '%s' detected (score=%.3f)",
+                                    ww,
+                                    score,
+                                )
+                                if callback is not None:
+                                    try:
+                                        callback(ww)
+                                    except Exception as exc:  # noqa: BLE001
+                                        logger.warning("WakeWordDetector: callback raised: %s", exc)
+                finally:
+                    stream.stop_stream()
+                    stream.close()
+                    pa.terminate()
+            except ImportError:
+                logger.warning(
+                    "WakeWordDetector: pyaudio not installed — openwakeword loop cannot run"
+                )
+        except Exception as exc:
+            logger.error("WakeWordDetector: openwakeword loop failed: %s", exc)
+
+    def _pvporcupine_loop(self, callback) -> None:  # type: ignore[override]
+        """Listener loop using the pvporcupine backend."""
+        try:
+            import pvporcupine
+
+            access_key = os.getenv("PORCUPINE_ACCESS_KEY", "")
+            porcupine = pvporcupine.create(
+                access_key=access_key,
+                keywords=[self._model] if self._model else ["porcupine"],
+                sensitivities=[self._sensitivity],
+            )
+            try:
+                import pyaudio
+
+                pa = pyaudio.PyAudio()
+                stream = pa.open(
+                    rate=porcupine.sample_rate,
+                    channels=1,
+                    format=pyaudio.paInt16,
+                    input=True,
+                    frames_per_buffer=porcupine.frame_length,
+                )
+                try:
+                    while not self._stop_event.is_set():
+                        import struct
+
+                        raw = stream.read(porcupine.frame_length, exception_on_overflow=False)
+                        pcm = struct.unpack_from("h" * porcupine.frame_length, raw)
+                        result = porcupine.process(pcm)
+                        if result >= 0:
+                            logger.info(
+                                "WakeWordDetector: pvporcupine keyword index %d detected", result
+                            )
+                            if callback is not None:
+                                try:
+                                    callback(self._model)
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.warning("WakeWordDetector: callback raised: %s", exc)
+                finally:
+                    stream.stop_stream()
+                    stream.close()
+                    pa.terminate()
+            except ImportError:
+                logger.warning(
+                    "WakeWordDetector: pyaudio not installed — pvporcupine loop cannot run"
+                )
+            finally:
+                porcupine.delete()
+        except Exception as exc:
+            logger.error("WakeWordDetector: pvporcupine loop failed: %s", exc)
+
+
+def get_wake_word_detector(
+    sensitivity: Optional[float] = None,
+    model: Optional[str] = None,
+) -> WakeWordDetector:
+    """Factory that returns a configured :class:`WakeWordDetector`.
+
+    Reads ``WAKE_WORD_SENSITIVITY`` and ``WAKE_WORD_MODEL`` env vars when the
+    corresponding arguments are not explicitly provided.
+
+    Args:
+        sensitivity: Detection threshold 0–1.  Defaults to the
+                     ``WAKE_WORD_SENSITIVITY`` env var or ``0.5``.
+        model:       Wake-word model name or path.  Defaults to the
+                     ``WAKE_WORD_MODEL`` env var or ``"hey_jarvis"``.
+
+    Returns:
+        A :class:`WakeWordDetector` instance (not yet started).
+    """
+    if sensitivity is None:
+        try:
+            sensitivity = float(
+                os.getenv("WAKE_WORD_SENSITIVITY", str(_WAKE_WORD_SENSITIVITY_DEFAULT))
+            )
+        except ValueError:
+            sensitivity = _WAKE_WORD_SENSITIVITY_DEFAULT
+
+    if model is None:
+        model = os.getenv("WAKE_WORD_MODEL", _WAKE_WORD_MODEL_DEFAULT)
+
+    return WakeWordDetector(sensitivity=sensitivity, model=model)

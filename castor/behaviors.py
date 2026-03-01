@@ -84,6 +84,7 @@ class BehaviorRunner:
             "repeat_until": self._step_repeat_until,
             "for_each": self._step_for_each,
             "chain": self._step_chain,
+            "while_true": self._step_while_true,
         }
 
         # Chain-recursion depth counter (not thread-local; behaviors run single-threaded)
@@ -1077,3 +1078,103 @@ class BehaviorRunner:
             logger.info("chain step: '%s' finished", behavior_name)
         finally:
             self._chain_depth -= 1
+
+    def _step_while_true(self, step: dict) -> None:
+        """Loop ``inner_steps`` indefinitely (or until a limit is reached).
+
+        The loop body runs :meth:`_run_step_list` on *inner_steps* each
+        iteration and stops when any of the following conditions are met:
+
+        * ``_running`` becomes ``False`` (external :meth:`stop` call), **or**
+        * ``timeout_s > 0`` and the elapsed wall-clock time has reached
+          ``timeout_s`` seconds, **or**
+        * ``max_iterations > 0`` and the iteration count has reached
+          ``max_iterations``.
+
+        An optional ``dwell_s`` pause is inserted between iterations; it is
+        slept in 50 ms chunks so that a :meth:`stop` request is honoured
+        promptly.
+
+        Example step::
+
+            - type: while_true
+              inner_steps:
+                - type: wait
+                  duration_s: 1
+              timeout_s: 0        # 0 = unlimited
+              dwell_s: 0.0        # pause between iterations (seconds)
+              max_iterations: 0   # 0 = unlimited
+
+        Parameters
+        ----------
+        step:
+            The step dict.
+
+            ``inner_steps`` (list, required):
+                Steps to execute each iteration.  If empty the step is
+                skipped with a warning.
+            ``timeout_s`` (float, default ``0``):
+                Maximum wall-clock budget.  ``0`` means no timeout.
+            ``dwell_s`` (float, default ``0.0``):
+                Pause between iterations.  Honoured at 50 ms granularity.
+            ``max_iterations`` (int, default ``0``):
+                Maximum number of iterations.  ``0`` means unlimited.
+        """
+        inner_steps: list = step.get("inner_steps") or []
+        if not inner_steps:
+            logger.warning("while_true step: 'inner_steps' is missing or empty — skipping")
+            return
+
+        timeout_s: float = float(step.get("timeout_s", 0))
+        dwell_s: float = float(step.get("dwell_s", 0.0))
+        max_iterations: int = int(step.get("max_iterations", 0))
+
+        # Build a human-readable summary for the start log.
+        limits: list = []
+        if timeout_s > 0:
+            limits.append(f"timeout_s={timeout_s:.2f}")
+        if max_iterations > 0:
+            limits.append(f"max_iterations={max_iterations}")
+        limit_str = ", ".join(limits) if limits else "unlimited"
+
+        logger.info(
+            "while_true step: starting loop (%s) with %d inner step(s)",
+            limit_str,
+            len(inner_steps),
+        )
+
+        start_t: float = time.monotonic()
+        iteration: int = 0
+
+        while self._running:
+            # --- Timeout check (at top of each iteration) -----------------
+            if timeout_s > 0 and (time.monotonic() - start_t) >= timeout_s:
+                logger.info(
+                    "while_true step: timeout of %.2fs reached after %d iteration(s)",
+                    timeout_s,
+                    iteration,
+                )
+                break
+
+            # --- Max-iterations check -------------------------------------
+            if max_iterations > 0 and iteration >= max_iterations:
+                logger.info(
+                    "while_true step: max_iterations=%d reached — exiting loop",
+                    max_iterations,
+                )
+                break
+
+            iteration += 1
+
+            # --- Execute inner steps --------------------------------------
+            self._run_step_list(inner_steps, "while_true step")
+
+            # --- Optional dwell between iterations ------------------------
+            if dwell_s > 0 and self._running:
+                elapsed = 0.0
+                while self._running and elapsed < dwell_s:
+                    sleep_chunk = min(0.05, dwell_s - elapsed)
+                    time.sleep(sleep_chunk)
+                    elapsed += sleep_chunk
+
+        logger.info("while_true step: done after %d iteration(s)", iteration)

@@ -36,7 +36,7 @@ import logging
 import random
 import threading
 import time
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from castor.providers.base import BaseProvider, Thought
 
@@ -60,6 +60,11 @@ class ProviderPool(BaseProvider):
         # Health-aware routing config (#297)
         self._health_interval_s: float = float(config.get("pool_health_check_interval_s", 0))
         self._health_cooldown_s: float = float(config.get("pool_health_cooldown_s", 120))
+
+        # Circuit breaker config (#312)
+        # threshold=0 disables the breaker entirely.
+        self._cb_threshold: int = int(config.get("pool_circuit_breaker_threshold", 0))
+        self._cb_cooldown_s: float = float(config.get("pool_circuit_breaker_cooldown_s", 60.0))
 
         # Cascade strategy config (#299)
         self._cascade_reset_s: float = float(config.get("pool_cascade_reset_s", 300))
@@ -100,6 +105,9 @@ class ProviderPool(BaseProvider):
         self._lock = threading.Lock()
         # Round-robin cycle iterator
         self._cycle = itertools.cycle(range(len(self._providers)))
+        # Circuit breaker state (#312)
+        self._cb_failures: Dict[int, int] = {}  # consecutive failures per provider
+        self._cb_open_until: Dict[int, float] = {}  # epoch when circuit re-closes
         self._current_index = 0
 
         # Health-aware routing state (#297)
@@ -172,22 +180,68 @@ class ProviderPool(BaseProvider):
                         )
 
     def _get_healthy_indices(self) -> List[int]:
-        """Return indices of providers that are not currently degraded (or past cooldown)."""
+        """Return indices of providers that are neither degraded nor circuit-open."""
         now = time.time()
         healthy = []
         with self._lock:
             for i in range(len(self._providers)):
+                # --- degraded (health-probe) check ---
                 degraded_at = self._degraded.get(i)
-                if degraded_at is None:
-                    healthy.append(i)
-                elif now - degraded_at >= self._health_cooldown_s:
-                    # Cooldown expired — tentatively re-enable
-                    del self._degraded[i]
-                    healthy.append(i)
+                if degraded_at is not None:
+                    if now - degraded_at >= self._health_cooldown_s:
+                        del self._degraded[i]
+                    else:
+                        continue
+
+                # --- circuit breaker check (#312) ---
+                if self._cb_threshold > 0:
+                    open_until = self._cb_open_until.get(i, 0.0)
+                    if open_until > 0:
+                        if now < open_until:
+                            continue  # circuit still open
+                        # Cooldown expired — half-open: allow one trial request
+                        del self._cb_open_until[i]
+
+                healthy.append(i)
         if not healthy:
-            # All degraded — fall back to all providers so we don't stall
+            # All unhealthy — fall back to all providers so we don't stall
             return list(range(len(self._providers)))
         return healthy
+
+    # ------------------------------------------------------------------
+    # Circuit breaker helpers (#312)
+    # ------------------------------------------------------------------
+
+    def _cb_on_success(self, idx: int) -> None:
+        """Record a successful call for *idx*: reset failure count and close circuit."""
+        if self._cb_threshold <= 0:
+            return
+        with self._lock:
+            if idx in self._cb_failures:
+                self._cb_failures.pop(idx)
+            if idx in self._cb_open_until:
+                self._cb_open_until.pop(idx)
+                logger.info(
+                    "ProviderPool CB: circuit CLOSED for pool[%d] after successful call", idx
+                )
+
+    def _cb_on_failure(self, idx: int) -> None:
+        """Record a failed call for *idx*: increment counter; open circuit if threshold reached."""
+        if self._cb_threshold <= 0:
+            return
+        with self._lock:
+            self._cb_failures[idx] = self._cb_failures.get(idx, 0) + 1
+            count = self._cb_failures[idx]
+            if count >= self._cb_threshold and idx not in self._cb_open_until:
+                self._cb_open_until[idx] = time.time() + self._cb_cooldown_s
+                logger.warning(
+                    "ProviderPool CB: circuit OPEN for pool[%d] (%s) after %d consecutive failures"
+                    " — cooldown %.0fs",
+                    idx,
+                    getattr(self._providers[idx], "model_name", "?"),
+                    count,
+                    self._cb_cooldown_s,
+                )
 
     # ------------------------------------------------------------------
     # Cascade strategy helpers (#299)
@@ -290,6 +344,11 @@ class ProviderPool(BaseProvider):
         n = len(self._providers)
         return [self._providers[(start + i) % n] for i in range(n)]
 
+    def _provider_order_indices_from(self, start: int) -> List[Tuple[int, BaseProvider]]:
+        """Return (index, provider) pairs starting from ``start``, for CB-aware fallback."""
+        n = len(self._providers)
+        return [((start + i) % n, self._providers[(start + i) % n]) for i in range(n)]
+
     # ------------------------------------------------------------------
     # BaseProvider interface
     # ------------------------------------------------------------------
@@ -315,15 +374,24 @@ class ProviderPool(BaseProvider):
         start_idx = self._current_index
 
         if not self._fallback:
-            return primary.think(image_bytes, instruction)
+            try:
+                result = primary.think(image_bytes, instruction)
+                self._cb_on_success(start_idx)
+                return result
+            except Exception:
+                self._cb_on_failure(start_idx)
+                raise
 
-        candidates = self._provider_order_from(start_idx)
+        candidates = self._provider_order_indices_from(start_idx)
         last_exc: Optional[Exception] = None
 
-        for provider in candidates:
+        for idx, provider in candidates:
             try:
-                return provider.think(image_bytes, instruction)
+                result = provider.think(image_bytes, instruction)
+                self._cb_on_success(idx)
+                return result
             except Exception as exc:
+                self._cb_on_failure(idx)
                 last_exc = exc
                 logger.warning(
                     "ProviderPool: provider %s failed (%s) — trying next",
@@ -347,17 +415,24 @@ class ProviderPool(BaseProvider):
         start_idx = self._current_index
 
         if not self._fallback:
-            yield from primary.think_stream(image_bytes, instruction)
+            try:
+                yield from primary.think_stream(image_bytes, instruction)
+                self._cb_on_success(start_idx)
+            except Exception:
+                self._cb_on_failure(start_idx)
+                raise
             return
 
-        candidates = self._provider_order_from(start_idx)
+        candidates = self._provider_order_indices_from(start_idx)
         last_exc: Optional[Exception] = None
 
-        for provider in candidates:
+        for idx, provider in candidates:
             try:
                 yield from provider.think_stream(image_bytes, instruction)
+                self._cb_on_success(idx)
                 return
             except Exception as exc:
+                self._cb_on_failure(idx)
                 last_exc = exc
                 logger.warning(
                     "ProviderPool: stream provider %s failed (%s) — trying next",
@@ -394,6 +469,24 @@ class ProviderPool(BaseProvider):
             with self._lock:
                 health["cascade_index"] = self._cascade_current
                 health["cascade_provider_index"] = self._cascade_order[self._cascade_current]
+        # Circuit breaker state (#312)
+        if self._cb_threshold > 0:
+            now = time.time()
+            with self._lock:
+                cb_state = {
+                    i: {
+                        "failures": self._cb_failures.get(i, 0),
+                        "open": i in self._cb_open_until and now < self._cb_open_until.get(i, 0),
+                        "open_until": self._cb_open_until.get(i, 0),
+                    }
+                    for i in range(len(self._providers))
+                }
+            health["circuit_breaker"] = {
+                "threshold": self._cb_threshold,
+                "cooldown_s": self._cb_cooldown_s,
+                "providers": cb_state,
+                "open_count": sum(1 for s in cb_state.values() if s["open"]),
+            }
         return health
 
     def stop(self) -> None:

@@ -364,6 +364,94 @@ class LidarDriver:
             "sectors": sector_result,
         }
 
+    # ── Obstacle velocity ─────────────────────────────────────────────────────
+
+    def obstacle_velocity(self, window_s: float = 2.0) -> dict:
+        """Estimate how fast obstacles are approaching or receding per sector.
+
+        Fetches the scan history for *window_s* seconds and fits a linear
+        regression (least-squares slope) of distance_mm vs. time for each
+        sector.  A positive slope means the obstacle is receding; a negative
+        slope means it is approaching.
+
+        Args:
+            window_s: Time window in seconds to look back (default 2 s).
+
+        Returns:
+            {
+                "front_mm_per_s": float,
+                "left_mm_per_s":  float,
+                "right_mm_per_s": float,
+                "rear_mm_per_s":  float,
+                "window_s":       float,
+                "samples":        int,
+            }
+
+        Returns all-zero velocities when there are fewer than 2 samples or
+        on any error.  Never raises.
+        """
+        _zero = {
+            "front_mm_per_s": 0.0,
+            "left_mm_per_s": 0.0,
+            "right_mm_per_s": 0.0,
+            "rear_mm_per_s": 0.0,
+            "window_s": window_s,
+            "samples": 0,
+        }
+        try:
+            if self._history_db_path is None:
+                return _zero
+            if not self._ensure_history_db():
+                return _zero
+
+            cutoff = time.time() - window_s
+            cur = self._history_con.execute(  # type: ignore[union-attr]
+                "SELECT ts, front_mm, left_mm, right_mm, rear_mm "
+                "FROM scans WHERE ts >= ? ORDER BY ts ASC",
+                (cutoff,),
+            )
+            rows = cur.fetchall()
+            n = len(rows)
+            if n < 2:
+                _zero["samples"] = n
+                return _zero
+
+            def _slope(xs: list, ys: list) -> float:
+                """Least-squares slope for paired x/y lists, skipping None y."""
+                pairs = [(x, y) for x, y in zip(xs, ys, strict=False) if y is not None]
+                m = len(pairs)
+                if m < 2:
+                    return 0.0
+                sx = sum(p[0] for p in pairs)
+                sy = sum(p[1] for p in pairs)
+                sxx = sum(p[0] * p[0] for p in pairs)
+                sxy = sum(p[0] * p[1] for p in pairs)
+                denom = m * sxx - sx * sx
+                if denom == 0.0:
+                    return 0.0
+                return (m * sxy - sx * sy) / denom
+
+            # Normalise timestamps to avoid floating-point catastrophic cancellation
+            # when computing m*Σx² − (Σx)² with large Unix epoch values.
+            t0 = rows[0][0]
+            ts_list = [row[0] - t0 for row in rows]
+            front_slope = _slope(ts_list, [row[1] for row in rows])
+            left_slope = _slope(ts_list, [row[2] for row in rows])
+            right_slope = _slope(ts_list, [row[3] for row in rows])
+            rear_slope = _slope(ts_list, [row[4] for row in rows])
+
+            return {
+                "front_mm_per_s": round(front_slope, 4),
+                "left_mm_per_s": round(left_slope, 4),
+                "right_mm_per_s": round(right_slope, 4),
+                "rear_mm_per_s": round(rear_slope, 4),
+                "window_s": window_s,
+                "samples": n,
+            }
+        except Exception as exc:
+            logger.warning("LidarDriver.obstacle_velocity error: %s", exc)
+            return _zero
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self):

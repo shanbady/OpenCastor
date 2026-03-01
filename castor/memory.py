@@ -256,7 +256,9 @@ class EpisodeMemory:
             return 0.0
         return sum(x * y for x, y in zip(a, b, strict=False))
 
-    def _search_semantic(self, query: str, limit: int) -> List[Dict]:
+    def _search_semantic(
+        self, query: str, limit: int, tags: Optional[List[str]] = None
+    ) -> List[Dict]:
         """Return episodes whose stored embeddings are most similar to *query*.
 
         Falls back to keyword search when SentenceTransformers are unavailable
@@ -265,7 +267,7 @@ class EpisodeMemory:
         query_emb = self._embed_text(query)
         if query_emb is None:
             logger.debug("EpisodeMemory: ST unavailable — falling back to keyword search")
-            return self.search(query, limit=limit, mode="keyword")
+            return self.search(query, limit=limit, mode="keyword", tags=tags)
 
         try:
             with self._conn() as con:
@@ -290,7 +292,15 @@ class EpisodeMemory:
                 continue
 
         scored.sort(key=lambda t: t[0], reverse=True)
-        return [self._row_to_dict(r) for _, r in scored[:limit]]
+        results = [self._row_to_dict(r) for _, r in scored[:limit]]
+        if tags:
+            filter_tags = [t.lower() for t in tags]
+            results = [
+                r
+                for r in results
+                if all(any(ft in stored.lower() for stored in r["tags"]) for ft in filter_tags)
+            ]
+        return results
 
     def _evict_if_needed(self) -> None:
         """Delete oldest episodes when the store exceeds max_episodes."""
@@ -456,7 +466,13 @@ class EpisodeMemory:
             )
         return result
 
-    def search(self, query: str, limit: int = 20, mode: str = "keyword") -> List[Dict]:
+    def search(
+        self,
+        query: str,
+        limit: int = 20,
+        mode: str = "keyword",
+        tags: Optional[List[str]] = None,
+    ) -> List[Dict]:
         """Search episodes by keyword or semantic similarity.
 
         Args:
@@ -468,6 +484,8 @@ class EpisodeMemory:
                    raw_thought, and action_json.  ``"semantic"`` — cosine
                    similarity against stored embeddings; falls back to keyword
                    search when SentenceTransformers are unavailable.
+            tags:  If set, only return episodes that contain ALL of the
+                   specified tags (case-insensitive substring match).
 
         Returns:
             List of episode dicts (same format as :meth:`query_recent`).
@@ -477,7 +495,7 @@ class EpisodeMemory:
             return []
         limit = min(max(1, limit), 500)
         if mode == "semantic":
-            return self._search_semantic(query, limit)
+            return self._search_semantic(query, limit, tags=tags)
         pattern = f"%{query}%"
         with self._conn() as con:
             rows = con.execute(
@@ -491,7 +509,15 @@ class EpisodeMemory:
                 """,
                 (pattern, pattern, pattern, limit),
             ).fetchall()
-        return [self._row_to_dict(r) for r in rows]
+        results = [self._row_to_dict(r) for r in rows]
+        if tags:
+            filter_tags = [t.lower() for t in tags]
+            results = [
+                r
+                for r in results
+                if all(any(ft in stored.lower() for stored in r["tags"]) for ft in filter_tags)
+            ]
+        return results
 
     def count(self) -> int:
         """Return the total number of stored episodes."""

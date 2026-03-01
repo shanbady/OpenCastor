@@ -880,12 +880,23 @@ async def provider_health():
 
 
 @app.get("/api/memory/episodes", dependencies=[Depends(verify_token)])
-async def list_episodes(limit: int = 50, source: Optional[str] = None):
-    """List recent brain-decision episodes from the SQLite memory store."""
+async def list_episodes(
+    limit: int = 50,
+    source: Optional[str] = None,
+    tags: Optional[str] = None,
+):
+    """List recent brain-decision episodes from the SQLite memory store.
+
+    Query params:
+        limit:  Max episodes to return (default 50, max 500).
+        source: Filter by episode source (loop, api, whatsapp, …).
+        tags:   Comma-separated list of tags to filter by (ALL must match).
+    """
     from castor.memory import EpisodeMemory
 
     mem = EpisodeMemory()
-    episodes = mem.query_recent(limit=min(limit, 500), source=source)
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    episodes = mem.query_recent(limit=min(limit, 500), source=source, tags=tag_list)
     return {"episodes": episodes, "total": mem.count()}
 
 
@@ -947,14 +958,20 @@ async def replay_episode(episode_id: str):
 
 
 @app.get("/api/memory/search", dependencies=[Depends(verify_token)])
-async def memory_search(q: str, limit: int = 10, mode: str = "keyword"):
+async def memory_search(
+    q: str,
+    limit: int = 10,
+    mode: str = "keyword",
+    tags: Optional[str] = None,
+):
     """GET /api/memory/search — Search episodes by keyword or semantic similarity.
 
     Query params:
         q:     Search query text.
         limit: Max results (default 10, max 100).
         mode:  "keyword" (SQL LIKE across instruction/thought/action, default) or
-               "semantic" (TF-IDF cosine similarity).
+               "semantic" (cosine similarity via SentenceTransformers).
+        tags:  Comma-separated list of tags to filter results by (ALL must match).
     """
     if not q.strip():
         raise HTTPException(status_code=422, detail="Query 'q' must not be empty")
@@ -962,7 +979,8 @@ async def memory_search(q: str, limit: int = 10, mode: str = "keyword"):
     from castor.memory import EpisodeMemory
 
     mem = EpisodeMemory()
-    results = mem.search(q, limit=cap, mode=mode)
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    results = mem.search(q, limit=cap, mode=mode, tags=tag_list)
     return {"query": q, "mode": mode, "results": results, "count": len(results)}
 
 
@@ -3516,19 +3534,24 @@ async def battery_cycles(window_s: float = 86400.0):
 
 @app.post("/api/action/validate", dependencies=[Depends(verify_token)])
 async def action_validate(body: dict):
-    """POST /api/action/validate — Validate a robot action dict against built-in schemas.
+    """POST /api/action/validate — Validate a robot action dict against built-in or RCAN schemas.
 
     Body: the action dict, e.g. {"type": "move", "linear": 0.5}
-    Returns: {valid, action_type, errors, warnings}
+    Returns: {valid, action_type, errors, warnings, schema_source}
     """
-    from castor.action_validator import validate_action
+    from castor.action_validator import get_validator
 
-    result = validate_action(body)
+    validator = get_validator()
+    result = validator.validate(body)
+    schema_source = (
+        validator.schema_source_for(result.action_type) if result.action_type else "unknown"
+    )
     return {
         "valid": result.valid,
         "action_type": result.action_type,
         "errors": result.errors,
         "warnings": result.warnings,
+        "schema_source": schema_source,
     }
 
 
@@ -4168,6 +4191,15 @@ async def on_startup():
                 )
             except Exception as _pers_exc:
                 logger.debug("Personality registry init skipped: %s", _pers_exc)
+
+            # Initialize ActionValidator with RCAN custom schemas (#318)
+            try:
+                from castor.action_validator import init_from_config as _av_init
+
+                _av_init(state.config)
+                logger.info("ActionValidator initialised from RCAN config")
+            except Exception as _av_exc:
+                logger.debug("ActionValidator RCAN init skipped: %s", _av_exc)
 
             # Start snapshot manager background thread (issue #148)
             try:
@@ -5071,6 +5103,37 @@ async def imu_orientation_reset():
     imu = IMUDriver({})
     imu.reset_orientation()
     return {"reset": True}
+
+
+@app.get("/api/imu/steps", dependencies=[Depends(verify_token)])
+async def imu_step_count(reset: bool = False):
+    """GET /api/imu/steps — Return step count detected by IMU accelerometer peak detection.
+
+    Query params:
+        reset: If true, return the count and then zero it (default false).
+    """
+    from castor.drivers.imu_driver import IMUDriver
+
+    imu = IMUDriver({})
+    count = await asyncio.to_thread(imu.step_count, reset)
+    return {"step_count": count, "reset": reset}
+
+
+@app.get("/api/lidar/velocity", dependencies=[Depends(verify_token)])
+async def lidar_obstacle_velocity(window_s: float = 2.0):
+    """GET /api/lidar/velocity — Obstacle approach/recede velocity via LiDAR scan history.
+
+    Computes linear regression slope (mm/s) for each sector over the last
+    *window_s* seconds of scan history.  Negative = approaching, positive = receding.
+
+    Query params:
+        window_s: History window in seconds (default 2.0).
+    """
+    from castor.drivers.lidar_driver import LidarDriver
+
+    lidar = LidarDriver({})
+    result = await asyncio.to_thread(lidar.obstacle_velocity, window_s)
+    return result
 
 
 @app.post("/api/memory/trajectory", dependencies=[Depends(verify_token)])

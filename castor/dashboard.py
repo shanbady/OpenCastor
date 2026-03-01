@@ -576,6 +576,16 @@ with right_col:
             _bat1.metric("Voltage", f"{_bv:.1f}V" if _bv is not None else "—")
             _bat2.metric("Current", f"{_bc:.0f}mA" if _bc is not None else "—")
             st.metric("Power", f"{_bp:.0f}mW" if _bp is not None else "—")
+            # ── Battery gauge (#294) ──────────────────────────────
+            if _bv is not None:
+                _bat_min_v = float(os.getenv("CASTOR_BAT_MIN_V", "3.0"))
+                _bat_max_v = float(os.getenv("CASTOR_BAT_MAX_V", "4.2"))
+                _bat_range = _bat_max_v - _bat_min_v
+                _bat_pct = (
+                    max(0.0, min(1.0, (_bv - _bat_min_v) / _bat_range)) if _bat_range > 0 else 0.5
+                )
+                _bat_icon = "🟢" if _bat_pct > 0.5 else ("🟡" if _bat_pct > 0.2 else "🔴")
+                st.progress(_bat_pct, text=f"{_bat_icon} {_bat_pct:.0%} charge")
         else:
             st.caption("No sensor")
 
@@ -732,6 +742,35 @@ with st.expander(
             width="stretch",
             height=min(300, 36 + 36 * len(ep_rows)),
         )
+
+        # ── Memory timeline chart (#311) ──────────────────────────
+        st.markdown('<p class="panel-title">📈 Episode Timeline</p>', unsafe_allow_html=True)
+        try:
+            import pandas as _pd_tl
+
+            _tl_records = []
+            for _ep in ep_list:
+                _ep_ts = _ep.get("ts")
+                if _ep_ts:
+                    try:
+                        _epoch = float(_ep_ts)
+                    except (TypeError, ValueError):
+                        # ISO string fallback: "2026-01-15T12:34:56.789"
+                        import datetime as _dt_tl
+
+                        _epoch = _dt_tl.datetime.fromisoformat(str(_ep_ts)).timestamp()
+                    _action = (_ep.get("action") or {}).get("type", "unknown")
+                    _tl_records.append({"ts": _epoch, "action": _action, "count": 1})
+            if _tl_records:
+                _tl_df = _pd_tl.DataFrame(_tl_records)
+                _tl_df["minute"] = _pd_tl.to_datetime(_tl_df["ts"], unit="s").dt.floor("1min")
+                _tl_pivot = (
+                    _tl_df.groupby(["minute", "action"])["count"].sum().unstack(fill_value=0)
+                )
+                st.bar_chart(_tl_pivot, height=160, use_container_width=True)
+        except Exception:
+            pass
+
         # Per-episode replay buttons
         st.markdown('<p class="panel-title">Replay an episode</p>', unsafe_allow_html=True)
         for ep in ep_list:

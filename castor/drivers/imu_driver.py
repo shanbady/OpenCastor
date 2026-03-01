@@ -114,6 +114,12 @@ class IMUDriver:
         self._orientation: dict = {"yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0}
         self._last_orient_ts: float = 0.0
 
+        # ── Step counter ──────────────────────────────────────────────────────
+        self._step_count: int = 0
+        self._step_last_mag: float = 0.0
+        self._step_threshold: float = float(os.getenv("IMU_STEP_THRESHOLD", "1.2"))
+        self._step_in_peak: bool = False
+
         # Resolve explicit address from env or constructor argument
         env_addr = os.getenv("IMU_I2C_ADDRESS", "")
         if env_addr:
@@ -457,6 +463,51 @@ class IMUDriver:
         """Zero out the accumulated orientation estimate."""
         self._orientation = {"yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0}
         self._last_orient_ts = 0.0
+
+    def step_count(self, reset: bool = False) -> int:
+        """Return the accumulated step count, optionally resetting it.
+
+        Calls ``read()`` to obtain a fresh accelerometer reading, computes the
+        magnitude of the acceleration vector, and applies a peak-detection
+        algorithm with hysteresis to count steps.
+
+        Args:
+            reset: When True, zero the counter and return the count *before*
+                   the reset.
+
+        Returns:
+            Current (pre-reset when ``reset=True``) step count as an int.
+            Never raises.
+        """
+        try:
+            data = self.read()
+            accel = data.get("accel_g", {})
+            ax = float(accel.get("x", 0.0))
+            ay = float(accel.get("y", 0.0))
+            az = float(accel.get("z", 0.0))
+            mag = math.sqrt(ax * ax + ay * ay + az * az)
+            self._step_last_mag = mag
+
+            if mag > self._step_threshold and not self._step_in_peak:
+                self._step_count += 1
+                self._step_in_peak = True
+            elif mag <= self._step_threshold * 0.8:
+                self._step_in_peak = False
+        except Exception as exc:
+            logger.warning("IMUDriver.step_count error: %s", exc)
+
+        if reset:
+            count = self._step_count
+            self._step_count = 0
+            return count
+        return self._step_count
+
+    def reset_steps(self) -> int:
+        """Reset the step counter and return the count before the reset.
+
+        Convenience wrapper around ``step_count(reset=True)``.
+        """
+        return self.step_count(reset=True)
 
     def health_check(self) -> dict:
         """Return driver health information."""

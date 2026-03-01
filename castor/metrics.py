@@ -22,7 +22,7 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
-__all__ = ["MetricsRegistry", "get_registry"]
+__all__ = ["MetricsRegistry", "get_registry", "ChannelInterArrivalTracker"]
 
 _LabelKey = Tuple[str, ...]  # sorted label kv pairs as tuple
 
@@ -182,6 +182,70 @@ class ProviderLatencyTracker:
         return "\n".join(lines)
 
 
+class ChannelInterArrivalTracker:
+    """Per-channel message inter-arrival histograms rendered with a ``channel`` label.
+
+    Records the time in milliseconds between consecutive messages on each channel.
+    Stored separately so histograms carry the correct ``channel`` label.
+    """
+
+    _DEFAULT_BUCKETS: Tuple[float, ...] = (10, 50, 100, 250, 500, 1000, 2000, 5000)  # ms
+
+    def __init__(self, buckets: Tuple[float, ...] = _DEFAULT_BUCKETS) -> None:
+        self._buckets: Tuple[float, ...] = tuple(sorted(buckets))
+        # channel_name → {counts, sum, total}
+        self._data: Dict[str, Dict] = {}
+        self._last_ts: Dict[str, float] = {}  # epoch seconds of last message per channel
+        self._lock = threading.Lock()
+
+    def record(self, channel: str) -> Optional[float]:
+        """Record a new message on *channel*; return inter-arrival ms (or None for first msg)."""
+        now = time.time()
+        with self._lock:
+            last = self._last_ts.get(channel)
+            self._last_ts[channel] = now
+            if last is None:
+                return None
+            interval_ms = (now - last) * 1000.0
+            if channel not in self._data:
+                self._data[channel] = {
+                    "counts": defaultdict(float),
+                    "sum": 0.0,
+                    "total": 0.0,
+                }
+            d = self._data[channel]
+            d["sum"] += interval_ms
+            d["total"] += 1
+            for b in self._buckets:
+                if interval_ms <= b:
+                    d["counts"][b] += 1
+            return interval_ms
+
+    def channels(self) -> List[str]:
+        """Return sorted list of channel names that have been observed."""
+        with self._lock:
+            return sorted(self._data.keys())
+
+    def render(self) -> str:
+        """Render labeled histogram in Prometheus text exposition format."""
+        name = "opencastor_channel_message_interval_ms"
+        lines = [
+            f"# HELP {name} Message inter-arrival time per channel in milliseconds",
+            f"# TYPE {name} histogram",
+        ]
+        with self._lock:
+            for channel in sorted(self._data.keys()):
+                d = self._data[channel]
+                cumulative = 0.0
+                for b in self._buckets:
+                    cumulative += d["counts"][b]
+                    lines.append(f'{name}_bucket{{channel="{channel}",le="{b}"}} {cumulative:.0f}')
+                lines.append(f'{name}_bucket{{channel="{channel}",le="+Inf"}} {d["total"]:.0f}')
+                lines.append(f'{name}_sum{{channel="{channel}"}} {d["sum"]:.3f}')
+                lines.append(f'{name}_count{{channel="{channel}"}} {d["total"]:.0f}')
+        return "\n".join(lines)
+
+
 class MetricsRegistry:
     """Central metrics store — call :func:`get_registry` to get the singleton."""
 
@@ -190,6 +254,7 @@ class MetricsRegistry:
         self._gauges: Dict[str, Gauge] = {}
         self._histograms: Dict[str, Histogram] = {}
         self._provider_latency = ProviderLatencyTracker()
+        self._channel_interarrival = ChannelInterArrivalTracker()
         self._lock = threading.Lock()
         self._start_time = time.time()
         self._enabled = True
@@ -292,6 +357,8 @@ class MetricsRegistry:
         c = self._counters.get("opencastor_channel_messages_total")
         if c and self._enabled:
             c.inc(channel=channel)
+        if self._enabled:
+            self._channel_interarrival.record(channel)
 
     def record_provider_latency(self, provider_name: str, latency_ms: float) -> None:
         """Record a provider think() latency observation for Prometheus export."""
@@ -332,6 +399,8 @@ class MetricsRegistry:
             sections.append(h.render())
         if self._provider_latency.providers():
             sections.append(self._provider_latency.render())
+        if self._channel_interarrival.channels():
+            sections.append(self._channel_interarrival.render())
         return "\n".join(sections) + "\n"
 
 

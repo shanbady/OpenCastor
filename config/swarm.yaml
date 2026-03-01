@@ -13,7 +13,7 @@
 nodes:
   - name: alex
     host: alex.local
-    ip: 192.168.68.85
+    ip: 192.168.68.98
     port: 8000
     token: ea3c155db3cdc1a3221a7ebfe683954d85924784a5e87a45accbd848c3497b4f
     rcan: ~/OpenCastor/alex.rcan.yaml

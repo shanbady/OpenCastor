@@ -340,10 +340,11 @@ class TestAgenticVisionGoogle:
         assert provider._is_agentic_vision is True
         assert "code_execution" in (captured.get("tools") or [])
 
-    def test_agentic_vision_not_enabled_for_gemini25_flash(self):
+    def test_agentic_vision_auto_enabled_for_gemini25_flash(self):
+        # gemini-2.5-flash is in _AGENTIC_VISION_MODELS as of v2026.3.1.1
         provider, captured = self._make_provider("gemini-2.5-flash")
-        assert provider._is_agentic_vision is False
-        assert (captured.get("tools") or []) == []
+        assert provider._is_agentic_vision is True
+        assert "code_execution" in (captured.get("tools") or [])
 
     def test_agentic_vision_system_prompt_addendum_injected(self):
         provider, captured = self._make_provider("gemini-3-flash-preview")

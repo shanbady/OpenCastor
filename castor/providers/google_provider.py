@@ -10,6 +10,12 @@ logger = logging.getLogger("OpenCastor.Google")
 # Models that support Agentic Vision (code_execution tool unlocks 5-10% vision boost)
 # Think→Act→Observe loop: zooms, annotates, and visually grounds answers in evidence.
 _AGENTIC_VISION_MODELS = {
+    # Gemini 2.5 series (current production — recommended)
+    "gemini-2.5-pro",
+    "gemini-2.5-pro-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-preview",
+    # Gemini 3 series (future / preview)
     "gemini-3-flash-preview",
     "gemini-3-flash",
     "gemini-3-pro-preview",

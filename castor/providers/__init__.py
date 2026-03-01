@@ -1,5 +1,6 @@
 from .anthropic_provider import AnthropicProvider
 from .apple_provider import AppleProvider
+from .consensus_provider import ConsensusProvider
 from .deepseek_provider import DeepSeekProvider
 from .google_provider import GoogleProvider
 from .grok_provider import GrokProvider
@@ -14,6 +15,7 @@ from .openai_provider import OpenAIProvider
 __all__ = [
     "get_provider",
     "AnthropicProvider",
+    "ConsensusProvider",
     "AppleProvider",
     "DeepSeekProvider",
     "GoogleProvider",
@@ -79,6 +81,8 @@ def _builtin_get_provider(config: dict):
         return GrokProvider(config)
     elif provider_name in ("mistral", "mistral_ai", "mistralai"):
         return MistralProvider(config)
+    elif provider_name == "consensus":
+        return ConsensusProvider(config)
     else:
         raise ValueError(f"Unknown AI provider: {provider_name}")
 

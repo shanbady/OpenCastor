@@ -100,8 +100,9 @@ class TestChooseModel:
 
     @patch("builtins.input", return_value="2")
     def test_select_second_model(self, _):
+        # gemini-2.5-pro is now the second Google model after the catalog reorder (v2026.3.1.1)
         m = choose_model("google")
-        assert m["id"] == "gemini-3.1-flash"
+        assert m["id"] == "gemini-2.5-pro"
 
     @patch("builtins.input", return_value="3")
     def test_select_third_openai(self, _):

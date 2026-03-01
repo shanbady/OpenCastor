@@ -142,6 +142,15 @@ class EpisodeMemory:
                 con.execute("ALTER TABLE episodes ADD COLUMN tags TEXT DEFAULT NULL")
             except Exception:
                 pass  # Column already exists
+            # Migration: add reward_score + flagged for episode feedback (#262).
+            try:
+                con.execute("ALTER TABLE episodes ADD COLUMN reward_score REAL DEFAULT 0.0")
+            except Exception:
+                pass  # Column already exists
+            try:
+                con.execute("ALTER TABLE episodes ADD COLUMN flagged INTEGER DEFAULT 0")
+            except Exception:
+                pass  # Column already exists
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
@@ -533,6 +542,58 @@ class EpisodeMemory:
         """Return the total number of stored episodes."""
         with self._conn() as con:
             return con.execute("SELECT COUNT(*) FROM episodes").fetchone()[0]
+
+    # ── Episode feedback (#262) ───────────────────────────────────────────────
+
+    def rate_episode(self, episode_id: str, score: float) -> bool:
+        """Set the reward score for an episode.
+
+        Args:
+            episode_id: UUID of the episode to rate.
+            score:      Reward score (e.g. ``+1.0`` for 👍, ``-1.0`` for 👎).
+
+        Returns:
+            True if the episode was found and updated, False otherwise.
+        """
+        with self._conn() as con:
+            cur = con.execute(
+                "UPDATE episodes SET reward_score = ? WHERE id = ?",
+                (float(score), episode_id),
+            )
+            return cur.rowcount > 0
+
+    def flag_episode(self, episode_id: str) -> bool:
+        """Mark an episode as flagged for review.
+
+        Args:
+            episode_id: UUID of the episode to flag.
+
+        Returns:
+            True if the episode was found and flagged, False otherwise.
+        """
+        with self._conn() as con:
+            cur = con.execute(
+                "UPDATE episodes SET flagged = 1 WHERE id = ?",
+                (episode_id,),
+            )
+            return cur.rowcount > 0
+
+    def query_flagged(self, limit: int = 100) -> List[Dict]:
+        """Return episodes that have been flagged for review.
+
+        Args:
+            limit: Maximum number of episodes to return (default 100).
+
+        Returns:
+            List of episode dicts ordered newest-first.
+        """
+        limit = min(max(1, limit), 10_000)
+        with self._conn() as con:
+            rows = con.execute(
+                "SELECT * FROM episodes WHERE flagged = 1 ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row_to_dict(r) for r in rows]
 
     # ── Export ────────────────────────────────────────────────────────────────
 

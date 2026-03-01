@@ -5,6 +5,27 @@ All notable changes to OpenCastor are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [CalVer](https://calver.org/) versioning: `YYYY.M.DD.PATCH`.
 
+## [2026.3.1.15] - 2026-03-01 🚀 Release: 9-Feature Drop
+
+### Added
+- **ODrive control modes** (#266) — velocity/position/torque; get_encoder(); GET /api/odrive/encoder
+- **castor sim** (#265) — one-command Gazebo/Webots launch wrapper with --headless flag
+- **OpenAPI SDK generator** (#264) — castor generate-sdk; typed Python client from /openapi.json
+- **Episode feedback** (#262) — 👍/👎 via all channels; reward_score + flagged in EpisodeMemory
+- **WebRTC two-way audio** (#261) — POST /api/webrtc/audio/offer; Whisper transcription + TTS reply
+- **Swarm collective memory** (#260) — ALMA cross-robot episode sync; POST /api/swarm/sync+receive
+- **RCAN rate limiting** (#258) — per-endpoint/per-user throttling from RCAN config; GET /api/rate_limits
+- **RPi Camera Module 3** (#254) — picamera2 backend; pip install opencastor[rpi]
+- **ElevenLabs TTS** (#251) — high-quality voice synthesis; GET /api/tts/voices
+
+### Changed
+- Ruff format pass across codebase — 0 lint errors
+- Version bumped to 2026.3.1.15 everywhere
+
+### Validation
+- pytest → all tests pass; 179 new tests; 0 new failures
+- ruff check → 0 errors
+
 ## [2026.3.1.14] - 2026-03-01 🚀 Release: 15-Feature Mega Release — BLE, Signal, Madgwick, Clustering, Shadow Mode & More
 
 ### Added

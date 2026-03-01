@@ -27,9 +27,11 @@ Usage::
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
 import time
+from concurrent.futures import wait as _futures_wait
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -331,84 +333,99 @@ class BehaviorRunner:
             runner.status()["running"],
         )
 
-    def _step_parallel(self, step: dict) -> None:
-        """Run multiple inner steps concurrently in daemon threads.
+    def _run_step(self, step: dict) -> None:
+        """Execute a single step dict by looking up its type in ``_step_handlers``.
 
-        All inner steps are dispatched via ``_step_handlers`` and execute
-        simultaneously.  The method blocks until every thread has finished or
-        until ``timeout_s`` seconds have elapsed (default: 10.0).  Any threads
-        still alive after the timeout are logged as warnings but are not
-        forcibly killed (daemon flag means they die with the process).
-
-        Each inner step's exception is caught and logged as a warning so that
-        one failing step does not prevent the others from running.
-
-        Example step::
-
-            - type: parallel
-              timeout_s: 5.0
-              steps:
-                - type: speak
-                  text: "Going forward"
-                - type: wait
-                  seconds: 1.0
+        This is the callable target used by :meth:`_step_parallel` thread workers.
+        Unknown step types are skipped with a warning (matching the behaviour of
+        the top-level :meth:`run` loop).
 
         Parameters
         ----------
         step:
-            The step dict.  Must contain a ``steps`` key with a list of inner
-            step dicts.  May contain ``timeout_s`` (float, default 10.0).
+            A single step dict (must contain a ``"type"`` key).
+        """
+        step_type = step.get("type", "")
+        handler = self._step_handlers.get(step_type)
+        if handler is None:
+            logger.warning("parallel step: unknown inner step type '%s' — skipping", step_type)
+            return
+        handler(step)
+
+    def _step_parallel(self, step: dict) -> None:
+        """Run multiple inner steps concurrently using threads.
+
+        Step schema::
+
+            type: parallel
+            inner_steps: [{type: wait, seconds: 1}, {type: speak, text: "hi"}]
+            timeout_s: 0      # 0 = no timeout; > 0 = cancel after N seconds
+
+        Each inner step runs in its own daemon thread via
+        :class:`concurrent.futures.ThreadPoolExecutor`.  All threads start
+        simultaneously; we wait for all to finish (or timeout).  Exceptions in
+        individual threads are logged but do not abort others.  The outer
+        ``_running`` flag is checked before starting any threads.
+
+        Parameters
+        ----------
+        step:
+            The step dict.
+
+            ``inner_steps`` (list, required):
+                Steps to execute concurrently.  If empty the step is skipped
+                with a warning.
+            ``timeout_s`` (float, default ``0``):
+                Maximum seconds to wait for all threads.  ``0`` means no
+                timeout (wait indefinitely).
         """
         if not self._running:
             return
 
-        inner_steps = step.get("steps")
+        inner_steps: list = step.get("inner_steps", [])
         if not inner_steps:
-            logger.warning("parallel step: 'steps' is missing or empty — skipping")
+            logger.warning("parallel step: 'inner_steps' is missing or empty — skipping")
             return
 
-        timeout_s = float(step.get("timeout_s", 10.0))
+        timeout_s: float = float(step.get("timeout_s", 0))
+
         logger.info(
-            "parallel step: launching %d inner step(s) with timeout=%.1fs",
+            "parallel step: launching %d inner step(s) (timeout_s=%.1f)",
             len(inner_steps),
             timeout_s,
         )
 
-        def _run_inner(inner_step: dict) -> None:
-            step_type = inner_step.get("type", "")
-            handler = self._step_handlers.get(step_type)
-            if handler is None:
-                logger.warning("parallel step: unknown inner step type '%s' — skipping", step_type)
-                return
-            try:
-                handler(inner_step)
-            except Exception as exc:
-                logger.warning("parallel step: inner step '%s' raised: %s", step_type, exc)
+        futures: list = []
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(inner_steps), thread_name_prefix="parallel-step"
+        )
+        for inner_step in inner_steps:
+            futures.append(executor.submit(self._run_step, inner_step))
 
-        threads = [
-            threading.Thread(
-                target=_run_inner, args=(inner_step,), daemon=True, name=f"parallel-step-{i}"
-            )
-            for i, inner_step in enumerate(inner_steps)
-        ]
+        done, not_done = _futures_wait(futures, timeout=timeout_s or None)
+        # Shut down without waiting so we return promptly when timeout fires.
+        executor.shutdown(wait=False)
 
-        deadline = time.monotonic() + timeout_s
-        for t in threads:
-            t.start()
-
-        for t in threads:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            t.join(timeout=remaining)
-
-        alive = [t.name for t in threads if t.is_alive()]
-        if alive:
+        if not_done:
             logger.warning(
-                "parallel step: %d thread(s) still alive after timeout: %s", len(alive), alive
+                "parallel step: %d future(s) did not complete within timeout_s=%.1f",
+                len(not_done),
+                timeout_s,
             )
-        else:
-            logger.info("parallel step: all inner steps completed")
+
+        completed = 0
+        for future in done:
+            exc = future.exception()
+            if exc is not None:
+                logger.warning("parallel step: inner step raised: %s", exc)
+            else:
+                completed += 1
+
+        logger.info(
+            "parallel step: done — %d/%d inner step(s) completed successfully",
+            completed,
+            len(inner_steps),
+        )
 
     def _step_loop(self, step: dict) -> None:
         """Repeat a sequence of inner steps N times or indefinitely.

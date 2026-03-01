@@ -48,6 +48,16 @@ _DEFAULT_DB_DIR = Path.home() / ".castor"
 _DEFAULT_DB_NAME = "memory.db"
 
 
+def _probe_pyarrow() -> bool:
+    """Return True if pyarrow is importable, False otherwise."""
+    try:
+        import pyarrow  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 class EpisodeMemory:
     """SQLite-backed episode memory store.
 
@@ -550,6 +560,72 @@ class EpisodeMemory:
                 fh.write(json.dumps(self._row_to_dict(row)) + "\n")
                 written += 1
         return written
+
+    def export_parquet(self, path: str, limit: int = 0) -> int:
+        """Export episodes as an Apache Parquet file via pyarrow.
+
+        Columns: id, ts, instruction, raw_thought, action_type, latency_ms,
+                 outcome, source, tags (comma-separated string).
+
+        Args:
+            path:  Output ``.parquet`` file path.
+            limit: Max episodes to export; 0 means all.
+
+        Returns:
+            Number of episodes written.
+
+        Raises:
+            ImportError: When pyarrow is not installed.
+        """
+        if not _probe_pyarrow():
+            raise ImportError("pyarrow required: pip install pyarrow")
+
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        sql = "SELECT * FROM episodes ORDER BY ts ASC"
+        params: tuple = ()
+        if limit > 0:
+            sql += " LIMIT ?"
+            params = (limit,)
+
+        with self._conn() as con:
+            rows = con.execute(sql, params).fetchall()
+
+        columns: Dict[str, list] = {
+            "id": [],
+            "ts": [],
+            "instruction": [],
+            "raw_thought": [],
+            "action_type": [],
+            "latency_ms": [],
+            "outcome": [],
+            "source": [],
+            "tags": [],
+        }
+
+        for row in rows:
+            columns["id"].append(row["id"] or "")
+            columns["ts"].append(float(row["ts"] or 0.0))
+            columns["instruction"].append(row["instruction"] or "")
+            columns["raw_thought"].append(row["raw_thought"] or "")
+            # Extract action type from action_json
+            action_type = ""
+            if row["action_json"]:
+                try:
+                    action_type = json.loads(row["action_json"]).get("type", "") or ""
+                except Exception:
+                    pass
+            columns["action_type"].append(action_type)
+            columns["latency_ms"].append(float(row["latency_ms"] or 0.0))
+            columns["outcome"].append(row["outcome"] or "")
+            columns["source"].append(row["source"] or "")
+            # Store tags as comma-separated string (NULL → empty string)
+            columns["tags"].append(row["tags"] or "")
+
+        table = pa.Table.from_pydict(columns)
+        pq.write_table(table, path)
+        return len(rows)
 
     # ── Admin ─────────────────────────────────────────────────────────────────
 

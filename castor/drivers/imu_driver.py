@@ -7,6 +7,7 @@ Env:
   IMU_I2C_BUS      — I2C bus number (default 1)
   IMU_I2C_ADDRESS  — hex address (default 0x68 for MPU6050, 0x28 for BNO055)
   IMU_MODEL        — "mpu6050" | "bno055" | "icm42688" | "auto" (default auto)
+  IMU_VIBRATION_THRESHOLD_G — RMS acceleration threshold for vibration alert (default 0.5)
 
 REST API:
   GET /api/imu/latest      — {accel_g, gyro_dps, mag_uT, temp_c, mode}
@@ -21,6 +22,13 @@ import os
 import threading
 import time
 from typing import Optional
+
+try:
+    import numpy as np
+
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 logger = logging.getLogger("OpenCastor.IMU")
 
@@ -508,6 +516,112 @@ class IMUDriver:
         Convenience wrapper around ``step_count(reset=True)``.
         """
         return self.step_count(reset=True)
+
+    def vibration_bands(self, window_n: int = 64) -> dict:
+        """Classify motor vibration using FFT on accelerometer magnitude.
+
+        Collects window_n accelerometer samples rapidly, computes FFT on the
+        magnitude signal, and returns dominant frequency + per-band power.
+
+        Args:
+            window_n: Number of samples to collect for FFT analysis (default 64).
+
+        Returns:
+            {
+                "dominant_hz": float,   # frequency with highest power
+                "bands": {
+                    "low": float,       # 0-20 Hz (structural/chassis)
+                    "mid": float,       # 20-100 Hz (motor)
+                    "high": float,      # 100+ Hz (gear mesh / high-freq)
+                },
+                "rms_g": float,         # RMS of accel magnitude across window
+                "samples": int,         # actual samples collected
+                "alert": bool,          # True if rms_g > IMU_VIBRATION_THRESHOLD_G
+            }
+
+        Never raises.
+        """
+        _zero: dict = {
+            "dominant_hz": 0.0,
+            "bands": {"low": 0.0, "mid": 0.0, "high": 0.0},
+            "rms_g": 0.0,
+            "samples": 0,
+            "alert": False,
+        }
+        threshold_g = float(os.getenv("IMU_VIBRATION_THRESHOLD_G", "0.5"))
+        sample_rate_hz = 50.0
+
+        try:
+            magnitudes = []
+            for _ in range(window_n):
+                try:
+                    data = self.read()
+                    accel = data.get("accel_g", {})
+                    ax = float(accel.get("x", 0.0))
+                    ay = float(accel.get("y", 0.0))
+                    az = float(accel.get("z", 0.0))
+                    magnitudes.append(math.sqrt(ax * ax + ay * ay + az * az))
+                except Exception:
+                    continue
+
+            n_samples = len(magnitudes)
+            if n_samples == 0:
+                return _zero
+
+            if not HAS_NUMPY:
+                # numpy unavailable — return zeros with sample count
+                rms_g = math.sqrt(sum(m * m for m in magnitudes) / n_samples)
+                alert = rms_g > threshold_g
+                return {
+                    "dominant_hz": 0.0,
+                    "bands": {"low": 0.0, "mid": 0.0, "high": 0.0},
+                    "rms_g": round(rms_g, 6),
+                    "samples": n_samples,
+                    "alert": alert,
+                }
+
+            mag_arr = np.array(magnitudes, dtype=float)
+            rms_g = float(np.sqrt(np.mean(mag_arr**2)))
+
+            # Remove DC offset before FFT
+            mag_dc = mag_arr - np.mean(mag_arr)
+
+            fft_vals = np.fft.rfft(mag_dc)
+            freqs = np.fft.rfftfreq(n_samples, d=1.0 / sample_rate_hz)
+            amplitudes = np.abs(fft_vals)
+
+            # Dominant frequency (skip DC bin at index 0)
+            if len(amplitudes) > 1:
+                dominant_idx = int(np.argmax(amplitudes[1:]) + 1)
+                dominant_hz = float(freqs[dominant_idx])
+            else:
+                dominant_hz = 0.0
+
+            # Per-band power sums of amplitudes
+            low_mask = freqs < 20.0
+            mid_mask = (freqs >= 20.0) & (freqs < 100.0)
+            high_mask = freqs >= 100.0
+
+            band_low = float(np.sum(amplitudes[low_mask]))
+            band_mid = float(np.sum(amplitudes[mid_mask]))
+            band_high = float(np.sum(amplitudes[high_mask]))
+
+            alert = rms_g > threshold_g
+
+            return {
+                "dominant_hz": round(dominant_hz, 4),
+                "bands": {
+                    "low": round(band_low, 6),
+                    "mid": round(band_mid, 6),
+                    "high": round(band_high, 6),
+                },
+                "rms_g": round(rms_g, 6),
+                "samples": n_samples,
+                "alert": bool(alert),
+            }
+        except Exception as exc:
+            logger.warning("IMUDriver.vibration_bands error: %s", exc)
+            return _zero
 
     def health_check(self) -> dict:
         """Return driver health information."""

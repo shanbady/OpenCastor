@@ -1,5 +1,5 @@
 """
-castor/providers/pool_provider.py — ProviderPool (issues #278, #289, #297, #299).
+castor/providers/pool_provider.py — ProviderPool (issues #278, #289, #297, #299, #320, #326).
 
 Round-robins think() calls across multiple API keys for the same provider,
 spreading request load to avoid per-key rate limits.
@@ -22,16 +22,22 @@ Config::
 
 Optional::
 
-    pool_strategy: round_robin          # "random", "weighted", "cascade" (default: round_robin)
+    pool_strategy: round_robin          # "random", "weighted", "cascade", "adaptive" (default: round_robin)
     pool_fallback: true                 # try next provider on failure (default: true)
     pool_health_check_interval_s: 60    # background health probe interval; 0=disabled
     pool_health_cooldown_s: 120         # seconds before re-enabling a degraded provider
     pool_cascade_reset_s: 300           # seconds of success before resetting cascade to primary
+    pool_adaptive_alpha: 0.1            # EMA smoothing factor for adaptive strategy (#320)
+    pool_adaptive_window_n: 20          # min observations before adaptive weights kick in (#320)
+    pool_record_path: /tmp/pool.jsonl   # record think() calls to JSONL (#326)
+    pool_replay_path: /tmp/pool.jsonl   # replay think() calls from JSONL by instruction hash (#326)
 """
 
 from __future__ import annotations
 
+import hashlib
 import itertools
+import json
 import logging
 import random
 import threading
@@ -68,6 +74,17 @@ class ProviderPool(BaseProvider):
 
         # Cascade strategy config (#299)
         self._cascade_reset_s: float = float(config.get("pool_cascade_reset_s", 300))
+
+        # Adaptive strategy config (#320)
+        self._adaptive_alpha: float = float(config.get("pool_adaptive_alpha", 0.1))
+        self._adaptive_window_n: int = int(config.get("pool_adaptive_window_n", 20))
+        self._ema_latency: Dict[int, float] = {}  # per-provider EMA latency ms
+        self._obs_count: Dict[int, int] = {}  # per-provider observation count
+
+        # Request replay config (#326)
+        self._record_path: Optional[str] = config.get("pool_record_path")
+        self._replay_path: Optional[str] = config.get("pool_replay_path")
+        self._replay_map: Dict[str, Any] = {}  # sha256-prefix(instruction) → Thought
 
         if not pool_configs:
             raise ValueError("ProviderPool: 'pool' list must contain at least one entry")
@@ -129,6 +146,10 @@ class ProviderPool(BaseProvider):
             self._strategy,
             self._fallback,
         )
+
+        # Load replay map if configured (#326)
+        if self._replay_path:
+            self._load_replay_map()
 
         # Start background health-check thread if configured
         if self._health_interval_s > 0:
@@ -313,6 +334,73 @@ class ProviderPool(BaseProvider):
         )
 
     # ------------------------------------------------------------------
+    # Adaptive strategy helpers (#320)
+    # ------------------------------------------------------------------
+
+    def _update_adaptive_weight(self, idx: int, latency_ms: float) -> None:
+        """Update the EMA latency for *idx* after a successful call."""
+        with self._lock:
+            old = self._ema_latency.get(idx, latency_ms)
+            self._ema_latency[idx] = (
+                old * (1 - self._adaptive_alpha) + latency_ms * self._adaptive_alpha
+            )
+            self._obs_count[idx] = self._obs_count.get(idx, 0) + 1
+
+    # ------------------------------------------------------------------
+    # Request replay helpers (#326)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _replay_key(instruction: str) -> str:
+        """Return a short SHA-256 prefix used as the JSONL record key."""
+        return hashlib.sha256(instruction.encode()).hexdigest()[:16]
+
+    def _load_replay_map(self) -> None:
+        """Load a previously-recorded JSONL replay file into ``_replay_map``."""
+        try:
+            with open(self._replay_path) as f:  # type: ignore[arg-type]
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    rec = json.loads(line)
+                    key = rec.get("key", "")
+                    if key:
+                        from castor.providers.base import Thought
+
+                        self._replay_map[key] = Thought(
+                            raw_text=rec.get("raw_text", ""),
+                            action=rec.get("action"),
+                        )
+            logger.info(
+                "ProviderPool: loaded %d replay entries from %s",
+                len(self._replay_map),
+                self._replay_path,
+            )
+        except Exception as exc:
+            logger.warning(
+                "ProviderPool: failed to load replay map from %s: %s",
+                self._replay_path,
+                exc,
+            )
+
+    def _record_thought(self, instruction: str, thought: Thought) -> None:
+        """Append a think() result to the JSONL record file."""
+        if not self._record_path:
+            return
+        try:
+            rec = {
+                "key": self._replay_key(instruction),
+                "instruction": instruction,
+                "raw_text": thought.raw_text,
+                "action": thought.action,
+            }
+            with open(self._record_path, "a") as f:
+                f.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            logger.debug("ProviderPool: record failed: %s", exc)
+
+    # ------------------------------------------------------------------
     # Provider selection
     # ------------------------------------------------------------------
 
@@ -327,6 +415,24 @@ class ProviderPool(BaseProvider):
             candidates = [self._providers[i] for i in healthy]
             weights = [self._weights[i] for i in healthy]
             return random.choices(candidates, weights=weights, k=1)[0]
+
+        if self._strategy == "adaptive":
+            # Providers with enough observations get EMA-based weights (lower latency → higher
+            # probability). Providers below the observation threshold are treated equally so they
+            # collect data before being de-prioritised.
+            with self._lock:
+                qualified = [
+                    i for i in healthy if self._obs_count.get(i, 0) >= self._adaptive_window_n
+                ]
+            if not qualified:
+                # Warm-up phase: not enough data yet — use uniform round-robin
+                qualified = healthy
+            eps = 1.0  # prevent division by zero
+            weights = [1.0 / (self._ema_latency.get(i, 1000.0) + eps) for i in qualified]
+            idx = random.choices(qualified, weights=weights, k=1)[0]
+            with self._lock:
+                self._current_index = idx
+            return self._providers[idx]
 
         # Default: round_robin
         with self._lock:
@@ -367,16 +473,31 @@ class ProviderPool(BaseProvider):
         """Forward think() to the next provider, with optional fallback."""
         self._check_instruction_safety(instruction)
 
+        # Replay map check (#326): return cached result if instruction matches
+        if self._replay_map:
+            key = self._replay_key(instruction)
+            hit = self._replay_map.get(key)
+            if hit is not None:
+                logger.debug("ProviderPool: replay hit for key=%s", key)
+                return hit
+
         if self._strategy == "cascade":
-            return self._think_cascade(image_bytes, instruction)
+            result = self._think_cascade(image_bytes, instruction)
+            self._record_thought(instruction, result)
+            return result
 
         primary = self._next_provider()
         start_idx = self._current_index
 
         if not self._fallback:
             try:
+                t0 = time.monotonic()
                 result = primary.think(image_bytes, instruction)
+                latency_ms = (time.monotonic() - t0) * 1000.0
                 self._cb_on_success(start_idx)
+                if self._strategy == "adaptive":
+                    self._update_adaptive_weight(start_idx, latency_ms)
+                self._record_thought(instruction, result)
                 return result
             except Exception:
                 self._cb_on_failure(start_idx)
@@ -387,8 +508,13 @@ class ProviderPool(BaseProvider):
 
         for idx, provider in candidates:
             try:
+                t0 = time.monotonic()
                 result = provider.think(image_bytes, instruction)
+                latency_ms = (time.monotonic() - t0) * 1000.0
                 self._cb_on_success(idx)
+                if self._strategy == "adaptive":
+                    self._update_adaptive_weight(idx, latency_ms)
+                self._record_thought(instruction, result)
                 return result
             except Exception as exc:
                 self._cb_on_failure(idx)
@@ -487,6 +613,21 @@ class ProviderPool(BaseProvider):
                 "providers": cb_state,
                 "open_count": sum(1 for s in cb_state.values() if s["open"]),
             }
+        # Adaptive strategy state (#320)
+        if self._strategy == "adaptive":
+            with self._lock:
+                health["adaptive"] = {
+                    "alpha": self._adaptive_alpha,
+                    "window_n": self._adaptive_window_n,
+                    "ema_latency_ms": dict(self._ema_latency),
+                    "obs_count": dict(self._obs_count),
+                }
+        # Request replay state (#326)
+        health["replay"] = {
+            "record_path": self._record_path,
+            "replay_path": self._replay_path,
+            "replay_entries": len(self._replay_map),
+        }
         return health
 
     def stop(self) -> None:

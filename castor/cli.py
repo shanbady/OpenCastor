@@ -654,9 +654,88 @@ def cmd_record(args) -> None:
 
 
 def cmd_replay(args) -> None:
-    """Replay a recorded session from a JSONL file."""
+    """Replay a recorded session from a JSONL file, or list/replay sessions via API (#328)."""
     from castor.record import replay_session
 
+    # ── validate: require either a recording file or --url ──────────────────
+    url = getattr(args, "url", None)
+    if not getattr(args, "recording", None) and not url:
+        print(
+            "Usage: castor replay <recording.jsonl>  OR  castor replay --url <gateway>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # ── server replay mode (--url supplied, no local file) ──────────────────
+    if url and not getattr(args, "recording", None):
+
+        import requests as _req
+
+        token = getattr(args, "token", None) or os.getenv("OPENCASTOR_API_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        base = url.rstrip("/")
+
+        if getattr(args, "list", False):
+            r = _req.get(f"{base}/api/memory/episodes", headers=headers, timeout=10)
+            if not r.ok:
+                print(f"Error {r.status_code}: {r.text[:200]}", file=sys.stderr)
+                sys.exit(1)
+            eps = r.json().get("episodes", [])
+            if not eps:
+                print("No episodes recorded.")
+                return
+            for ep in eps[-50:]:
+                ts = str(ep.get("ts", ""))[:19]
+                act = (ep.get("action") or {}).get("type", "—")
+                instr = str(ep.get("instruction", ""))[:60]
+                print(f"  {ep.get('id', '?')[:8]}  {ts}  [{act:10s}]  {instr}")
+            return
+
+        start_id = getattr(args, "start", None)
+        end_id = getattr(args, "end", None)
+        last_n = getattr(args, "last", None)
+
+        if last_n is not None:
+            r = _req.get(f"{base}/api/memory/episodes", headers=headers, timeout=10)
+            if not r.ok:
+                print(f"Error {r.status_code}: {r.text[:200]}", file=sys.stderr)
+                sys.exit(1)
+            eps = r.json().get("episodes", [])[-last_n:]
+            if len(eps) < 2:
+                print("Not enough episodes for replay.", file=sys.stderr)
+                sys.exit(1)
+            start_id = eps[0]["id"]
+            end_id = eps[-1]["id"]
+
+        if not start_id or not end_id:
+            print("Provide --start and --end IDs, or --last N for API replay.", file=sys.stderr)
+            sys.exit(1)
+
+        speed = getattr(args, "speed", 1.0) or 1.0
+        dry_run = getattr(args, "dry_run", False)
+        params = {
+            "start_id": start_id,
+            "end_id": end_id,
+            "speed_factor": speed,
+            "dry_run": dry_run,
+        }
+        r = _req.post(f"{base}/api/memory/trajectory", params=params, headers=headers, timeout=120)
+        if not r.ok:
+            print(f"Error {r.status_code}: {r.text[:200]}", file=sys.stderr)
+            sys.exit(1)
+        result = r.json()
+        if dry_run:
+            print(f"Dry run: {result['episode_count']} episodes over {result['duration_s']:.1f}s")
+            for ep in result.get("episodes", []):
+                print(f"  {ep.get('id', '?')[:8]}  {ep.get('action', {})}")
+        else:
+            print(
+                f"Replayed {result.get('executed', 0)}/{result.get('episode_count', 0)} episodes"
+                f" in {result.get('duration_s', 0):.1f}s (speed×{speed})"
+            )
+        return
+
+    # ── local file replay mode (original behaviour) ──────────────────────────
     replay_session(
         recording_path=args.recording,
         execute=args.execute,
@@ -2601,13 +2680,41 @@ def main() -> None:
     # castor replay
     p_replay = sub.add_parser(
         "replay",
-        help="Replay a recorded session from JSONL",
-        epilog="Example: castor replay session.jsonl --execute --config robot.rcan.yaml",
+        help="Replay a recorded session from JSONL or via gateway API",
+        epilog=(
+            "Examples:\n"
+            "  castor replay session.jsonl --execute --config robot.rcan.yaml\n"
+            "  castor replay --url http://localhost:8000 --list\n"
+            "  castor replay --url http://localhost:8000 --last 20 --dry-run\n"
+            "  castor replay --url http://localhost:8000 --start <id> --end <id> --speed 2"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_replay.add_argument("recording", help="Path to the .jsonl recording file")
+    p_replay.add_argument(
+        "recording",
+        nargs="?",
+        default=None,
+        help="Path to the .jsonl recording file (omit for API mode with --url)",
+    )
     p_replay.add_argument("--execute", action="store_true", help="Re-execute actions on hardware")
     p_replay.add_argument("--config", default=None, help="RCAN config file (required if --execute)")
+    # API replay flags (#328)
+    p_replay.add_argument("--url", default=None, help="Gateway base URL for API replay mode")
+    p_replay.add_argument("--token", default=None, help="Bearer token for gateway auth")
+    p_replay.add_argument("--start", default=None, help="Start episode ID for trajectory replay")
+    p_replay.add_argument("--end", default=None, help="End episode ID for trajectory replay")
+    p_replay.add_argument(
+        "--last", type=int, default=None, metavar="N", help="Replay last N episodes"
+    )
+    p_replay.add_argument(
+        "--speed", type=float, default=1.0, help="Playback speed multiplier (default 1.0)"
+    )
+    p_replay.add_argument(
+        "--dry-run", action="store_true", help="Show replay plan without executing"
+    )
+    p_replay.add_argument(
+        "--list", action="store_true", help="List recent episodes from the gateway"
+    )
 
     # castor benchmark
     p_bench = sub.add_parser(

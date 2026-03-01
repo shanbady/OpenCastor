@@ -796,6 +796,93 @@ with st.expander(
         st.caption("No episodes recorded yet — start the runtime loop to capture them")
 
 
+# ── PROVIDER HEALTH PANEL (#327) ─────────────────────────────────────────────
+st.divider()
+with st.expander("🧠 Provider Health", expanded=False):
+    _ph = _get("/api/pool/health")
+    if _ph.get("error") or not _ph:
+        st.caption("Provider health not available — configure pool provider to enable.")
+    else:
+        _ph_strategy = _ph.get("strategy", "—")
+        _ph_size = _ph.get("pool_size", 0)
+        _ph_degraded = _ph.get("degraded_count", 0)
+        _ph_col1, _ph_col2, _ph_col3 = st.columns(3)
+        _ph_col1.metric("Strategy", _ph_strategy)
+        _ph_col2.metric("Pool Size", _ph_size)
+        _ph_col3.metric("Degraded", _ph_degraded)
+
+        _ph_members = _ph.get("members", [])
+        if _ph_members:
+            st.markdown('<p class="panel-title">Pool Members</p>', unsafe_allow_html=True)
+            try:
+                import pandas as _pd_ph
+
+                _ph_rows = []
+                for _m in _ph_members:
+                    _ph_rows.append(
+                        {
+                            "Index": _m.get("pool_index", "?"),
+                            "Mode": _m.get("mode", "—"),
+                            "OK": "✅" if _m.get("ok") else "❌",
+                            "Degraded": "⚠" if _m.get("degraded") else "—",
+                            "Error": str(_m.get("error", ""))[:60],
+                        }
+                    )
+                st.dataframe(
+                    _pd_ph.DataFrame(_ph_rows),
+                    hide_index=True,
+                    width="stretch",
+                    height=min(200, 36 + 36 * len(_ph_rows)),
+                )
+            except Exception:
+                pass
+
+        # Circuit breaker state
+        _ph_cb = _ph.get("circuit_breaker")
+        if _ph_cb:
+            st.markdown('<p class="panel-title">Circuit Breaker</p>', unsafe_allow_html=True)
+            _cb_open = _ph_cb.get("open_count", 0)
+            _cb_threshold = _ph_cb.get("threshold", 0)
+            _cb_status = f"{_cb_open} open / threshold {_cb_threshold}"
+            if _cb_open > 0:
+                st.warning(f"Circuits open: {_cb_status}")
+            else:
+                st.success(f"All circuits closed  ({_cb_status})")
+
+        # Adaptive strategy state
+        _ph_adaptive = _ph.get("adaptive")
+        if _ph_adaptive:
+            st.markdown('<p class="panel-title">Adaptive Weights</p>', unsafe_allow_html=True)
+            try:
+                import pandas as _pd_adp
+
+                _ema = _ph_adaptive.get("ema_latency_ms", {})
+                _obs = _ph_adaptive.get("obs_count", {})
+                _adp_rows = [
+                    {
+                        "Provider Index": int(k),
+                        "EMA Latency (ms)": round(float(v), 1),
+                        "Observations": _obs.get(k, _obs.get(int(k), 0)),
+                    }
+                    for k, v in sorted(_ema.items(), key=lambda x: int(x[0]))
+                ]
+                if _adp_rows:
+                    st.dataframe(
+                        _pd_adp.DataFrame(_adp_rows),
+                        hide_index=True,
+                        width="stretch",
+                        height=min(200, 36 + 36 * len(_adp_rows)),
+                    )
+            except Exception:
+                pass
+
+        # Replay state
+        _ph_replay = _ph.get("replay", {})
+        _replay_entries = _ph_replay.get("replay_entries", 0)
+        if _replay_entries:
+            st.info(f"Replay map loaded: {_replay_entries} cached entries")
+
+
 # ── FLEET (Swarm) PANEL ───────────────────────────────────────────────────────
 st.divider()
 st.markdown("### 🤖 Fleet")

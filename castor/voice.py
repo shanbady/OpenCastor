@@ -23,6 +23,7 @@ The preferred engine can be forced via the ``engine`` parameter or the
 
 from __future__ import annotations
 
+import contextlib
 import io
 import logging
 import os
@@ -439,6 +440,202 @@ def available_engines() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Wake-word audio streaming
+# ---------------------------------------------------------------------------
+
+# Environment variable defaults for audio streaming
+_WAKE_WORD_SAMPLE_RATE_DEFAULT: int = 16000
+_WAKE_WORD_CHUNK_SIZE_DEFAULT: int = 512
+
+
+class MockAudioStream:
+    """Minimal mock audio stream that produces zero-padded int16 chunks.
+
+    Used in mock mode or when neither pyaudio nor sounddevice is available,
+    so tests and CI environments don't require real audio hardware.
+    """
+
+    def read(self, chunk_size: int) -> bytes:
+        """Return ``chunk_size * 2`` zero bytes (int16 = 2 bytes per sample)."""
+        return bytes(chunk_size * 2)
+
+    def stop_stream(self) -> None:
+        """No-op — compatible with pyaudio stream interface."""
+
+    def close(self) -> None:
+        """No-op — compatible with pyaudio stream interface."""
+
+
+@contextlib.contextmanager
+def stream_audio_source(
+    device: Optional[int] = None,
+    sample_rate: int = 16000,
+    chunk_size: int = 512,
+):
+    """Context manager yielding an audio stream object.
+
+    Tries pyaudio first, then sounddevice as fallback.  In mock mode
+    (``WAKE_WORD_BIN=mock``) or when neither library is available, yields a
+    :class:`MockAudioStream` that produces zero-padded int16 chunks.
+
+    Args:
+        device:      Input device index, or ``None`` for the system default.
+        sample_rate: Sample rate in Hz (default 16 000).
+        chunk_size:  Audio chunk size in samples (default 512).
+
+    Yields:
+        An object with a ``read(chunk_size) -> bytes`` interface.
+    """
+    if os.getenv("WAKE_WORD_BIN") == "mock":
+        logger.debug("stream_audio_source: mock mode — yielding MockAudioStream")
+        yield MockAudioStream()
+        return
+
+    # Try pyaudio first
+    try:
+        import pyaudio
+
+        pa = pyaudio.PyAudio()
+        open_kwargs: dict = dict(
+            rate=sample_rate,
+            channels=1,
+            format=pyaudio.paInt16,
+            input=True,
+            frames_per_buffer=chunk_size,
+        )
+        if device is not None:
+            open_kwargs["input_device_index"] = device
+        stream = pa.open(**open_kwargs)
+        logger.debug(
+            "stream_audio_source: opened pyaudio stream (device=%s, rate=%d)", device, sample_rate
+        )
+        try:
+            yield stream
+        finally:
+            stream.stop_stream()
+            stream.close()
+            pa.terminate()
+        return
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.warning("stream_audio_source: pyaudio failed: %s — trying sounddevice", exc)
+
+    # Try sounddevice as fallback
+    try:
+        import sounddevice as sd
+
+        logger.debug(
+            "stream_audio_source: opened sounddevice stream (device=%s, rate=%d)",
+            device,
+            sample_rate,
+        )
+
+        class _SoundDeviceStream:
+            """Thin wrapper to expose sounddevice RawInputStream as read() interface."""
+
+            def __init__(self, inner) -> None:
+                self._inner = inner
+
+            def read(self, n: int) -> bytes:
+                data, _ = self._inner.read(n)
+                return bytes(data)
+
+            def stop_stream(self) -> None:
+                self._inner.stop()
+
+            def close(self) -> None:
+                self._inner.close()
+
+        sd_kwargs: dict = dict(
+            samplerate=sample_rate,
+            channels=1,
+            dtype="int16",
+            blocksize=chunk_size,
+        )
+        if device is not None:
+            sd_kwargs["device"] = device
+        inner_stream = sd.RawInputStream(**sd_kwargs)
+        inner_stream.start()
+        wrapped = _SoundDeviceStream(inner_stream)
+        try:
+            yield wrapped
+        finally:
+            wrapped.stop_stream()
+            wrapped.close()
+        return
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.warning("stream_audio_source: sounddevice failed: %s — falling back to mock", exc)
+
+    # Neither library available — fall back to mock
+    logger.warning(
+        "stream_audio_source: no audio library available "
+        "(install pyaudio or sounddevice). Using MockAudioStream."
+    )
+    yield MockAudioStream()
+
+
+def get_audio_config() -> dict:
+    """Return the active audio capture configuration as a dictionary.
+
+    Reads environment variables ``WAKE_WORD_AUDIO_DEVICE``,
+    ``WAKE_WORD_SAMPLE_RATE``, and ``WAKE_WORD_CHUNK_SIZE``.  The ``library``
+    key reflects which audio backend would be used (``"pyaudio"``,
+    ``"sounddevice"``, or ``"mock"``).
+
+    Returns:
+        Dict with keys: ``device`` (int or None), ``sample_rate`` (int),
+        ``chunk_size`` (int), ``library`` (str).
+    """
+    # Resolve device
+    device_env = os.getenv("WAKE_WORD_AUDIO_DEVICE", "")
+    device: Optional[int] = None
+    if device_env and device_env.lower() not in ("", "default", "none"):
+        try:
+            device = int(device_env)
+        except ValueError:
+            device = None
+
+    # Resolve sample_rate
+    try:
+        sample_rate = int(os.getenv("WAKE_WORD_SAMPLE_RATE", str(_WAKE_WORD_SAMPLE_RATE_DEFAULT)))
+    except ValueError:
+        sample_rate = _WAKE_WORD_SAMPLE_RATE_DEFAULT
+
+    # Resolve chunk_size
+    try:
+        chunk_size = int(os.getenv("WAKE_WORD_CHUNK_SIZE", str(_WAKE_WORD_CHUNK_SIZE_DEFAULT)))
+    except ValueError:
+        chunk_size = _WAKE_WORD_CHUNK_SIZE_DEFAULT
+
+    # Detect which library is available
+    if os.getenv("WAKE_WORD_BIN") == "mock":
+        library = "mock"
+    else:
+        library = "mock"
+        try:
+            import pyaudio  # noqa: F401
+
+            library = "pyaudio"
+        except ImportError:
+            try:
+                import sounddevice  # noqa: F401
+
+                library = "sounddevice"
+            except ImportError:
+                pass
+
+    return {
+        "device": device,
+        "sample_rate": sample_rate,
+        "chunk_size": chunk_size,
+        "library": library,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Wake-word detection
 # ---------------------------------------------------------------------------
 
@@ -461,9 +658,12 @@ class WakeWordDetector:
         detector.stop()
 
     Environment variables:
-        WAKE_WORD_BIN         — set to ``"mock"`` to enable mock mode.
-        WAKE_WORD_SENSITIVITY — float 0–1 (default 0.5).
-        WAKE_WORD_MODEL       — model name or path (default ``"hey_jarvis"``).
+        WAKE_WORD_BIN          — set to ``"mock"`` to enable mock mode.
+        WAKE_WORD_SENSITIVITY  — float 0–1 (default 0.5).
+        WAKE_WORD_MODEL        — model name or path (default ``"hey_jarvis"``).
+        WAKE_WORD_AUDIO_DEVICE — input device index (int or "default"; default: system default).
+        WAKE_WORD_SAMPLE_RATE  — sample rate in Hz (default 16000).
+        WAKE_WORD_CHUNK_SIZE   — audio chunk size in samples (default 512).
     """
 
     def __init__(self, sensitivity: float = 0.5, model: str = "hey_jarvis") -> None:
@@ -471,6 +671,8 @@ class WakeWordDetector:
         self._model = model
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._running = False
+        self._callback = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -478,6 +680,11 @@ class WakeWordDetector:
 
     def start(self, callback=None) -> None:  # type: ignore[override]
         """Start background microphone listener.
+
+        Reads ``WAKE_WORD_AUDIO_DEVICE``, ``WAKE_WORD_SAMPLE_RATE``, and
+        ``WAKE_WORD_CHUNK_SIZE`` from the environment to configure audio capture.
+        When a real backend (openwakeword or pvporcupine) is available, delegates
+        audio capture to :func:`stream_audio_source` via ``_start_with_audio_stream()``.
 
         Args:
             callback: Called with a single string argument when the wake word
@@ -488,6 +695,8 @@ class WakeWordDetector:
             return
 
         self._stop_event.clear()
+        self._running = True
+        self._callback = callback
 
         if os.getenv("WAKE_WORD_BIN") == "mock":
             self._thread = threading.Thread(
@@ -505,8 +714,8 @@ class WakeWordDetector:
                 import openwakeword  # noqa: F401
 
                 self._thread = threading.Thread(
-                    target=self._openwakeword_loop,
-                    args=(callback,),
+                    target=self._start_with_audio_stream,
+                    args=(callback, "openwakeword"),
                     daemon=True,
                 )
                 self._thread.start()
@@ -523,8 +732,8 @@ class WakeWordDetector:
                 import pvporcupine  # noqa: F401
 
                 self._thread = threading.Thread(
-                    target=self._pvporcupine_loop,
-                    args=(callback,),
+                    target=self._start_with_audio_stream,
+                    args=(callback, "pvporcupine"),
                     daemon=True,
                 )
                 self._thread.start()
@@ -537,6 +746,7 @@ class WakeWordDetector:
             except ImportError:
                 pass
 
+        self._running = False
         logger.warning(
             "WakeWordDetector: no wake-word library available "
             "(install openwakeword or pvporcupine, or set WAKE_WORD_BIN=mock). "
@@ -545,6 +755,7 @@ class WakeWordDetector:
 
     def stop(self) -> None:
         """Stop the background listener thread."""
+        self._running = False
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=2)
@@ -559,6 +770,121 @@ class WakeWordDetector:
     # ------------------------------------------------------------------
     # Internal loops
     # ------------------------------------------------------------------
+
+    def _start_with_audio_stream(self, callback, backend: str) -> None:
+        """Background thread that reads from :func:`stream_audio_source` and feeds chunks to the engine.
+
+        Args:
+            callback: Callable to invoke when the wake word is detected.
+            backend:  ``"openwakeword"`` or ``"pvporcupine"``.
+        """
+        # Resolve audio parameters from environment
+        audio_cfg = get_audio_config()
+        device = audio_cfg["device"]
+        sample_rate = audio_cfg["sample_rate"]
+        chunk_size = audio_cfg["chunk_size"]
+
+        try:
+            if backend == "openwakeword":
+                self._openwakeword_stream_loop(callback, device, sample_rate, chunk_size)
+            elif backend == "pvporcupine":
+                self._pvporcupine_stream_loop(callback, device, sample_rate, chunk_size)
+        except Exception as exc:
+            logger.error("WakeWordDetector: %s stream loop failed: %s", backend, exc)
+        finally:
+            self._running = False
+
+    def _openwakeword_stream_loop(
+        self,
+        callback,
+        device: Optional[int],
+        sample_rate: int,
+        chunk_size: int,
+    ) -> None:
+        """openwakeword inference loop driven by :func:`stream_audio_source`."""
+        try:
+            import numpy as np
+            import openwakeword
+
+            oww_model = openwakeword.Model(
+                wakeword_models=[self._model],
+                inference_framework="tflite",
+            )
+        except Exception as exc:
+            logger.error("WakeWordDetector: failed to load openwakeword model: %s", exc)
+            return
+
+        with stream_audio_source(
+            device=device, sample_rate=sample_rate, chunk_size=chunk_size
+        ) as stream:
+            while not self._stop_event.is_set():
+                try:
+                    raw = stream.read(chunk_size)
+                except Exception as exc:
+                    logger.warning("WakeWordDetector: audio read error: %s", exc)
+                    break
+                pcm = np.frombuffer(raw, dtype=np.int16)
+                prediction = oww_model.predict(pcm)
+                for ww, score in prediction.items():
+                    if score >= self._sensitivity:
+                        logger.info(
+                            "WakeWordDetector: wake word '%s' detected (score=%.3f)",
+                            ww,
+                            score,
+                        )
+                        if callback is not None:
+                            try:
+                                callback(ww)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("WakeWordDetector: callback raised: %s", exc)
+
+    def _pvporcupine_stream_loop(
+        self,
+        callback,
+        device: Optional[int],
+        sample_rate: int,
+        chunk_size: int,
+    ) -> None:
+        """pvporcupine inference loop driven by :func:`stream_audio_source`."""
+        try:
+            import pvporcupine
+
+            access_key = os.getenv("PORCUPINE_ACCESS_KEY", "")
+            porcupine = pvporcupine.create(
+                access_key=access_key,
+                keywords=[self._model] if self._model else ["porcupine"],
+                sensitivities=[self._sensitivity],
+            )
+        except Exception as exc:
+            logger.error("WakeWordDetector: failed to create pvporcupine engine: %s", exc)
+            return
+
+        try:
+            frame_length = porcupine.frame_length
+            with stream_audio_source(
+                device=device, sample_rate=porcupine.sample_rate, chunk_size=frame_length
+            ) as stream:
+                while not self._stop_event.is_set():
+                    try:
+                        raw = stream.read(frame_length)
+                    except Exception as exc:
+                        logger.warning("WakeWordDetector: audio read error: %s", exc)
+                        break
+                    import struct
+
+                    pcm = struct.unpack_from("h" * frame_length, raw)
+                    result = porcupine.process(pcm)
+                    if result >= 0:
+                        logger.info(
+                            "WakeWordDetector: pvporcupine keyword index %d detected", result
+                        )
+                        if callback is not None:
+                            try:
+                                callback(self._model)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("WakeWordDetector: callback raised: %s", exc)
+        finally:
+            porcupine.delete()
 
     def _mock_loop(self, callback) -> None:  # type: ignore[override]
         """Mock loop: fires callback once every 60 s until stopped."""
@@ -575,108 +901,6 @@ class WakeWordDetector:
                         callback("mock wake word")
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("WakeWordDetector: callback raised: %s", exc)
-
-    def _openwakeword_loop(self, callback) -> None:  # type: ignore[override]
-        """Listener loop using the openwakeword backend."""
-        try:
-            import numpy as np
-            import openwakeword
-
-            oww_model = openwakeword.Model(
-                wakeword_models=[self._model],
-                inference_framework="tflite",
-            )
-            chunk_size = 1280  # 80 ms at 16 kHz
-
-            try:
-                import pyaudio
-
-                pa = pyaudio.PyAudio()
-                stream = pa.open(
-                    rate=16000,
-                    channels=1,
-                    format=pyaudio.paInt16,
-                    input=True,
-                    frames_per_buffer=chunk_size,
-                )
-                try:
-                    while not self._stop_event.is_set():
-                        raw = stream.read(chunk_size, exception_on_overflow=False)
-                        pcm = np.frombuffer(raw, dtype=np.int16)
-                        prediction = oww_model.predict(pcm)
-                        for ww, score in prediction.items():
-                            if score >= self._sensitivity:
-                                logger.info(
-                                    "WakeWordDetector: wake word '%s' detected (score=%.3f)",
-                                    ww,
-                                    score,
-                                )
-                                if callback is not None:
-                                    try:
-                                        callback(ww)
-                                    except Exception as exc:  # noqa: BLE001
-                                        logger.warning("WakeWordDetector: callback raised: %s", exc)
-                finally:
-                    stream.stop_stream()
-                    stream.close()
-                    pa.terminate()
-            except ImportError:
-                logger.warning(
-                    "WakeWordDetector: pyaudio not installed — openwakeword loop cannot run"
-                )
-        except Exception as exc:
-            logger.error("WakeWordDetector: openwakeword loop failed: %s", exc)
-
-    def _pvporcupine_loop(self, callback) -> None:  # type: ignore[override]
-        """Listener loop using the pvporcupine backend."""
-        try:
-            import pvporcupine
-
-            access_key = os.getenv("PORCUPINE_ACCESS_KEY", "")
-            porcupine = pvporcupine.create(
-                access_key=access_key,
-                keywords=[self._model] if self._model else ["porcupine"],
-                sensitivities=[self._sensitivity],
-            )
-            try:
-                import pyaudio
-
-                pa = pyaudio.PyAudio()
-                stream = pa.open(
-                    rate=porcupine.sample_rate,
-                    channels=1,
-                    format=pyaudio.paInt16,
-                    input=True,
-                    frames_per_buffer=porcupine.frame_length,
-                )
-                try:
-                    while not self._stop_event.is_set():
-                        import struct
-
-                        raw = stream.read(porcupine.frame_length, exception_on_overflow=False)
-                        pcm = struct.unpack_from("h" * porcupine.frame_length, raw)
-                        result = porcupine.process(pcm)
-                        if result >= 0:
-                            logger.info(
-                                "WakeWordDetector: pvporcupine keyword index %d detected", result
-                            )
-                            if callback is not None:
-                                try:
-                                    callback(self._model)
-                                except Exception as exc:  # noqa: BLE001
-                                    logger.warning("WakeWordDetector: callback raised: %s", exc)
-                finally:
-                    stream.stop_stream()
-                    stream.close()
-                    pa.terminate()
-            except ImportError:
-                logger.warning(
-                    "WakeWordDetector: pyaudio not installed — pvporcupine loop cannot run"
-                )
-            finally:
-                porcupine.delete()
-        except Exception as exc:
-            logger.error("WakeWordDetector: pvporcupine loop failed: %s", exc)
 
 
 def get_wake_word_detector(

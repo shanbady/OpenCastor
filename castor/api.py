@@ -874,6 +874,25 @@ async def provider_health():
     }
 
 
+@app.get("/api/pool/health", dependencies=[Depends(verify_token)])
+async def pool_health():
+    """GET /api/pool/health — Health, circuit breaker, adaptive and replay state for ProviderPool.
+
+    Returns ``{"error": "..."}`` with status 200 when brain is not a ProviderPool.
+    """
+    from castor.providers.pool_provider import ProviderPool
+
+    brain = state.brain
+    if brain is None:
+        return {"error": "Brain not initialized"}
+    if not isinstance(brain, ProviderPool):
+        return {"error": "Brain is not a ProviderPool"}
+    try:
+        return await asyncio.to_thread(brain.health_check)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ---------------------------------------------------------------------------
 # Episode memory endpoints  (issue #92)
 # ---------------------------------------------------------------------------
@@ -5117,6 +5136,72 @@ async def imu_step_count(reset: bool = False):
     imu = IMUDriver({})
     count = await asyncio.to_thread(imu.step_count, reset)
     return {"step_count": count, "reset": reset}
+
+
+@app.get("/api/lidar/zone_map", dependencies=[Depends(verify_token)])
+async def lidar_zone_map(resolution_m: float = 0.05, size_m: float = 5.0):
+    """GET /api/lidar/zone_map — Occupancy grid from latest LiDAR scan.
+
+    Query params:
+        resolution_m: Grid cell size in metres (default 0.05).
+        size_m:       Map side length in metres (default 5.0).
+    """
+    from castor.drivers.lidar_driver import LidarDriver
+
+    lidar = LidarDriver({})
+    result = await asyncio.to_thread(lidar.zone_map, resolution_m, size_m)
+    return result
+
+
+@app.get("/api/imu/vibration", dependencies=[Depends(verify_token)])
+async def imu_vibration(window_n: int = 64):
+    """GET /api/imu/vibration — FFT-based vibration analysis from IMU accelerometer.
+
+    Query params:
+        window_n: Number of accelerometer samples to collect (default 64).
+    """
+    from castor.drivers.imu_driver import IMUDriver
+
+    imu = IMUDriver({})
+    result = await asyncio.to_thread(imu.vibration_bands, window_n)
+    return result
+
+
+@app.get("/api/memory/export/parquet", dependencies=[Depends(verify_token)])
+async def memory_export_parquet(limit: int = 0):
+    """GET /api/memory/export/parquet — Export episode memory as Parquet bytes.
+
+    Query params:
+        limit: Max episodes to export (0 = all).
+    """
+    import tempfile
+
+    from castor.memory import EpisodeMemory
+
+    mem = EpisodeMemory()
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        count = await asyncio.to_thread(mem.export_parquet, tmp_path, limit)
+    except ImportError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+    import os
+
+    data = open(tmp_path, "rb").read()
+    os.unlink(tmp_path)
+
+    from starlette.responses import Response
+
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": "attachment; filename=episodes.parquet",
+            "X-Episode-Count": str(count),
+        },
+    )
 
 
 @app.get("/api/lidar/velocity", dependencies=[Depends(verify_token)])

@@ -330,7 +330,7 @@ class TestBehaviorParallelStep:
                 {
                     "type": "parallel",
                     "timeout_s": 2.0,
-                    "steps": [
+                    "inner_steps": [
                         {"type": "wait", "seconds": 0.0},
                         {"type": "wait", "seconds": 0.0},
                     ],
@@ -348,7 +348,7 @@ class TestBehaviorParallelStep:
         with caplog.at_level(logging.WARNING, logger="OpenCastor.Behaviors"):
             behavior = {
                 "name": "empty_parallel",
-                "steps": [{"type": "parallel", "steps": []}],
+                "steps": [{"type": "parallel", "inner_steps": []}],
             }
             runner.run(behavior)
         assert any("parallel" in r.message.lower() for r in caplog.records)
@@ -362,7 +362,7 @@ class TestBehaviorParallelStep:
                 {
                     "type": "parallel",
                     "timeout_s": 2.0,
-                    "steps": [{"type": "does_not_exist"}],
+                    "inner_steps": [{"type": "does_not_exist"}],
                 }
             ],
         }

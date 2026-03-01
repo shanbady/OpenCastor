@@ -364,6 +364,124 @@ class LidarDriver:
             "sectors": sector_result,
         }
 
+    # ── Zone map ──────────────────────────────────────────────────────────────
+
+    def zone_map(self, resolution_m: float = 0.05, size_m: float = 5.0) -> dict:
+        """Convert the latest scan to a 2D occupancy grid.
+
+        Args:
+            resolution_m: Grid cell size in metres (default 0.05 m = 5 cm).
+            size_m:       Physical extent of the grid in metres (default 5 m).
+                          The robot sits at the centre of the grid.
+
+        Returns:
+            {
+                "grid": List[List[int]],   # NxN, 0=free, 100=occupied, -1=unknown
+                "width": int,
+                "height": int,
+                "resolution_m": float,
+                "origin": {"x": int, "y": int},  # robot position in grid coords
+                "available": bool,
+            }
+
+        Never raises.
+        """
+        _unavailable_result: dict = {
+            "grid": [],
+            "width": 0,
+            "height": 0,
+            "resolution_m": resolution_m,
+            "origin": {"x": 0, "y": 0},
+            "available": False,
+        }
+
+        try:
+            n = max(10, int(size_m / resolution_m))
+            n = min(n, 200)  # cap to limit memory usage
+
+            # Fill grid with -1 (unknown)
+            grid = [[-1] * n for _ in range(n)]
+
+            origin_x = n // 2
+            origin_y = n // 2
+
+            # Sector → Cartesian direction mapping (unit vector per sector)
+            _sector_directions = {
+                "front": (0.0, 1.0),
+                "rear": (0.0, -1.0),
+                "left": (-1.0, 0.0),
+                "right": (1.0, 0.0),
+            }
+
+            try:
+                scan_data = self.scan()
+                available = bool(scan_data)
+            except Exception as exc:
+                logger.warning("LidarDriver.zone_map: scan failed: %s", exc)
+                _unavailable_result["grid"] = [[-1] * n for _ in range(n)]
+                _unavailable_result["width"] = n
+                _unavailable_result["height"] = n
+                _unavailable_result["origin"] = {"x": origin_x, "y": origin_y}
+                return _unavailable_result
+
+            if not available:
+                return {
+                    "grid": grid,
+                    "width": n,
+                    "height": n,
+                    "resolution_m": resolution_m,
+                    "origin": {"x": origin_x, "y": origin_y},
+                    "available": False,
+                }
+
+            for point in scan_data:
+                distance_mm = point.get("distance_mm")
+                angle_deg = point.get("angle_deg", 0.0)
+
+                if distance_mm is None or distance_mm <= 0:
+                    continue
+
+                distance_m = distance_mm / 1000.0
+
+                # Convert polar (angle_deg, distance_m) to Cartesian (x_m, y_m)
+                # Convention: 0° = front (+Y), 90° = right (+X), 180° = rear (-Y), 270° = left (-X)
+                angle_rad = math.radians(angle_deg)
+                x_m = distance_m * math.sin(angle_rad)
+                y_m = distance_m * math.cos(angle_rad)
+
+                # Endpoint cell (occupied)
+                gx_end = origin_x + int(x_m / resolution_m)
+                gy_end = origin_y + int(y_m / resolution_m)
+
+                # Mark ray cells as free using Bresenham-style stepping
+                steps = max(1, int(distance_m / resolution_m))
+                for step in range(steps):
+                    frac = step / max(steps, 1)
+                    gx = origin_x + int((x_m * frac) / resolution_m)
+                    gy = origin_y + int((y_m * frac) / resolution_m)
+                    gx = max(0, min(n - 1, gx))
+                    gy = max(0, min(n - 1, gy))
+                    if grid[gy][gx] != 100:
+                        grid[gy][gx] = 0  # free
+
+                # Mark endpoint as occupied (clamp to grid)
+                gx_end = max(0, min(n - 1, gx_end))
+                gy_end = max(0, min(n - 1, gy_end))
+                grid[gy_end][gx_end] = 100
+
+            return {
+                "grid": grid,
+                "width": n,
+                "height": n,
+                "resolution_m": resolution_m,
+                "origin": {"x": origin_x, "y": origin_y},
+                "available": True,
+            }
+
+        except Exception as exc:
+            logger.warning("LidarDriver.zone_map error: %s", exc)
+            return _unavailable_result
+
     # ── Obstacle velocity ─────────────────────────────────────────────────────
 
     def obstacle_velocity(self, window_s: float = 2.0) -> dict:

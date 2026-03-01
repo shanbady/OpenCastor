@@ -280,6 +280,11 @@ class MetricsRegistry:
         self._counters["opencastor_channel_messages_total"] = Counter(
             "opencastor_channel_messages_total", "Total messages received per channel", ("channel",)
         )
+        self._counters["opencastor_provider_errors_total"] = Counter(
+            "opencastor_provider_errors_total",
+            "Total LLM provider errors by provider and error type",
+            ("provider", "error_type"),
+        )
         # Gauges
         self._gauges["opencastor_uptime_seconds"] = Gauge(
             "opencastor_uptime_seconds", "Gateway uptime in seconds"
@@ -359,6 +364,18 @@ class MetricsRegistry:
             c.inc(channel=channel)
         if self._enabled:
             self._channel_interarrival.record(channel)
+
+    def record_provider_error(self, provider_name: str, error_type: str = "unknown") -> None:
+        """Increment the per-provider error counter.
+
+        Args:
+            provider_name: Name of the LLM provider (e.g. ``"google"``, ``"anthropic"``).
+            error_type:    Category string — ``"timeout"``, ``"quota"``, ``"network"``,
+                           or ``"unknown"`` (default).
+        """
+        c = self._counters.get("opencastor_provider_errors_total")
+        if c and self._enabled:
+            c.inc(provider=provider_name, error_type=error_type)
 
     def record_provider_latency(self, provider_name: str, latency_ms: float) -> None:
         """Record a provider think() latency observation for Prometheus export."""

@@ -55,6 +55,13 @@ try:
 except ImportError:
     HAS_PYAUDIO = False
 
+try:
+    import speech_recognition  # noqa: F401
+
+    HAS_SR = True
+except ImportError:
+    HAS_SR = False
+
 
 class WakeWordDetector:
     """Always-on wake word detector.
@@ -78,9 +85,16 @@ class WakeWordDetector:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
-        # Engine selection
+        # Engine selection: prefer "sr" (speech_recognition) — it can match
+        # any arbitrary phrase including the robot's name.  Fall back to
+        # openwakeword for its lightweight always-on model, then mock.
         if engine == "auto":
-            self._engine = "openwakeword" if (HAS_OPENWAKEWORD and HAS_PYAUDIO) else "mock"
+            if HAS_SR and HAS_PYAUDIO:
+                self._engine = "sr"
+            elif HAS_OPENWAKEWORD and HAS_PYAUDIO:
+                self._engine = "openwakeword"
+            else:
+                self._engine = "mock"
         else:
             self._engine = engine
 
@@ -131,7 +145,9 @@ class WakeWordDetector:
     # ------------------------------------------------------------------
 
     def _loop(self) -> None:
-        if self._engine == "openwakeword":
+        if self._engine == "sr":
+            self._loop_sr()
+        elif self._engine == "openwakeword":
             self._loop_openwakeword()
         else:
             self._loop_mock()
@@ -194,6 +210,61 @@ class WakeWordDetector:
             pa.terminate()
         except Exception as exc:
             logger.warning("Hotword openwakeword error: %s; falling back to mock", exc)
+            self._loop_mock()
+
+    def _loop_sr(self) -> None:
+        """Detection via speech_recognition — works for any arbitrary phrase.
+
+        Listens in short bursts, transcribes each chunk, and fires when the
+        robot's name (or any word from the wake phrase) appears in the text.
+        This is the preferred engine because openwakeword only has fixed
+        built-in models and can't detect custom names like "alex" or "bob".
+        """
+        try:
+            import speech_recognition as sr
+
+            recognizer = sr.Recognizer()
+            recognizer.energy_threshold = 300
+            recognizer.dynamic_energy_threshold = True
+            recognizer.pause_threshold = 0.6
+
+            # Build a set of trigger words from the wake phrase (e.g. "alex")
+            trigger_words = {w.lower() for w in self._wake_phrase.split()}
+
+            mic = sr.Microphone()
+            with mic as source:
+                recognizer.adjust_for_ambient_noise(source, duration=1.0)
+
+            logger.info(
+                "Hotword: SR engine listening for %r (trigger words: %s)",
+                self._wake_phrase,
+                trigger_words,
+            )
+
+            while not self._stop_event.is_set():
+                try:
+                    with mic as source:
+                        audio = recognizer.listen(source, timeout=3.0, phrase_time_limit=3.0)
+                    try:
+                        text = recognizer.recognize_google(audio).lower()
+                        logger.debug("SR heard: %r", text)
+                        heard_words = set(text.split())
+                        if trigger_words & heard_words:
+                            logger.info("Wake phrase detected in %r", text)
+                            self._fire_detection()
+                            time.sleep(1.0)  # debounce
+                    except sr.UnknownValueError:
+                        pass  # silence or unintelligible — normal
+                    except sr.RequestError as exc:
+                        logger.warning("SR request error: %s", exc)
+                        time.sleep(2.0)
+                except sr.WaitTimeoutError:
+                    pass  # no speech in window — normal
+                except Exception as exc:
+                    logger.warning("Hotword SR loop error: %s", exc)
+                    time.sleep(0.5)
+        except Exception as exc:
+            logger.warning("Hotword SR init error: %s; falling back to mock", exc)
             self._loop_mock()
 
     def _loop_mock(self) -> None:

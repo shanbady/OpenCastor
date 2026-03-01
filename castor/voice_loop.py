@@ -265,17 +265,27 @@ class VoiceAssistantLoop:
 def get_voice_loop(
     brain=None,
     on_command: Optional[Callable[[str], str]] = None,
-    hotword: str = "hey castor",
+    hotword: Optional[str] = None,
     dry_run_mode: bool = False,
 ) -> VoiceAssistantLoop:
-    """Return the process-wide VoiceAssistantLoop singleton."""
+    """Return the process-wide VoiceAssistantLoop singleton.
+
+    The *hotword* defaults to the ``CASTOR_HOTWORD`` env-var when set,
+    or ``"hey castor"`` as a last resort.  Callers (e.g. the API endpoint)
+    should pass the robot's name from the RCAN config so the robot always
+    responds to its own name.
+    """
+    import os as _os
+
+    effective_hotword = hotword or _os.getenv("CASTOR_HOTWORD", "hey castor")
+
     global _singleton
     with _lock:
         if _singleton is None:
             _singleton = VoiceAssistantLoop(
                 brain=brain,
                 on_command=on_command,
-                hotword=hotword,
+                hotword=effective_hotword,
                 dry_run_mode=dry_run_mode,
             )
     return _singleton

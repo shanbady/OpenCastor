@@ -523,6 +523,7 @@ async def send_command(cmd: CommandRequest, request: Request):
         image_bytes = _capture_live_frame()
 
     active = _get_active_brain()
+    _think_t0 = time.perf_counter()
     try:
         thought = active.think(image_bytes, cmd.instruction)
     except Exception as _think_exc:
@@ -539,6 +540,12 @@ async def send_command(cmd: CommandRequest, request: Request):
                 ),
             ) from _think_exc
         raise
+    finally:
+        _think_ms = round((time.perf_counter() - _think_t0) * 1000, 1)
+        _provider_name = getattr(active, "model_name", None) or "unknown"
+        from castor.metrics import get_registry as _get_reg
+
+        _get_reg().record_provider_latency(_provider_name, _think_ms)
 
     _record_thought(cmd.instruction, thought.raw_text, thought.action)
 
@@ -952,16 +959,10 @@ async def memory_search(q: str, limit: int = 10, mode: str = "keyword"):
     if not q.strip():
         raise HTTPException(status_code=422, detail="Query 'q' must not be empty")
     cap = min(limit, 100)
-    if mode == "semantic":
-        from castor.episode_search import get_searcher
+    from castor.memory import EpisodeMemory
 
-        results = get_searcher().search(q, limit=cap)
-    else:
-        # keyword mode: SQL LIKE search via EpisodeMemory.search()
-        from castor.memory import EpisodeMemory
-
-        mem = EpisodeMemory()
-        results = mem.search(q, limit=cap)
+    mem = EpisodeMemory()
+    results = mem.search(q, limit=cap, mode=mode)
     return {"query": q, "mode": mode, "results": results, "count": len(results)}
 
 
@@ -1548,17 +1549,31 @@ async def audio_transcribe(
     hint = filename.rsplit(".", 1)[-1].lower() if "." in filename else "ogg"
 
     t0 = _time.time()
-    text = voice_mod.transcribe_bytes(audio_bytes, hint_format=hint, engine=engine)
+    result = voice_mod.transcribe_bytes(audio_bytes, hint_format=hint, engine=engine)
     duration_ms = round((_time.time() - t0) * 1000, 1)
 
-    if text is None:
+    if result is None:
         raise HTTPException(
             status_code=503,
             detail="Transcription failed — audio may be inaudible or in an unsupported format",
         )
 
-    resolved_engine = engine if engine != "auto" else (available[0] if available else "unknown")
-    return {"text": text, "engine": resolved_engine, "duration_ms": duration_ms}
+    # transcribe_bytes() returns a dict {text, confidence, engine} or (legacy) a bare string
+    if isinstance(result, dict):
+        text = result.get("text", "")
+        confidence = result.get("confidence", 0.5)
+        resolved_engine = result.get("engine", engine)
+    else:
+        text = result
+        confidence = 0.5
+        resolved_engine = engine if engine != "auto" else (available[0] if available else "unknown")
+
+    return {
+        "text": text,
+        "confidence": confidence,
+        "engine": resolved_engine,
+        "duration_ms": duration_ms,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3480,6 +3495,20 @@ async def battery_history(window_s: float = 86400.0, limit: int = 1000):
     return {"window_s": window_s, "count": len(readings), "readings": readings}
 
 
+@app.get("/api/battery/cycles", dependencies=[Depends(verify_token)])
+async def battery_cycles(window_s: float = 86400.0):
+    """GET /api/battery/cycles — Detected charge/discharge cycles from battery history.
+
+    Query params:
+        window_s: Time window in seconds (default 86400 = 24h).
+    """
+    from castor.drivers.battery_driver import get_battery
+
+    battery = get_battery()
+    cycles = battery.get_charge_cycles(window_s=window_s)
+    return {"window_s": window_s, "count": len(cycles), "cycles": cycles}
+
+
 # ---------------------------------------------------------------------------
 # Action validation endpoints (#271)
 # ---------------------------------------------------------------------------
@@ -5003,6 +5032,133 @@ async def lidar_obstacles():
     from castor.drivers.lidar_driver import get_lidar
 
     return get_lidar().obstacles()
+
+
+@app.get("/api/lidar/history", dependencies=[Depends(verify_token)])
+async def lidar_history(window_s: float = 60.0, limit: int = 500):
+    """GET /api/lidar/history — Time-series LiDAR scan history from SQLite log.
+
+    Query params:
+        window_s: Time window in seconds (default 60).
+        limit:    Max rows to return (default 500).
+    """
+    from castor.drivers.lidar_driver import get_lidar
+
+    return {
+        "window_s": window_s,
+        "readings": get_lidar().get_scan_history(window_s=window_s, limit=limit),
+    }
+
+
+@app.get("/api/imu/orientation", dependencies=[Depends(verify_token)])
+async def imu_orientation():
+    """GET /api/imu/orientation — Current yaw/pitch/roll from IMU.
+
+    Returns:
+        {yaw_deg, pitch_deg, roll_deg, confidence, mode}
+    """
+    from castor.drivers.imu_driver import IMUDriver
+
+    imu = IMUDriver({})
+    return imu.orientation()
+
+
+@app.post("/api/imu/orientation/reset", dependencies=[Depends(verify_token)])
+async def imu_orientation_reset():
+    """POST /api/imu/orientation/reset — Zero out the orientation state."""
+    from castor.drivers.imu_driver import IMUDriver
+
+    imu = IMUDriver({})
+    imu.reset_orientation()
+    return {"reset": True}
+
+
+@app.post("/api/memory/trajectory", dependencies=[Depends(verify_token)])
+async def replay_trajectory(
+    start_id: str,
+    end_id: str,
+    speed_factor: float = 1.0,
+    dry_run: bool = False,
+):
+    """POST /api/memory/trajectory — Replay a sequence of stored episodes as live commands.
+
+    Executes episode actions in chronological order with original inter-action
+    timing scaled by *speed_factor*.
+
+    Query params:
+        start_id:     UUID of the first episode in the trajectory.
+        end_id:       UUID of the last episode in the trajectory.
+        speed_factor: Playback speed multiplier (1.0 = real-time, 2.0 = 2× faster).
+        dry_run:      If true, return the sequence without executing it.
+    """
+    from castor.memory import EpisodeMemory
+
+    mem = EpisodeMemory()
+    start_ep = mem.get_episode(start_id)
+    end_ep = mem.get_episode(end_id)
+
+    if start_ep is None:
+        raise HTTPException(status_code=404, detail=f"Start episode {start_id} not found")
+    if end_ep is None:
+        raise HTTPException(status_code=404, detail=f"End episode {end_id} not found")
+
+    start_ts = start_ep["ts"]
+    end_ts = end_ep["ts"]
+    if start_ts > end_ts:
+        raise HTTPException(status_code=422, detail="start_id must be older than end_id")
+
+    # Fetch all episodes in the time range (inclusive), chronological order
+    import sqlite3 as _sqlite3
+
+    with _sqlite3.connect(mem.db_path, check_same_thread=False) as con:
+        con.row_factory = _sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM episodes WHERE ts >= ? AND ts <= ? ORDER BY ts ASC",
+            (start_ts, end_ts),
+        ).fetchall()
+
+    episodes = [mem._row_to_dict(r) for r in rows]
+    if not episodes:
+        raise HTTPException(status_code=404, detail="No episodes found in the given range")
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "episode_count": len(episodes),
+            "duration_s": round(end_ts - start_ts, 3),
+            "episodes": [
+                {"id": e["id"], "ts": e["ts"], "action": e.get("action")} for e in episodes
+            ],
+        }
+
+    if state.driver is None:
+        raise HTTPException(status_code=503, detail="Driver not initialized")
+
+    executed = 0
+    import asyncio as _asyncio
+
+    prev_ts = None
+    for ep in episodes:
+        action = ep.get("action")
+        if action and prev_ts is not None:
+            gap_s = (ep["ts"] - prev_ts) / max(speed_factor, 0.01)
+            if gap_s > 0:
+                await _asyncio.sleep(min(gap_s, 10.0))  # cap at 10s
+        if action:
+            try:
+                _execute_action(action)
+                executed += 1
+            except Exception as exc:
+                logger.warning("trajectory replay: episode %s failed: %s", ep["id"], exc)
+        prev_ts = ep["ts"]
+
+    return {
+        "replayed": True,
+        "episode_count": len(episodes),
+        "executed": executed,
+        "duration_s": round(end_ts - start_ts, 3),
+        "speed_factor": speed_factor,
+    }
 
 
 @app.on_event("shutdown")

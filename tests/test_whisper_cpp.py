@@ -211,7 +211,9 @@ def test_whisper_cpp_between_local_and_google_in_engines(monkeypatch):
 def test_transcribe_bytes_whisper_cpp_engine(monkeypatch):
     monkeypatch.setenv("WHISPER_CPP_BIN", "mock")
     result = _voice.transcribe_bytes(b"audio", engine="whisper_cpp")
-    assert result == "mock transcription"
+    # transcribe_bytes() now returns a dict {text, confidence, engine}
+    assert isinstance(result, dict)
+    assert result["text"] == "mock transcription"
 
 
 def test_transcribe_bytes_auto_uses_whisper_cpp_when_available(monkeypatch):

@@ -395,6 +395,101 @@ class BatteryDriver:
             logger.warning("BatteryDriver: get_history error: %s", exc)
             return []
 
+    def get_charge_cycles(self, window_s: float = 86400.0) -> List[Dict[str, Any]]:
+        """Detect charge/discharge/idle cycles from history.
+
+        Scans the stored readings within *window_s* seconds (oldest-first) and
+        groups consecutive readings with the same current-sign category into
+        cycle segments.  Sign categories:
+
+        * ``"charge"``    — current_ma > +50 mA
+        * ``"discharge"`` — current_ma < -50 mA
+        * ``"idle"``      — |current_ma| ≤ 50 mA
+
+        A new cycle is started whenever the sign category changes.
+
+        Args:
+            window_s: How far back to look, in seconds (default 24 h).
+
+        Returns:
+            List of cycle dicts ordered oldest-first::
+
+                {
+                    "start_ts":      float,
+                    "end_ts":        float,
+                    "type":          "charge" | "discharge" | "idle",
+                    "delta_percent": float,   # percent[end] - percent[start]
+                    "duration_s":    float,   # end_ts - start_ts
+                }
+
+            Returns an empty list when history is disabled, the DB is empty,
+            or fewer than two readings are available.  Never raises.
+        """
+        if self._history_db_path is None:
+            return []
+        try:
+            if not self._ensure_history_db():
+                return []
+            cutoff = time.time() - window_s
+            cur = self._history_con.execute(  # type: ignore[union-attr]
+                "SELECT ts, current_ma, percent FROM readings WHERE ts >= ? ORDER BY ts ASC",
+                (cutoff,),
+            )
+            rows = cur.fetchall()
+            if len(rows) < 2:
+                return []
+
+            def _sign_category(current_ma: float) -> str:
+                if current_ma is None:
+                    return "idle"
+                if current_ma > 50.0:
+                    return "charge"
+                if current_ma < -50.0:
+                    return "discharge"
+                return "idle"
+
+            cycles: List[Dict[str, Any]] = []
+            seg_start_ts: float = rows[0][0]
+            seg_start_pct: float = rows[0][2] if rows[0][2] is not None else 0.0
+            seg_type: str = _sign_category(rows[0][1])
+            seg_end_ts: float = rows[0][0]
+            seg_end_pct: float = seg_start_pct
+
+            for ts, current_ma, percent in rows[1:]:
+                cat = _sign_category(current_ma)
+                pct = percent if percent is not None else seg_end_pct
+                if cat != seg_type:
+                    # Flush completed segment
+                    cycles.append(
+                        {
+                            "start_ts": seg_start_ts,
+                            "end_ts": seg_end_ts,
+                            "type": seg_type,
+                            "delta_percent": round(seg_end_pct - seg_start_pct, 2),
+                            "duration_s": round(seg_end_ts - seg_start_ts, 3),
+                        }
+                    )
+                    seg_start_ts = ts
+                    seg_start_pct = pct
+                    seg_type = cat
+                seg_end_ts = ts
+                seg_end_pct = pct
+
+            # Flush the final segment
+            cycles.append(
+                {
+                    "start_ts": seg_start_ts,
+                    "end_ts": seg_end_ts,
+                    "type": seg_type,
+                    "delta_percent": round(seg_end_pct - seg_start_pct, 2),
+                    "duration_s": round(seg_end_ts - seg_start_ts, 3),
+                }
+            )
+            return cycles
+        except Exception as exc:
+            logger.warning("BatteryDriver: get_charge_cycles error: %s", exc)
+            return []
+
     def health_check(self) -> Dict[str, Any]:
         """Return driver health information.
 

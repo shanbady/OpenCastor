@@ -64,19 +64,22 @@ class TestTranscribeBytes:
         with patch.object(voice_mod, "_transcribe_whisper_api", return_value="hello") as mock_fn:
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="whisper_api")
         mock_fn.assert_called_once()
-        assert result == "hello"
+        assert result is not None
+        assert result["text"] == "hello"
 
     def test_whisper_local_engine_selected(self):
         with patch.object(voice_mod, "_transcribe_whisper_local", return_value="world") as mock_fn:
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="whisper_local")
         mock_fn.assert_called_once()
-        assert result == "world"
+        assert result is not None
+        assert result["text"] == "world"
 
     def test_google_engine_selected(self):
         with patch.object(voice_mod, "_transcribe_google_sr", return_value="go left") as mock_fn:
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="google")
         mock_fn.assert_called_once()
-        assert result == "go left"
+        assert result is not None
+        assert result["text"] == "go left"
 
     def test_auto_tries_whisper_api_first(self, monkeypatch):
         _reset_probes()
@@ -88,7 +91,8 @@ class TestTranscribeBytes:
             voice_mod._HAS_OPENAI = None
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="auto")
         api_mock.assert_called_once()
-        assert result == "auto result"
+        assert result is not None
+        assert result["text"] == "auto result"
 
     def test_auto_falls_back_to_google_when_whisper_unavailable(self, monkeypatch):
         _reset_probes()
@@ -100,7 +104,8 @@ class TestTranscribeBytes:
         with patch.object(voice_mod, "_transcribe_google_sr", return_value="fallback") as gsr_mock:
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="auto")
         gsr_mock.assert_called_once()
-        assert result == "fallback"
+        assert result is not None
+        assert result["text"] == "fallback"
 
     def test_auto_returns_none_when_all_engines_fail(self, monkeypatch):
         _reset_probes()
@@ -117,7 +122,8 @@ class TestTranscribeBytes:
         with patch.object(voice_mod, "_transcribe_google_sr", return_value="env override") as gsr_mock:
             result = voice_mod.transcribe_bytes(_DUMMY_AUDIO, engine="auto")
         gsr_mock.assert_called_once()
-        assert result == "env override"
+        assert result is not None
+        assert result["text"] == "env override"
 
     def test_hint_format_passed_through(self):
         with patch.object(voice_mod, "_transcribe_google_sr", return_value="ok") as gsr_mock:

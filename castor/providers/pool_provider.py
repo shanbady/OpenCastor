@@ -1,5 +1,5 @@
 """
-castor/providers/pool_provider.py — ProviderPool (issues #278, #289, #297).
+castor/providers/pool_provider.py — ProviderPool (issues #278, #289, #297, #299).
 
 Round-robins think() calls across multiple API keys for the same provider,
 spreading request load to avoid per-key rate limits.
@@ -12,6 +12,7 @@ Config::
         api_key: KEY1
         model: gemini-2.0-flash
         weight: 2          # optional; higher = more frequently selected
+        priority: 1        # optional; lower = tried first in cascade strategy
       - provider: google
         api_key: KEY2
         model: gemini-2.0-flash
@@ -21,10 +22,11 @@ Config::
 
 Optional::
 
-    pool_strategy: round_robin          # "random", "weighted" (default: round_robin)
+    pool_strategy: round_robin          # "random", "weighted", "cascade" (default: round_robin)
     pool_fallback: true                 # try next provider on failure (default: true)
     pool_health_check_interval_s: 60    # background health probe interval; 0=disabled
     pool_health_cooldown_s: 120         # seconds before re-enabling a degraded provider
+    pool_cascade_reset_s: 300           # seconds of success before resetting cascade to primary
 """
 
 from __future__ import annotations
@@ -59,12 +61,16 @@ class ProviderPool(BaseProvider):
         self._health_interval_s: float = float(config.get("pool_health_check_interval_s", 0))
         self._health_cooldown_s: float = float(config.get("pool_health_cooldown_s", 120))
 
+        # Cascade strategy config (#299)
+        self._cascade_reset_s: float = float(config.get("pool_cascade_reset_s", 300))
+
         if not pool_configs:
             raise ValueError("ProviderPool: 'pool' list must contain at least one entry")
 
         # Lazy-init child providers (so missing keys fail at think() time, not import)
         self._providers: List[BaseProvider] = []
         self._weights: List[float] = []  # aligned with _providers; for "weighted" strategy
+        self._priorities: List[int] = []  # aligned with _providers; for "cascade" strategy
         self._init_errors: List[str] = []
 
         from castor.providers import get_provider
@@ -74,11 +80,13 @@ class ProviderPool(BaseProvider):
                 p = get_provider(sub_cfg)
                 self._providers.append(p)
                 self._weights.append(float(sub_cfg.get("weight", 1)))
+                self._priorities.append(int(sub_cfg.get("priority", i)))
                 logger.debug(
-                    "ProviderPool: loaded pool[%d] provider=%s weight=%.1f",
+                    "ProviderPool: loaded pool[%d] provider=%s weight=%.1f priority=%d",
                     i,
                     sub_cfg.get("provider"),
                     self._weights[-1],
+                    self._priorities[-1],
                 )
             except Exception as exc:
                 self._init_errors.append(f"pool[{i}]: {exc}")
@@ -97,6 +105,14 @@ class ProviderPool(BaseProvider):
         # Health-aware routing state (#297)
         # Maps provider index → timestamp when marked degraded
         self._degraded: Dict[int, float] = {}
+
+        # Cascade strategy state (#299)
+        # Provider indices sorted by priority (ascending = tried first)
+        self._cascade_order: List[int] = sorted(
+            range(len(self._providers)), key=lambda i: self._priorities[i]
+        )
+        self._cascade_current: int = 0  # index into _cascade_order (not provider index)
+        self._cascade_last_failure: float = 0.0  # monotonic timestamp of last cascade advance
 
         logger.info(
             "ProviderPool: initialised %d/%d providers (strategy=%s, fallback=%s)",
@@ -174,6 +190,75 @@ class ProviderPool(BaseProvider):
         return healthy
 
     # ------------------------------------------------------------------
+    # Cascade strategy helpers (#299)
+    # ------------------------------------------------------------------
+
+    def _cascade_provider(self) -> BaseProvider:
+        """Return the current cascade-level provider, resetting to primary if eligible."""
+        with self._lock:
+            # Attempt to reset to primary if the reset timer has elapsed
+            if (
+                self._cascade_current > 0
+                and self._cascade_reset_s > 0
+                and time.monotonic() - self._cascade_last_failure >= self._cascade_reset_s
+            ):
+                logger.info(
+                    "ProviderPool cascade: %.0fs since last failure — resetting to primary",
+                    self._cascade_reset_s,
+                )
+                self._cascade_current = 0
+            idx = self._cascade_order[self._cascade_current]
+        return self._providers[idx]
+
+    def _cascade_advance(self) -> None:
+        """Advance the cascade pointer to the next priority level on failure."""
+        with self._lock:
+            if self._cascade_current < len(self._cascade_order) - 1:
+                self._cascade_current += 1
+            self._cascade_last_failure = time.monotonic()
+            logger.warning(
+                "ProviderPool cascade: advancing to level %d (provider index %d)",
+                self._cascade_current,
+                self._cascade_order[self._cascade_current],
+            )
+
+    def _think_cascade(self, image_bytes: bytes, instruction: str) -> Thought:
+        """think() implementation for cascade strategy."""
+        for _attempt in range(len(self._cascade_order)):
+            provider = self._cascade_provider()
+            try:
+                result = provider.think(image_bytes, instruction)
+                return result
+            except Exception as exc:
+                logger.warning(
+                    "ProviderPool cascade: provider %s failed (%s)",
+                    getattr(provider, "model_name", str(provider)),
+                    exc,
+                )
+                self._cascade_advance()
+
+        raise RuntimeError(f"ProviderPool cascade: all {len(self._cascade_order)} providers failed")
+
+    def _think_stream_cascade(self, image_bytes: bytes, instruction: str) -> Iterator[str]:
+        """think_stream() implementation for cascade strategy."""
+        for _attempt in range(len(self._cascade_order)):
+            provider = self._cascade_provider()
+            try:
+                yield from provider.think_stream(image_bytes, instruction)
+                return
+            except Exception as exc:
+                logger.warning(
+                    "ProviderPool cascade stream: provider %s failed (%s)",
+                    getattr(provider, "model_name", str(provider)),
+                    exc,
+                )
+                self._cascade_advance()
+
+        raise RuntimeError(
+            f"ProviderPool cascade stream: all {len(self._cascade_order)} providers failed"
+        )
+
+    # ------------------------------------------------------------------
     # Provider selection
     # ------------------------------------------------------------------
 
@@ -223,6 +308,9 @@ class ProviderPool(BaseProvider):
         """Forward think() to the next provider, with optional fallback."""
         self._check_instruction_safety(instruction)
 
+        if self._strategy == "cascade":
+            return self._think_cascade(image_bytes, instruction)
+
         primary = self._next_provider()
         start_idx = self._current_index
 
@@ -250,6 +338,10 @@ class ProviderPool(BaseProvider):
     def think_stream(self, image_bytes: bytes, instruction: str) -> Iterator[str]:
         """Forward think_stream() to the next provider."""
         self._check_instruction_safety(instruction)
+
+        if self._strategy == "cascade":
+            yield from self._think_stream_cascade(image_bytes, instruction)
+            return
 
         primary = self._next_provider()
         start_idx = self._current_index
@@ -290,7 +382,7 @@ class ProviderPool(BaseProvider):
                 results.append({"ok": False, "pool_index": i, "error": str(exc), "degraded": True})
 
         all_ok = all(r.get("ok") for r in results)
-        return {
+        health: Dict[str, Any] = {
             "ok": all_ok,
             "strategy": self._strategy,
             "pool_size": len(self._providers),
@@ -298,6 +390,11 @@ class ProviderPool(BaseProvider):
             "init_errors": self._init_errors,
             "degraded_count": len(self._degraded),
         }
+        if self._strategy == "cascade":
+            with self._lock:
+                health["cascade_index"] = self._cascade_current
+                health["cascade_provider_index"] = self._cascade_order[self._cascade_current]
+        return health
 
     def stop(self) -> None:
         """Stop the background health-check thread (if running)."""

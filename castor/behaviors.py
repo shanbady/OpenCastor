@@ -82,7 +82,12 @@ class BehaviorRunner:
             "condition": self._step_condition,
             "waypoint_mission": self._step_waypoint_mission,
             "repeat_until": self._step_repeat_until,
+            "for_each": self._step_for_each,
+            "chain": self._step_chain,
         }
+
+        # Chain-recursion depth counter (not thread-local; behaviors run single-threaded)
+        self._chain_depth: int = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -902,3 +907,173 @@ class BehaviorRunner:
                 "waypoint_mission step: mission completed (running=%s)",
                 mission_runner.status()["running"],
             )
+
+    def _step_for_each(self, step: dict) -> None:
+        """Iterate over a list of values and execute ``inner_steps`` for each.
+
+        The current item is substituted into any inner-step dict value that
+        equals *var* (default ``"$item"``).  Substitution is shallow — only
+        top-level string values in each inner step dict are replaced.
+
+        Example step::
+
+            - type: for_each
+              items: [1, 2, 3]
+              var: "$item"
+              dwell_s: 0.1
+              inner_steps:
+                - type: wait
+                  seconds: "$item"
+
+        Parameters
+        ----------
+        step:
+            The step dict.
+
+            ``items`` (list, required):
+                Values to iterate over.  If empty the step is skipped with a
+                warning.
+            ``var`` (str, default ``"$item"``):
+                The placeholder string that gets replaced with the current
+                item value in each inner step dict.
+            ``inner_steps`` (list, default ``[]``):
+                Steps to execute per iteration.
+            ``dwell_s`` (float, default ``0``):
+                Pause between iterations.  Honoured at 50 ms granularity so
+                that a :meth:`stop` request is not delayed.
+        """
+        items: list = step.get("items", [])
+        if not items:
+            logger.warning("for_each step: 'items' is missing or empty — skipping")
+            return
+
+        var: str = step.get("var", "$item")
+        inner_steps: list = step.get("inner_steps") or []
+        dwell_s: float = float(step.get("dwell_s", 0.0))
+
+        logger.info(
+            "for_each step: starting iteration over %d item(s), var=%s, dwell_s=%.2f,"
+            " %d inner step(s)",
+            len(items),
+            var,
+            dwell_s,
+            len(inner_steps),
+        )
+
+        for idx, item in enumerate(items):
+            if not self._running:
+                logger.info("for_each step: stopped at item %d/%d", idx, len(items))
+                break
+
+            logger.debug("for_each step: iteration %d/%d, %s=%r", idx + 1, len(items), var, item)
+
+            # Shallow substitution: replace string values equal to var with item.
+            substituted: list = []
+            for s in inner_steps:
+                new_s = {k: (item if v == var else v) for k, v in s.items()}
+                substituted.append(new_s)
+
+            self._run_step_list(substituted, "for_each step")
+
+            # Optional dwell between iterations, honoured at 50 ms granularity.
+            if dwell_s > 0 and self._running and idx < len(items) - 1:
+                elapsed = 0.0
+                while self._running and elapsed < dwell_s:
+                    sleep_chunk = min(0.05, dwell_s - elapsed)
+                    time.sleep(sleep_chunk)
+                    elapsed += sleep_chunk
+
+        logger.info("for_each step: done after %d item(s)", len(items))
+
+    _CHAIN_MAX_DEPTH: int = 5
+
+    def _step_chain(self, step: dict) -> None:
+        """Load and execute a named behavior from another behavior file.
+
+        Enables composition: one behavior can invoke another as a single step.
+        Recursion is capped at :attr:`_CHAIN_MAX_DEPTH` (5) to prevent infinite
+        chains.
+
+        Example step::
+
+            - type: chain
+              behavior_file: "patrol.behavior.yaml"
+              behavior_name: "patrol_loop"
+
+        Parameters
+        ----------
+        step:
+            The step dict.
+
+            ``behavior_file`` (str, required):
+                Path to the ``.behavior.yaml`` file to load.
+            ``behavior_name`` (str, required):
+                Key inside the loaded file whose ``steps`` list will be
+                executed.  The file is expected to be a mapping of
+                ``{name: {name: ..., steps: [...]}, ...}`` **or** a single
+                top-level behavior dict (``{name: ..., steps: [...]}``) — the
+                latter is matched when ``behavior_name`` equals the file's
+                ``name`` field.
+        """
+        if not self._running:
+            return
+
+        behavior_file: str = step.get("behavior_file", "")
+        behavior_name: str = step.get("behavior_name", "")
+
+        if not behavior_file:
+            logger.warning("chain step: 'behavior_file' is missing — skipping")
+            return
+        if not behavior_name:
+            logger.warning("chain step: 'behavior_name' is missing — skipping")
+            return
+
+        if self._chain_depth >= self._CHAIN_MAX_DEPTH:
+            logger.warning(
+                "chain step: max chain depth (%d) reached — skipping '%s'",
+                self._CHAIN_MAX_DEPTH,
+                behavior_name,
+            )
+            return
+
+        self._chain_depth += 1
+        try:
+            try:
+                data = self.load(behavior_file)
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning("chain step: failed to load '%s': %s — skipping", behavior_file, exc)
+                return
+
+            # Support two file layouts:
+            # 1. Single behavior at top-level: {name: "foo", steps: [...]}
+            # 2. Multi-behavior mapping:        {patrol_loop: {name: "patrol_loop", steps: [...]}}
+            steps_to_run: Optional[list] = None
+            if data.get("name") == behavior_name:
+                # Layout 1: top-level single behavior
+                steps_to_run = data.get("steps")
+            elif isinstance(data.get(behavior_name), dict):
+                # Layout 2: keyed sub-behavior
+                sub = data[behavior_name]
+                steps_to_run = sub.get("steps")
+
+            if steps_to_run is None:
+                logger.warning(
+                    "chain step: behavior '%s' not found in '%s' — skipping",
+                    behavior_name,
+                    behavior_file,
+                )
+                return
+
+            logger.info(
+                "chain step: executing '%s' from '%s' (depth=%d, %d step(s))",
+                behavior_name,
+                behavior_file,
+                self._chain_depth,
+                len(steps_to_run),
+            )
+
+            self._run_step_list(steps_to_run, f"chain:{behavior_name}")
+
+            logger.info("chain step: '%s' finished", behavior_name)
+        finally:
+            self._chain_depth -= 1

@@ -113,6 +113,10 @@ class EpisodeMemory:
             tags         TEXT DEFAULT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_ts ON episodes (ts DESC);
+        CREATE TABLE IF NOT EXISTS episode_embeddings (
+            id             TEXT PRIMARY KEY REFERENCES episodes(id) ON DELETE CASCADE,
+            embedding_json TEXT NOT NULL
+        );
         """
         with self._conn() as con:
             con.executescript(ddl)
@@ -213,7 +217,80 @@ class EpisodeMemory:
                 ),
             )
         self._evict_if_needed()
+        # Opportunistically store a semantic embedding (silent failure)
+        try:
+            text = f"{instruction} {raw_thought}".strip()
+            emb = self._embed_text(text)
+            if emb is not None:
+                emb_json = json.dumps(emb)
+                with self._conn() as con:
+                    con.execute(
+                        "INSERT OR REPLACE INTO episode_embeddings (id, embedding_json) VALUES (?, ?)",
+                        (ep_id, emb_json),
+                    )
+        except Exception:
+            pass
         return ep_id
+
+    # ── Semantic search helpers (#301) ────────────────────────────────────────
+
+    @staticmethod
+    def _embed_text(text: str) -> Optional[List[float]]:
+        """Return a unit-normalised embedding for *text*, or ``None`` if ST unavailable."""
+        if not text.strip():
+            return None
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore[import]
+
+            model_name = os.getenv("CASTOR_MEMORY_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+            model = SentenceTransformer(model_name)
+            vec = model.encode(text, normalize_embeddings=True).tolist()
+            return vec
+        except Exception:
+            return None
+
+    @staticmethod
+    def _cosine(a: List[float], b: List[float]) -> float:
+        """Return cosine similarity between two pre-normalised vectors."""
+        if len(a) != len(b):
+            return 0.0
+        return sum(x * y for x, y in zip(a, b, strict=False))
+
+    def _search_semantic(self, query: str, limit: int) -> List[Dict]:
+        """Return episodes whose stored embeddings are most similar to *query*.
+
+        Falls back to keyword search when SentenceTransformers are unavailable
+        or no embeddings are stored.
+        """
+        query_emb = self._embed_text(query)
+        if query_emb is None:
+            logger.debug("EpisodeMemory: ST unavailable — falling back to keyword search")
+            return self.search(query, limit=limit, mode="keyword")
+
+        try:
+            with self._conn() as con:
+                rows = con.execute(
+                    "SELECT e.*, ee.embedding_json FROM episodes e "
+                    "JOIN episode_embeddings ee ON e.id = ee.id"
+                ).fetchall()
+        except Exception as exc:
+            logger.warning("EpisodeMemory semantic: DB read failed: %s", exc)
+            return []
+
+        if not rows:
+            return []
+
+        scored = []
+        for row in rows:
+            try:
+                emb = json.loads(row["embedding_json"])
+                score = self._cosine(query_emb, emb)
+                scored.append((score, row))
+            except Exception:
+                continue
+
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [self._row_to_dict(r) for _, r in scored[:limit]]
 
     def _evict_if_needed(self) -> None:
         """Delete oldest episodes when the store exceeds max_episodes."""
@@ -379,16 +456,18 @@ class EpisodeMemory:
             )
         return result
 
-    def search(self, query: str, limit: int = 20) -> List[Dict]:
-        """Full-text keyword search across instruction, raw_thought, and action_json.
-
-        Uses SQLite LIKE for broad compatibility (no extra dependencies).
-        Results are ordered newest-first.
+    def search(self, query: str, limit: int = 20, mode: str = "keyword") -> List[Dict]:
+        """Search episodes by keyword or semantic similarity.
 
         Args:
-            query: Keyword or phrase to search for.  Case-insensitive.
+            query: Keyword or phrase to search for.  Case-insensitive for keyword
+                   mode; encoded via SentenceTransformers for semantic mode.
                    Leading/trailing whitespace is stripped.
             limit: Maximum number of results (capped at 500).
+            mode:  ``"keyword"`` (default) — SQL LIKE search across instruction,
+                   raw_thought, and action_json.  ``"semantic"`` — cosine
+                   similarity against stored embeddings; falls back to keyword
+                   search when SentenceTransformers are unavailable.
 
         Returns:
             List of episode dicts (same format as :meth:`query_recent`).
@@ -397,6 +476,8 @@ class EpisodeMemory:
         if not query:
             return []
         limit = min(max(1, limit), 500)
+        if mode == "semantic":
+            return self._search_semantic(query, limit)
         pattern = f"%{query}%"
         with self._conn() as con:
             rows = con.execute(

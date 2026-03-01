@@ -291,13 +291,23 @@ def _convert_to_wav(audio_bytes: bytes, src_format: str) -> Optional[bytes]:
 
 _VALID_ENGINES = ("auto", "whisper_api", "whisper_local", "whisper_cpp", "google")
 
+# Heuristic confidence scores per engine
+_ENGINE_CONFIDENCE: dict[str, float] = {
+    "whisper_cpp": 0.85,
+    "whisper_local": 0.90,
+    "openai": 0.95,
+    "whisper_api": 0.95,
+    "google": 0.80,
+    "mock": 0.50,
+}
+
 
 def transcribe_bytes(
     audio_bytes: bytes,
     hint_format: str = "ogg",
     engine: str = "auto",
     language: str = "en",
-) -> Optional[str]:
+) -> Optional[dict]:
     """Transcribe audio bytes to text.
 
     Args:
@@ -310,7 +320,8 @@ def transcribe_bytes(
         language: Language code hint (currently used by Google SR; Whisper auto-detects).
 
     Returns:
-        Transcribed text string, or None if transcription failed.
+        Dict with keys ``text`` (str), ``confidence`` (float 0-1), and ``engine`` (str),
+        or None if transcription failed / no audio provided.
     """
     if not audio_bytes:
         return None
@@ -322,6 +333,7 @@ def transcribe_bytes(
 
     t0 = time.time()
     text: Optional[str] = None
+    actual_engine = resolved_engine
 
     if resolved_engine == "whisper_api":
         text = _transcribe_whisper_api(audio_bytes, hint_format)
@@ -332,19 +344,27 @@ def transcribe_bytes(
     elif resolved_engine == "google":
         text = _transcribe_google_sr(audio_bytes, hint_format)
     else:
-        # auto: try engines in priority order
+        # auto: try engines in priority order, track which one succeeded
         if _probe_openai():
             logger.debug("voice: trying Whisper API")
             text = _transcribe_whisper_api(audio_bytes, hint_format)
+            if text is not None:
+                actual_engine = "whisper_api"
         if text is None and _probe_whisper_local():
             logger.debug("voice: trying local Whisper")
             text = _transcribe_whisper_local(audio_bytes, hint_format)
+            if text is not None:
+                actual_engine = "whisper_local"
         if text is None and _probe_whisper_cpp():
             logger.debug("voice: trying whisper.cpp")
             text = _transcribe_whisper_cpp(audio_bytes)
+            if text is not None:
+                actual_engine = "whisper_cpp"
         if text is None and _probe_speech_recognition():
             logger.debug("voice: trying Google SR")
             text = _transcribe_google_sr(audio_bytes, hint_format)
+            if text is not None:
+                actual_engine = "google"
 
     elapsed_ms = round((time.time() - t0) * 1000, 1)
     if text:
@@ -352,7 +372,7 @@ def transcribe_bytes(
             "Transcribed %d audio bytes → %d chars (engine=%s, %.0fms)",
             len(audio_bytes),
             len(text),
-            resolved_engine,
+            actual_engine,
             elapsed_ms,
         )
     else:
@@ -362,8 +382,10 @@ def transcribe_bytes(
             elapsed_ms,
             hint_format,
         )
+        return None
 
-    return text
+    confidence = _ENGINE_CONFIDENCE.get(actual_engine, _ENGINE_CONFIDENCE["mock"])
+    return {"text": text, "confidence": confidence, "engine": actual_engine}
 
 
 def available_engines() -> list[str]:

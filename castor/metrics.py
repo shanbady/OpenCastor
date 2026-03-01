@@ -20,7 +20,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 __all__ = ["MetricsRegistry", "get_registry"]
 
@@ -124,6 +124,64 @@ class Histogram:
         return "\n".join(lines)
 
 
+class ProviderLatencyTracker:
+    """Per-provider latency histograms rendered with a Prometheus ``provider`` label.
+
+    Stored separately from :class:`Histogram` because histograms with varying
+    label-sets require per-label bucket data.
+    """
+
+    _DEFAULT_BUCKETS: Tuple[float, ...] = (50, 100, 200, 500, 1000, 2000, 5000, 10000)  # ms
+
+    def __init__(self, buckets: Tuple[float, ...] = _DEFAULT_BUCKETS) -> None:
+        self._buckets: Tuple[float, ...] = tuple(sorted(buckets))
+        # provider_name → {counts, sum, total}
+        self._data: Dict[str, Dict] = {}
+        self._lock = threading.Lock()
+
+    def observe(self, provider: str, value: float) -> None:
+        """Record a latency observation for *provider*."""
+        with self._lock:
+            if provider not in self._data:
+                self._data[provider] = {
+                    "counts": defaultdict(float),
+                    "sum": 0.0,
+                    "total": 0.0,
+                }
+            d = self._data[provider]
+            d["sum"] += value
+            d["total"] += 1
+            for b in self._buckets:
+                if value <= b:
+                    d["counts"][b] += 1
+
+    def providers(self) -> List[str]:
+        """Return sorted list of provider names that have been observed."""
+        with self._lock:
+            return sorted(self._data.keys())
+
+    def render(self) -> str:
+        """Render labeled histogram in Prometheus text exposition format."""
+        name = "opencastor_provider_latency_ms"
+        lines = [
+            f"# HELP {name} LLM provider think() latency in milliseconds",
+            f"# TYPE {name} histogram",
+        ]
+        with self._lock:
+            for provider in sorted(self._data.keys()):
+                d = self._data[provider]
+                cumulative = 0.0
+                for b in self._buckets:
+                    cumulative += d["counts"][b]
+                    lines.append(
+                        f'{name}_bucket{{provider="{provider}",le="{b}"}} {cumulative:.0f}'
+                    )
+                lines.append(f'{name}_bucket{{provider="{provider}",le="+Inf"}} {d["total"]:.0f}')
+                lines.append(f'{name}_sum{{provider="{provider}"}} {d["sum"]:.3f}')
+                lines.append(f'{name}_count{{provider="{provider}"}} {d["total"]:.0f}')
+        return "\n".join(lines)
+
+
 class MetricsRegistry:
     """Central metrics store — call :func:`get_registry` to get the singleton."""
 
@@ -131,6 +189,7 @@ class MetricsRegistry:
         self._counters: Dict[str, Counter] = {}
         self._gauges: Dict[str, Gauge] = {}
         self._histograms: Dict[str, Histogram] = {}
+        self._provider_latency = ProviderLatencyTracker()
         self._lock = threading.Lock()
         self._start_time = time.time()
         self._enabled = True
@@ -234,6 +293,11 @@ class MetricsRegistry:
         if c and self._enabled:
             c.inc(channel=channel)
 
+    def record_provider_latency(self, provider_name: str, latency_ms: float) -> None:
+        """Record a provider think() latency observation for Prometheus export."""
+        if self._enabled:
+            self._provider_latency.observe(provider_name, latency_ms)
+
     def update_status(
         self,
         robot: str = "robot",
@@ -266,6 +330,8 @@ class MetricsRegistry:
             sections.append(g.render())
         for h in self._histograms.values():
             sections.append(h.render())
+        if self._provider_latency.providers():
+            sections.append(self._provider_latency.render())
         return "\n".join(sections) + "\n"
 
 

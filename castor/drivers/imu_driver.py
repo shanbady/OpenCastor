@@ -111,6 +111,8 @@ class IMUDriver:
         self._address: int = 0x68
         self._detected_model: str = "none"
         self._lock = threading.Lock()
+        self._orientation: dict = {"yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0}
+        self._last_orient_ts: float = 0.0
 
         # Resolve explicit address from env or constructor argument
         env_addr = os.getenv("IMU_I2C_ADDRESS", "")
@@ -373,6 +375,88 @@ class IMUDriver:
             "model": self._detected_model,
             "note": "calibration not supported for this sensor",
         }
+
+    def orientation(self) -> dict:
+        """Return current orientation estimate with confidence.
+
+        In mock mode returns zeros with confidence 0.5.
+
+        In hardware mode integrates gyroscope readings over ``dt`` (seconds
+        since the last call) to update ``_orientation`` via dead-reckoning.
+        When a magnetometer is available (BNO055) a simple complementary
+        filter blends the gyro integration with the mag-derived yaw, giving
+        confidence 0.9.  Gyro-only gives confidence 0.7.
+
+        Returns:
+            {
+                "yaw_deg":   float,
+                "pitch_deg": float,
+                "roll_deg":  float,
+                "confidence": float,  # 0.5 mock | 0.7 gyro-only | 0.9 with mag
+                "mode":      str,
+            }
+        """
+        if self._mode != "hardware" or self._bus is None:
+            return {
+                "yaw_deg": 0.0,
+                "pitch_deg": 0.0,
+                "roll_deg": 0.0,
+                "confidence": 0.5,
+                "mode": "mock",
+            }
+
+        try:
+            data = self.read()
+            now = time.monotonic()
+            dt = now - self._last_orient_ts if self._last_orient_ts > 0.0 else 0.0
+            self._last_orient_ts = now
+
+            gyro = data.get("gyro_dps", {})
+            gx = float(gyro.get("x", 0.0))
+            gy = float(gyro.get("y", 0.0))
+            gz = float(gyro.get("z", 0.0))
+
+            if dt > 0.0:
+                self._orientation["roll_deg"] += gx * dt
+                self._orientation["pitch_deg"] += gy * dt
+                self._orientation["yaw_deg"] += gz * dt
+
+            mag = data.get("mag_uT")
+            if mag is not None:
+                # Complementary filter: trust mag 10 % per step for yaw correction
+                mx = float(mag.get("x", 0.0))
+                my = float(mag.get("y", 0.0))
+                if mx != 0.0 or my != 0.0:
+                    mag_yaw = math.degrees(math.atan2(my, mx))
+                    alpha = 0.10
+                    self._orientation["yaw_deg"] = (1.0 - alpha) * self._orientation[
+                        "yaw_deg"
+                    ] + alpha * mag_yaw
+                confidence = 0.9
+            else:
+                confidence = 0.7
+
+            return {
+                "yaw_deg": round(self._orientation["yaw_deg"], 4),
+                "pitch_deg": round(self._orientation["pitch_deg"], 4),
+                "roll_deg": round(self._orientation["roll_deg"], 4),
+                "confidence": confidence,
+                "mode": self._mode,
+            }
+        except Exception as exc:
+            logger.warning("IMUDriver.orientation error: %s", exc)
+            return {
+                "yaw_deg": self._orientation.get("yaw_deg", 0.0),
+                "pitch_deg": self._orientation.get("pitch_deg", 0.0),
+                "roll_deg": self._orientation.get("roll_deg", 0.0),
+                "confidence": 0.5,
+                "mode": "error",
+            }
+
+    def reset_orientation(self) -> None:
+        """Zero out the accumulated orientation estimate."""
+        self._orientation = {"yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0}
+        self._last_orient_ts = 0.0
 
     def health_check(self) -> dict:
         """Return driver health information."""

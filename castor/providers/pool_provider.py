@@ -31,6 +31,9 @@ Optional::
     pool_adaptive_window_n: 20          # min observations before adaptive weights kick in (#320)
     pool_record_path: /tmp/pool.jsonl   # record think() calls to JSONL (#326)
     pool_replay_path: /tmp/pool.jsonl   # replay think() calls from JSONL by instruction hash (#326)
+    pool_burst_latency_ms: 5000         # latency threshold triggering burst demotion (#331)
+    pool_burst_cooldown_s: 30           # seconds a burst-detected provider is demoted (#331)
+    pool_ab_split: 0.5                  # fraction routed to provider 0 in A/B mode (#338)
 """
 
 from __future__ import annotations
@@ -86,6 +89,13 @@ class ProviderPool(BaseProvider):
         self._replay_path: Optional[str] = config.get("pool_replay_path")
         self._replay_map: Dict[str, Any] = {}  # sha256-prefix(instruction) → Thought
 
+        # Burst detection config (#331) — 0 disables burst demotion
+        self._burst_latency_ms: float = float(config.get("pool_burst_latency_ms", 5000))
+        self._burst_cooldown_s: float = float(config.get("pool_burst_cooldown_s", 30))
+
+        # A/B test config (#338) — split fraction for provider 0 vs provider 1
+        self._ab_split: float = float(config.get("pool_ab_split", 0.5))
+
         if not pool_configs:
             raise ValueError("ProviderPool: 'pool' list must contain at least one entry")
 
@@ -126,6 +136,14 @@ class ProviderPool(BaseProvider):
         self._cb_failures: Dict[int, int] = {}  # consecutive failures per provider
         self._cb_open_until: Dict[int, float] = {}  # epoch when circuit re-closes
         self._current_index = 0
+
+        # Burst detection state (#331): provider index → epoch when demotion expires
+        self._burst_demoted_until: Dict[int, float] = {}
+        # A/B test state (#338): per-group counters {0: {success, fail}, 1: {success, fail}}
+        self._ab_stats: Dict[int, Dict[str, int]] = {
+            0: {"success": 0, "fail": 0},
+            1: {"success": 0, "fail": 0},
+        }
 
         # Health-aware routing state (#297)
         # Maps provider index → timestamp when marked degraded
@@ -201,7 +219,7 @@ class ProviderPool(BaseProvider):
                         )
 
     def _get_healthy_indices(self) -> List[int]:
-        """Return indices of providers that are neither degraded nor circuit-open."""
+        """Return indices of providers that are neither degraded nor circuit-open nor burst-demoted."""
         now = time.time()
         healthy = []
         with self._lock:
@@ -222,6 +240,14 @@ class ProviderPool(BaseProvider):
                             continue  # circuit still open
                         # Cooldown expired — half-open: allow one trial request
                         del self._cb_open_until[i]
+
+                # --- burst demotion check (#331) ---
+                if self._burst_latency_ms > 0:
+                    demoted_until = self._burst_demoted_until.get(i, 0.0)
+                    if demoted_until > 0:
+                        if now < demoted_until:
+                            continue  # burst-demoted
+                        del self._burst_demoted_until[i]
 
                 healthy.append(i)
         if not healthy:
@@ -347,6 +373,66 @@ class ProviderPool(BaseProvider):
             self._obs_count[idx] = self._obs_count.get(idx, 0) + 1
 
     # ------------------------------------------------------------------
+    # Burst detection helpers (#331)
+    # ------------------------------------------------------------------
+
+    def _burst_check(self, idx: int, latency_ms: float) -> None:
+        """Demote *idx* if latency exceeds the burst threshold."""
+        if self._burst_latency_ms <= 0:
+            return
+        if latency_ms > self._burst_latency_ms:
+            with self._lock:
+                self._burst_demoted_until[idx] = time.time() + self._burst_cooldown_s
+                logger.warning(
+                    "ProviderPool burst: pool[%d] latency %.0fms exceeds threshold %.0fms"
+                    " — demoted for %.0fs",
+                    idx,
+                    latency_ms,
+                    self._burst_latency_ms,
+                    self._burst_cooldown_s,
+                )
+
+    def _is_burst_demoted(self, idx: int) -> bool:
+        """Return True if *idx* is currently burst-demoted."""
+        if self._burst_latency_ms <= 0:
+            return False
+        now = time.time()
+        with self._lock:
+            until = self._burst_demoted_until.get(idx, 0.0)
+            if until > 0 and now < until:
+                return True
+            if until > 0 and now >= until:
+                del self._burst_demoted_until[idx]
+        return False
+
+    # ------------------------------------------------------------------
+    # A/B test helpers (#338)
+    # ------------------------------------------------------------------
+
+    def _ab_group(self) -> int:
+        """Return 0 or 1 based on configured split."""
+        return 0 if random.random() < self._ab_split else 1
+
+    def _ab_provider_for_group(self, group: int) -> Tuple[int, BaseProvider]:
+        """Return (index, provider) for the given A/B group."""
+        n = len(self._providers)
+        if n == 1:
+            return 0, self._providers[0]
+        # group 0 → provider 0, group 1 → provider 1 (or last if >2 providers)
+        idx = 0 if group == 0 else min(1, n - 1)
+        return idx, self._providers[idx]
+
+    def _ab_record(self, group: int, success: bool) -> None:
+        """Record an A/B outcome for *group*."""
+        with self._lock:
+            if group not in self._ab_stats:
+                self._ab_stats[group] = {"success": 0, "fail": 0}
+            if success:
+                self._ab_stats[group]["success"] += 1
+            else:
+                self._ab_stats[group]["fail"] += 1
+
+    # ------------------------------------------------------------------
     # Request replay helpers (#326)
     # ------------------------------------------------------------------
 
@@ -434,6 +520,17 @@ class ProviderPool(BaseProvider):
                 self._current_index = idx
             return self._providers[idx]
 
+        if self._strategy == "ab_test":
+            # A/B test: route to provider 0 or 1 based on split; ignore healthy filtering
+            # (A/B needs all traffic through both arms for valid comparison)
+            group = self._ab_group()
+            idx, provider = self._ab_provider_for_group(group)
+            with self._lock:
+                self._current_index = idx
+            # Attach group info to the call via a thread-local marker
+            self._ab_current_group = group  # used by think() to record outcome
+            return provider
+
         # Default: round_robin
         with self._lock:
             idx = next(self._cycle)
@@ -488,6 +585,7 @@ class ProviderPool(BaseProvider):
 
         primary = self._next_provider()
         start_idx = self._current_index
+        ab_group = getattr(self, "_ab_current_group", None)
 
         if not self._fallback:
             try:
@@ -495,12 +593,17 @@ class ProviderPool(BaseProvider):
                 result = primary.think(image_bytes, instruction)
                 latency_ms = (time.monotonic() - t0) * 1000.0
                 self._cb_on_success(start_idx)
+                self._burst_check(start_idx, latency_ms)
                 if self._strategy == "adaptive":
                     self._update_adaptive_weight(start_idx, latency_ms)
+                if ab_group is not None:
+                    self._ab_record(ab_group, success=True)
                 self._record_thought(instruction, result)
                 return result
             except Exception:
                 self._cb_on_failure(start_idx)
+                if ab_group is not None:
+                    self._ab_record(ab_group, success=False)
                 raise
 
         candidates = self._provider_order_indices_from(start_idx)
@@ -512,8 +615,11 @@ class ProviderPool(BaseProvider):
                 result = provider.think(image_bytes, instruction)
                 latency_ms = (time.monotonic() - t0) * 1000.0
                 self._cb_on_success(idx)
+                self._burst_check(idx, latency_ms)
                 if self._strategy == "adaptive":
                     self._update_adaptive_weight(idx, latency_ms)
+                if ab_group is not None:
+                    self._ab_record(ab_group, success=True)
                 self._record_thought(instruction, result)
                 return result
             except Exception as exc:
@@ -525,6 +631,8 @@ class ProviderPool(BaseProvider):
                     exc,
                 )
 
+        if ab_group is not None:
+            self._ab_record(ab_group, success=False)
         raise RuntimeError(
             f"ProviderPool: all {len(candidates)} providers failed. Last error: {last_exc}"
         ) from last_exc
@@ -628,6 +736,31 @@ class ProviderPool(BaseProvider):
             "replay_path": self._replay_path,
             "replay_entries": len(self._replay_map),
         }
+        # Burst detection state (#331)
+        if self._burst_latency_ms > 0:
+            now = time.time()
+            with self._lock:
+                burst_state = {
+                    i: {
+                        "demoted": i in self._burst_demoted_until
+                        and now < self._burst_demoted_until.get(i, 0),
+                        "demoted_until": self._burst_demoted_until.get(i, 0),
+                    }
+                    for i in range(len(self._providers))
+                }
+            health["burst_detection"] = {
+                "threshold_ms": self._burst_latency_ms,
+                "cooldown_s": self._burst_cooldown_s,
+                "providers": burst_state,
+                "demoted_count": sum(1 for s in burst_state.values() if s["demoted"]),
+            }
+        # A/B test state (#338)
+        if self._strategy == "ab_test":
+            with self._lock:
+                health["ab_test"] = {
+                    "split": self._ab_split,
+                    "groups": dict(self._ab_stats),
+                }
         return health
 
     def stop(self) -> None:

@@ -87,6 +87,7 @@ class BehaviorRunner:
             "for_each": self._step_for_each,
             "chain": self._step_chain,
             "while_true": self._step_while_true,
+            "conditional": self._step_conditional,
         }
 
         # Chain-recursion depth counter (not thread-local; behaviors run single-threaded)
@@ -1195,3 +1196,162 @@ class BehaviorRunner:
                     elapsed += sleep_chunk
 
         logger.info("while_true step: done after %d iteration(s)", iteration)
+
+    # ------------------------------------------------------------------
+    # Conditional step helpers and handler
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_sensor_value(driver: str, field: str) -> Any:
+        """Read a single field from a named sensor driver.
+
+        Uses lazy imports so that missing hardware drivers do not prevent the
+        module from loading.
+
+        Parameters
+        ----------
+        driver:
+            Sensor driver name: ``"battery"``, ``"imu"``, or ``"lidar"``.
+        field:
+            Key to extract from the driver's read/obstacles result dict.
+
+        Returns
+        -------
+        Any
+            The extracted value, or ``None`` if the driver is unavailable,
+            the field is missing, or any exception occurs.
+        """
+        try:
+            if driver == "battery":
+                from castor.drivers.battery_driver import BatteryDriver  # type: ignore
+
+                return BatteryDriver({}).read().get(field)
+            if driver == "imu":
+                from castor.drivers.imu_driver import IMUDriver  # type: ignore
+
+                return IMUDriver({}).read().get(field)
+            if driver == "lidar":
+                from castor.drivers.lidar_driver import LidarDriver  # type: ignore
+
+                return LidarDriver({}).obstacles().get(field)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("_get_sensor_value: driver=%s field=%s error: %s", driver, field, exc)
+            return None
+
+        logger.warning("_get_sensor_value: unknown driver '%s' — returning None", driver)
+        return None
+
+    def _step_conditional(self, step: dict) -> None:
+        """Evaluate a sensor reading and branch into ``then`` or ``else`` steps.
+
+        The sensor is specified as a dot-separated ``driver.field`` string
+        (e.g. ``"battery.voltage_v"``).  The driver portion selects the hardware
+        driver to query; the field portion selects the key within that driver's
+        result dict.  Sensor reads are performed via :meth:`_get_sensor_value`.
+
+        Supported operators (``op`` key): ``lt``, ``lte``, ``gt``, ``gte``,
+        ``eq``, ``ne``.
+
+        Example step::
+
+            - type: conditional
+              sensor: battery.voltage_v
+              op: lt
+              value: 3.5
+              then:
+                - type: stop
+              else:
+                - type: wait
+                  seconds: 1
+
+        Parameters
+        ----------
+        step:
+            The step dict.
+
+            ``sensor`` (str, required):
+                Dot-separated ``driver.field`` path (e.g. ``"battery.voltage_v"``).
+                Missing or non-dot-path values log a warning and skip both branches.
+            ``op`` (str, required):
+                Comparison operator: ``lt``, ``lte``, ``gt``, ``gte``, ``eq``, ``ne``.
+                Unknown ops log a warning and skip both branches.
+            ``value`` (any, required):
+                Threshold value for the comparison.
+            ``then`` (list, default ``[]``):
+                Steps to execute when the condition is ``True``.
+            ``else`` (list, default ``[]``):
+                Steps to execute when the condition is ``False``.
+        """
+        if not self._running:
+            return
+
+        try:
+            sensor_path: str = step.get("sensor", "")
+            if not sensor_path or "." not in sensor_path:
+                logger.warning(
+                    "conditional step: 'sensor' key missing or not in 'driver.field' format"
+                    " (got %r) — skipping",
+                    sensor_path,
+                )
+                return
+
+            driver_name, field = sensor_path.split(".", 1)
+
+            op: str = step.get("op", "")
+            value: Any = step.get("value")
+            then_steps: list = step.get("then") or []
+            else_steps: list = step.get("else") or []
+
+            _OPS = {
+                "lt": lambda a, b: a < b,
+                "lte": lambda a, b: a <= b,
+                "gt": lambda a, b: a > b,
+                "gte": lambda a, b: a >= b,
+                "eq": lambda a, b: a == b,
+                "ne": lambda a, b: a != b,
+            }
+
+            # Read the sensor value.
+            actual = self._get_sensor_value(driver_name, field)
+            if actual is None:
+                logger.warning(
+                    "conditional step: sensor value for '%s.%s' is None — skipping both branches",
+                    driver_name,
+                    field,
+                )
+                return
+
+            # Validate operator.
+            op_fn = _OPS.get(op)
+            if op_fn is None:
+                logger.warning(
+                    "conditional step: unknown op '%s' — skipping both branches",
+                    op,
+                )
+                return
+
+            # Evaluate condition and select branch.
+            result = bool(op_fn(actual, value))
+            logger.debug(
+                "conditional step: driver=%s field=%s actual=%s op=%s value=%s → %s",
+                driver_name,
+                field,
+                actual,
+                op,
+                value,
+                result,
+            )
+
+            branch = then_steps if result else else_steps
+            branch_name = "then" if result else "else"
+            logger.info(
+                "conditional step: condition=%s — executing '%s' branch (%d step(s))",
+                result,
+                branch_name,
+                len(branch),
+            )
+
+            self._run_step_list(branch, "conditional step")
+
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("conditional step: unexpected error: %s", exc)

@@ -883,6 +883,89 @@ with st.expander("🧠 Provider Health", expanded=False):
             st.info(f"Replay map loaded: {_replay_entries} cached entries")
 
 
+# ── LIDAR POLAR PLOT (#337) ───────────────────────────────────────────────────
+st.divider()
+with st.expander("📡 LiDAR Scan", expanded=False):
+    _lidar_scan = _get("/api/lidar/scan")
+    _lidar_zone = _get("/api/lidar/zone_map")
+    if _lidar_scan.get("error") or not _lidar_scan.get("points"):
+        st.caption("LiDAR not available — connect an RPLidar sensor to enable.")
+    else:
+        _pts = _lidar_scan.get("points", [])
+        _scan_ts = _lidar_scan.get("timestamp", "—")
+        st.caption(f"Scan timestamp: {_scan_ts} — {len(_pts)} points")
+
+        # Polar scatter plot of scan points
+        try:
+            import math
+
+            import pandas as _pd_lidar
+
+            _radians = [math.radians(p.get("angle_deg", 0)) for p in _pts]
+            _distances = [p.get("distance_m", 0) for p in _pts]
+            _xs = [r * math.cos(a) for r, a in zip(_distances, _radians, strict=False)]
+            _ys = [r * math.sin(a) for r, a in zip(_distances, _radians, strict=False)]
+
+            _lidar_df = _pd_lidar.DataFrame({"x_m": _xs, "y_m": _ys, "dist_m": _distances})
+            st.scatter_chart(
+                _lidar_df,
+                x="x_m",
+                y="y_m",
+                size="dist_m",
+                height=320,
+            )
+        except Exception as _exc:
+            st.caption(f"Plot unavailable: {_exc}")
+
+        # SLAM hint: wall distances per sector
+        _slam = _get("/api/lidar/slam")
+        if _slam.get("available"):
+            st.markdown(
+                '<p class="panel-title">Wall Detection (SLAM Hint)</p>', unsafe_allow_html=True
+            )
+            _walls = _slam.get("walls", [])
+            if _walls:
+                try:
+                    import pandas as _pd_slam
+
+                    _slam_rows = [
+                        {
+                            "Sector": w.get("sector", "?"),
+                            "Distance (m)": round(w.get("distance_m", 0), 2),
+                            "Angle (°)": round(w.get("angle_deg", 0), 1),
+                            "Confidence": round(w.get("confidence", 0), 2),
+                        }
+                        for w in _walls
+                    ]
+                    st.dataframe(
+                        _pd_slam.DataFrame(_slam_rows),
+                        hide_index=True,
+                        height=min(200, 36 + 36 * len(_slam_rows)),
+                    )
+                except Exception:
+                    pass
+
+        # Zone map grid
+        if _lidar_zone.get("grid"):
+            st.markdown('<p class="panel-title">Zone Occupancy Grid</p>', unsafe_allow_html=True)
+            _grid = _lidar_zone.get("grid", [])
+            _cell_m = _lidar_zone.get("resolution_m", 0.05)
+            st.caption(
+                f"Resolution: {_cell_m} m/cell — "
+                f"{_lidar_zone.get('cols', 0)}×{_lidar_zone.get('rows', 0)} cells"
+            )
+            try:
+                import pandas as _pd_zone
+
+                st.dataframe(
+                    _pd_zone.DataFrame(_grid),
+                    hide_index=True,
+                    height=200,
+                )
+            except Exception:
+                pass
+
+
 # ── FLEET (Swarm) PANEL ───────────────────────────────────────────────────────
 st.divider()
 st.markdown("### 🤖 Fleet")

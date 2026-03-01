@@ -7,11 +7,15 @@ Webhook: POSTs notifications on events (errors, low battery, status changes).
 Usage:
     castor export --config robot.rcan.yaml --output robot-bundle.zip
     castor export --config robot.rcan.yaml --format json
+    castor export --config robot.rcan.yaml --format tgz --episodes 50
 """
 
+import hashlib
+import io
 import json
 import logging
 import os
+import tarfile
 import zipfile
 from datetime import datetime
 
@@ -74,6 +78,100 @@ def export_bundle(config_path: str, output_path: str = None, fmt: str = "zip") -
                     zf.write(preset_file, os.path.basename(preset_file))
 
     logger.info(f"Bundle exported to {output_path}")
+    return output_path
+
+
+def export_bundle_tgz(
+    config_path: str,
+    output_path: str = None,
+    episodes_limit: int = 100,
+) -> str:
+    """Export a tar.gz bundle containing sanitized config, episodes, and manifest.
+
+    The archive contains:
+    - ``manifest.json``: version, timestamp, file checksums
+    - ``config.rcan.yaml``: sanitized RCAN config (API keys redacted)
+    - ``episodes.jsonl``: recent episode records from EpisodeMemory
+    - ``env_vars.json``: environment variable *names* (values are NOT included)
+
+    Args:
+        config_path: Path to the RCAN config file.
+        output_path: Output ``.tar.gz`` path (auto-generated if None).
+        episodes_limit: Max number of recent episodes to include.
+
+    Returns:
+        Path to the exported ``.tar.gz`` file.
+    """
+    import importlib
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    robot_name = config.get("metadata", {}).get("robot_name", "robot")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if not output_path:
+        output_path = f"{robot_name}_{timestamp}.tar.gz"
+
+    # Build sanitized config YAML bytes
+    sanitized = _sanitize_config(config)
+    config_bytes = yaml.dump(sanitized, default_flow_style=False).encode()
+
+    # Export episodes to JSONL bytes
+    episodes_bytes = b""
+    try:
+        mem_mod = importlib.import_module("castor.memory")
+        db_path = os.getenv("CASTOR_MEMORY_DB", os.path.expanduser("~/.castor/memory.db"))
+        mem = mem_mod.EpisodeMemory(db_path=db_path)
+        recent = mem.query_recent(limit=episodes_limit)
+        lines = []
+        for ep in recent:
+            lines.append(json.dumps(ep, default=str))
+        episodes_bytes = "\n".join(lines).encode()
+    except Exception as exc:
+        logger.debug("export_bundle_tgz: could not load episodes: %s", exc)
+        episodes_bytes = b""
+
+    # Collect env var names only (no values)
+    castor_env_names = [k for k in os.environ if k.startswith(("CASTOR_", "OPENCASTOR_"))]
+    env_vars_bytes = json.dumps({"env_var_names": sorted(castor_env_names)}, indent=2).encode()
+
+    # Compute checksums
+    checksums = {
+        "config.rcan.yaml": hashlib.sha256(config_bytes).hexdigest(),
+        "episodes.jsonl": hashlib.sha256(episodes_bytes).hexdigest(),
+        "env_vars.json": hashlib.sha256(env_vars_bytes).hexdigest(),
+    }
+
+    try:
+        from castor import __version__ as _version
+    except Exception:
+        _version = "unknown"
+
+    manifest = {
+        "exported_at": datetime.now().isoformat(),
+        "robot_name": robot_name,
+        "version": _version,
+        "rcan_version": config.get("rcan_version", "unknown"),
+        "provider": config.get("agent", {}).get("provider", "unknown"),
+        "ai_model": config.get("agent", {}).get("model", "unknown"),
+        "episodes_included": len(episodes_bytes.splitlines()),
+        "checksums": checksums,
+    }
+    manifest_bytes = json.dumps(manifest, indent=2).encode()
+
+    with tarfile.open(output_path, "w:gz") as tf:
+        for name, data in [
+            ("manifest.json", manifest_bytes),
+            ("config.rcan.yaml", config_bytes),
+            ("episodes.jsonl", episodes_bytes),
+            ("env_vars.json", env_vars_bytes),
+        ]:
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+
+    logger.info("Bundle (tgz) exported to %s", output_path)
     return output_path
 
 

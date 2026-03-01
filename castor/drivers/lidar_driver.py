@@ -570,6 +570,106 @@ class LidarDriver:
             logger.warning("LidarDriver.obstacle_velocity error: %s", exc)
             return _zero
 
+    # ── SLAM hint ─────────────────────────────────────────────────────────────
+
+    def slam_hint(self) -> dict:
+        """Return a lightweight SLAM wall-detection hint for each angular sector.
+
+        Groups scan points into three sectors using **signed** angles
+        (normalised from the 0-360 scan output into -180..180):
+
+        * ``front``:  -30° to +30°
+        * ``left``:   +31° to +150°
+        * ``right``: -150° to  -31°
+
+        For each sector with ≥ 3 valid points the method computes:
+
+        * ``distance_m`` — median distance of points in that sector (converted
+          from mm to metres).
+        * ``angle_deg``  — mean signed angle of points in that sector.
+        * ``confidence`` — ``min(1.0, n_points / 10.0)``.
+
+        Sectors with fewer than 3 valid points are omitted from ``walls``.
+
+        Returns:
+            {
+                "available": bool,
+                "walls": [
+                    {
+                        "sector":      "front" | "left" | "right",
+                        "distance_m":  float,
+                        "angle_deg":   float,
+                        "confidence":  float,
+                    },
+                    ...
+                ],
+            }
+
+        Never raises.
+        """
+        try:
+            try:
+                points = self.scan()
+            except Exception as exc:
+                logger.warning("LidarDriver.slam_hint: scan failed: %s", exc)
+                return {"available": False, "walls": []}
+
+            if not points:
+                return {"available": False, "walls": []}
+
+            # Bucket lists: angle (signed, deg) and distance (mm) per sector
+            sector_buckets: dict = {"front": [], "left": [], "right": []}
+
+            for point in points:
+                raw_angle = point.get("angle_deg", 0.0)
+                dist_mm = point.get("distance_mm", 0.0)
+                if dist_mm is None or dist_mm <= 0:
+                    continue
+
+                # Normalise 0-360 → -180..180
+                signed = raw_angle if raw_angle <= 180.0 else raw_angle - 360.0
+
+                if -30.0 <= signed <= 30.0:
+                    sector_buckets["front"].append((signed, dist_mm))
+                elif 31.0 <= signed <= 150.0:
+                    sector_buckets["left"].append((signed, dist_mm))
+                elif -150.0 <= signed <= -31.0:
+                    sector_buckets["right"].append((signed, dist_mm))
+
+            walls: list = []
+            for sector_name, bucket in sector_buckets.items():
+                if len(bucket) < 3:
+                    continue
+                angles = [p[0] for p in bucket]
+                dists_mm = [p[1] for p in bucket]
+
+                # Median distance (mm → m)
+                sorted_dists = sorted(dists_mm)
+                mid = len(sorted_dists) // 2
+                if len(sorted_dists) % 2 == 1:
+                    median_mm = sorted_dists[mid]
+                else:
+                    median_mm = (sorted_dists[mid - 1] + sorted_dists[mid]) / 2.0
+                distance_m = median_mm / 1000.0
+
+                mean_angle = sum(angles) / len(angles)
+                confidence = min(1.0, len(bucket) / 10.0)
+
+                walls.append(
+                    {
+                        "sector": sector_name,
+                        "distance_m": round(distance_m, 4),
+                        "angle_deg": round(mean_angle, 4),
+                        "confidence": round(confidence, 4),
+                    }
+                )
+
+            return {"available": True, "walls": walls}
+
+        except Exception as exc:
+            logger.warning("LidarDriver.slam_hint error: %s", exc)
+            return {"available": False, "walls": []}
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self):

@@ -668,7 +668,6 @@ def cmd_replay(args) -> None:
 
     # ── server replay mode (--url supplied, no local file) ──────────────────
     if url and not getattr(args, "recording", None):
-
         import requests as _req
 
         token = getattr(args, "token", None) or os.getenv("OPENCASTOR_API_TOKEN", "")
@@ -1253,17 +1252,26 @@ def cmd_agents(args) -> None:
 
 def cmd_export(args) -> None:
     """Export config bundle (no secrets)."""
-    from castor.export import export_bundle, print_export_summary
-
     if not os.path.exists(args.config):
         print(f"\n  Config not found: {args.config}")
         return
 
-    output = export_bundle(
-        config_path=args.config,
-        output_path=args.output,
-        fmt=args.format,
-    )
+    if args.format == "tgz":
+        from castor.export import export_bundle_tgz, print_export_summary
+
+        output = export_bundle_tgz(
+            config_path=args.config,
+            output_path=args.output,
+            episodes_limit=args.episodes,
+        )
+    else:
+        from castor.export import export_bundle, print_export_summary
+
+        output = export_bundle(
+            config_path=args.config,
+            output_path=args.output,
+            fmt=args.format,
+        )
     print_export_summary(output, args.format)
 
 
@@ -2995,8 +3003,19 @@ def main() -> None:
     p_export.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
     p_export.add_argument("--output", "-o", default=None, help="Output file path")
     p_export.add_argument(
-        "--format", choices=["zip", "json"], default="zip", help="Export format (default: zip)"
+        "--format",
+        choices=["zip", "json", "tgz"],
+        default="zip",
+        help="Export format: zip (default), json, or tgz (includes episodes)",
     )
+    p_export.add_argument(
+        "--episodes",
+        type=int,
+        default=100,
+        metavar="N",
+        help="Max episodes to include in tgz bundle (default: 100)",
+    )
+    p_export.set_defaults(func=cmd_export)
 
     p_finetune = sub.add_parser(
         "export-finetune",

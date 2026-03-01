@@ -122,6 +122,12 @@ class IMUDriver:
         self._orientation: dict = {"yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0}
         self._last_orient_ts: float = 0.0
 
+        # ── Pose state ────────────────────────────────────────────────────────
+        self._pose_x_m: float = 0.0
+        self._pose_y_m: float = 0.0
+        self._pose_heading_deg: float = 0.0
+        self._pose_last_ts: Optional[float] = None
+
         # ── Step counter ──────────────────────────────────────────────────────
         self._step_count: int = 0
         self._step_last_mag: float = 0.0
@@ -516,6 +522,115 @@ class IMUDriver:
         Convenience wrapper around ``step_count(reset=True)``.
         """
         return self.step_count(reset=True)
+
+    def reset_pose(self) -> None:
+        """Zero all accumulated pose state.
+
+        After calling this method the next call to :meth:`pose` will treat
+        itself as the *first* call and return zeros without integrating any
+        displacement.
+        """
+        self._pose_x_m = 0.0
+        self._pose_y_m = 0.0
+        self._pose_heading_deg = 0.0
+        self._pose_last_ts = None
+
+    def pose(self) -> dict:
+        """Estimate the robot's 2-D pose by dead-reckoning from IMU data.
+
+        On the first call the method records the current timestamp and returns
+        all-zero pose (no ``dt`` to integrate yet).  Subsequent calls integrate
+        heading from gyro Z and position from body-frame accelerometer readings
+        rotated into the world frame.
+
+        Integration equations (dt = elapsed seconds since last call):
+
+        * heading:  ``_pose_heading_deg += gyro_z_dps * dt`` (wrapped ±180°)
+        * body vel: ``vx = accel_x_ms2 * dt``,  ``vy = accel_y_ms2 * dt``
+        * world dx: ``vx * cos(h) - vy * sin(h)``
+        * world dy: ``vx * sin(h) + vy * cos(h)``
+
+        Returns:
+            {
+                "x_m":         float,
+                "y_m":         float,
+                "heading_deg": float,
+                "confidence":  float,   # 0.5 in mock mode
+                "mode":        str,
+            }
+
+        On any internal error returns
+        ``{"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0, "confidence": 0.0, "error": str}``.
+
+        Never raises.
+        """
+        try:
+            now = time.time()
+
+            # First call — record timestamp and return zeros
+            if self._pose_last_ts is None:
+                self._pose_last_ts = now
+                return {
+                    "x_m": 0.0,
+                    "y_m": 0.0,
+                    "heading_deg": 0.0,
+                    "confidence": 0.5,
+                    "mode": self._mode,
+                }
+
+            dt = now - self._pose_last_ts
+            self._pose_last_ts = now
+
+            data = self.read()
+            accel = data.get("accel_g", {})
+            gyro = data.get("gyro_dps", {})
+            mode = data.get("mode", self._mode)
+
+            # Convert g → m/s²
+            accel_x_ms2 = float(accel.get("x", 0.0)) * 9.80665
+            accel_y_ms2 = float(accel.get("y", 0.0)) * 9.80665
+            gyro_z_dps = float(gyro.get("z", 0.0))
+
+            # Integrate heading
+            self._pose_heading_deg += gyro_z_dps * dt
+            # Wrap to -180..180
+            while self._pose_heading_deg > 180.0:
+                self._pose_heading_deg -= 360.0
+            while self._pose_heading_deg < -180.0:
+                self._pose_heading_deg += 360.0
+
+            heading_rad = math.radians(self._pose_heading_deg)
+
+            # Body-frame velocity estimate from acceleration
+            vx = accel_x_ms2 * dt
+            vy = accel_y_ms2 * dt
+
+            # Rotate to world frame
+            dx = vx * math.cos(heading_rad) - vy * math.sin(heading_rad)
+            dy = vx * math.sin(heading_rad) + vy * math.cos(heading_rad)
+
+            self._pose_x_m += dx
+            self._pose_y_m += dy
+
+            confidence = 0.5  # mock mode; hardware would give 0.8
+
+            return {
+                "x_m": float(self._pose_x_m),
+                "y_m": float(self._pose_y_m),
+                "heading_deg": float(self._pose_heading_deg),
+                "confidence": confidence,
+                "mode": mode,
+            }
+
+        except Exception as exc:
+            logger.warning("IMUDriver.pose error: %s", exc)
+            return {
+                "x_m": 0.0,
+                "y_m": 0.0,
+                "heading_deg": 0.0,
+                "confidence": 0.0,
+                "error": str(exc),
+            }
 
     def vibration_bands(self, window_n: int = 64) -> dict:
         """Classify motor vibration using FFT on accelerometer magnitude.

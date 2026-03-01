@@ -5309,6 +5309,91 @@ async def replay_trajectory(
     }
 
 
+@app.get("/api/memory/delta", dependencies=[Depends(verify_token)])
+async def memory_delta(since_id: str):
+    """GET /api/memory/delta — Export episodes newer than *since_id* as JSONL.
+
+    Query params:
+        since_id: UUID of the last known episode; returns all episodes after it.
+    """
+    import tempfile
+
+    from fastapi.responses import StreamingResponse
+
+    from castor.memory import EpisodeMemory
+
+    db_path = os.getenv("CASTOR_MEMORY_DB", os.path.expanduser("~/.castor/memory.db"))
+    mem = EpisodeMemory(db_path=db_path)
+
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        count = mem.export_delta(since_id=since_id, path=tmp_path)
+
+        def _stream():
+            with open(tmp_path, "rb") as fh:
+                yield from fh
+            os.unlink(tmp_path)
+
+        return StreamingResponse(
+            _stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": "attachment; filename=delta.jsonl",
+                "X-Delta-Count": str(count),
+            },
+        )
+    except Exception as exc:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/memory/summary", dependencies=[Depends(verify_token)])
+async def memory_summary():
+    """GET /api/memory/summary — Return the latest auto-generated episode summary."""
+    from castor.memory import EpisodeMemory
+
+    db_path = os.getenv("CASTOR_MEMORY_DB", os.path.expanduser("~/.castor/memory.db"))
+    mem = EpisodeMemory(db_path=db_path)
+    result = mem.get_latest_summary()
+    if result is None:
+        return {"summary": None, "message": "No summaries generated yet"}
+    return result
+
+
+@app.get("/api/lidar/slam", dependencies=[Depends(verify_token)])
+async def lidar_slam():
+    """GET /api/lidar/slam — Wall distance and angle per sector from latest LiDAR scan."""
+    from castor.drivers.lidar_driver import get_lidar
+
+    lidar = get_lidar()
+    return lidar.slam_hint()
+
+
+@app.get("/api/imu/pose", dependencies=[Depends(verify_token)])
+async def imu_pose():
+    """GET /api/imu/pose — Dead-reckoning pose estimate from IMU integration.
+
+    Returns {x_m, y_m, heading_deg, confidence, mode}.
+    """
+    from castor.drivers.imu_driver import get_imu
+
+    imu = get_imu()
+    return imu.pose()
+
+
+@app.post("/api/imu/pose/reset", dependencies=[Depends(verify_token)])
+async def imu_pose_reset():
+    """POST /api/imu/pose/reset — Zero the dead-reckoning pose estimate."""
+    from castor.drivers.imu_driver import get_imu
+
+    imu = get_imu()
+    imu.reset_pose()
+    return {"reset": True}
+
+
 @app.on_event("shutdown")
 async def on_shutdown():
     # Close WebRTC peers

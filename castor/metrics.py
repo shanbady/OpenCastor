@@ -22,7 +22,7 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
-__all__ = ["MetricsRegistry", "get_registry", "ChannelInterArrivalTracker"]
+__all__ = ["MetricsRegistry", "get_registry", "ChannelInterArrivalTracker", "RequestRateTracker"]
 
 _LabelKey = Tuple[str, ...]  # sorted label kv pairs as tuple
 
@@ -246,6 +246,63 @@ class ChannelInterArrivalTracker:
         return "\n".join(lines)
 
 
+class RequestRateTracker:
+    """Per-endpoint request rate tracker using a sliding time window.
+
+    Records timestamps of requests and computes requests/second over the
+    last ``window_s`` seconds. Rendered as an opencastor_endpoint_rps gauge.
+    """
+
+    def __init__(self, window_s: float = 60.0) -> None:
+        self._window_s = window_s
+        self._timestamps: Dict[str, List[float]] = {}  # endpoint → list of epoch timestamps
+        self._lock = threading.Lock()
+
+    def record(self, endpoint: str) -> None:
+        """Record a request for endpoint. Prunes old timestamps outside the window."""
+        now = time.time()
+        with self._lock:
+            if endpoint not in self._timestamps:
+                self._timestamps[endpoint] = []
+            self._timestamps[endpoint].append(now)
+            # Prune timestamps older than window_s
+            cutoff = now - self._window_s
+            self._timestamps[endpoint] = [t for t in self._timestamps[endpoint] if t >= cutoff]
+
+    def rate(self, endpoint: str) -> float:
+        """Return current requests/second for endpoint over the window."""
+        now = time.time()
+        with self._lock:
+            ts = self._timestamps.get(endpoint, [])
+            cutoff = now - self._window_s
+            recent = [t for t in ts if t >= cutoff]
+            if not recent:
+                return 0.0
+            return len(recent) / self._window_s
+
+    def endpoints(self) -> List[str]:
+        """Return sorted list of endpoint names that have been recorded."""
+        with self._lock:
+            return sorted(self._timestamps.keys())
+
+    def render(self) -> str:
+        """Render as opencastor_endpoint_rps gauge in Prometheus text format."""
+        name = "opencastor_endpoint_rps"
+        lines = [
+            f"# HELP {name} Requests per second per endpoint (sliding {self._window_s:.0f}s window)",
+            f"# TYPE {name} gauge",
+        ]
+        now = time.time()
+        cutoff = now - self._window_s
+        with self._lock:
+            for endpoint in sorted(self._timestamps.keys()):
+                recent = [t for t in self._timestamps[endpoint] if t >= cutoff]
+                rps = len(recent) / self._window_s if recent else 0.0
+                ep_safe = endpoint.replace('"', '\\"')
+                lines.append(f'{name}{{endpoint="{ep_safe}"}} {rps:.4f}')
+        return "\n".join(lines)
+
+
 class MetricsRegistry:
     """Central metrics store — call :func:`get_registry` to get the singleton."""
 
@@ -255,6 +312,7 @@ class MetricsRegistry:
         self._histograms: Dict[str, Histogram] = {}
         self._provider_latency = ProviderLatencyTracker()
         self._channel_interarrival = ChannelInterArrivalTracker()
+        self._request_rate = RequestRateTracker()
         self._lock = threading.Lock()
         self._start_time = time.time()
         self._enabled = True
@@ -382,6 +440,11 @@ class MetricsRegistry:
         if self._enabled:
             self._provider_latency.observe(provider_name, latency_ms)
 
+    def record_request(self, endpoint: str) -> None:
+        """Record an API request for *endpoint* in the sliding-window rate tracker."""
+        if self._enabled:
+            self._request_rate.record(endpoint)
+
     def update_status(
         self,
         robot: str = "robot",
@@ -418,6 +481,8 @@ class MetricsRegistry:
             sections.append(self._provider_latency.render())
         if self._channel_interarrival.channels():
             sections.append(self._channel_interarrival.render())
+        if self._request_rate.endpoints():
+            sections.append(self._request_rate.render())
         return "\n".join(sections) + "\n"
 
 

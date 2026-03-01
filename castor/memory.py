@@ -636,6 +636,158 @@ class EpisodeMemory:
             con.execute("DELETE FROM episodes")
         return n
 
+    # ── Delta export (issue #330) ──────────────────────────────────────────────
+
+    def get_latest_episode_id(self) -> Optional[str]:
+        """Return the ``id`` of the most recently inserted episode, or ``None``.
+
+        Uses SQLite ``rowid`` ordering (insertion order) rather than ``ts`` so
+        that even episodes logged in rapid succession within the same
+        millisecond are ordered consistently.
+
+        Returns:
+            UUID string of the latest episode, or ``None`` when the store is
+            empty.
+        """
+        with self._conn() as con:
+            row = con.execute("SELECT id FROM episodes ORDER BY rowid DESC LIMIT 1").fetchone()
+        return row["id"] if row else None
+
+    def export_delta(self, since_id: Optional[str], path: str) -> int:
+        """Export episodes inserted *after* ``since_id`` to a JSONL file.
+
+        Implements a checkpoint-style delta sync suitable for incremental
+        replication to a remote data store or for feeding a downstream
+        analysis pipeline.
+
+        POST /api/memory/delta — endpoint stub (to be wired in api.py by main
+        thread).  The endpoint should accept ``since_id`` as a query parameter
+        and stream-return the JSONL file, or return the episode count.
+
+        Args:
+            since_id: UUID string of the last-seen episode.  All episodes whose
+                      SQLite ``rowid`` is strictly greater than the rowid of
+                      this episode are included.  Pass ``None`` or ``""`` to
+                      export *all* episodes (equivalent to a full export).
+            path:     Output file path for the JSONL file.  Will be created or
+                      overwritten.
+
+        Returns:
+            Number of episodes written to *path*.
+        """
+        written = 0
+        with self._conn() as con:
+            if since_id:
+                # Resolve the rowid of the checkpoint episode.
+                ref = con.execute("SELECT rowid FROM episodes WHERE id = ?", (since_id,)).fetchone()
+                if ref is not None:
+                    rows = con.execute(
+                        "SELECT * FROM episodes WHERE rowid > ? ORDER BY rowid ASC",
+                        (ref["rowid"],),
+                    ).fetchall()
+                else:
+                    # Unknown since_id — treat as full export.
+                    rows = con.execute("SELECT * FROM episodes ORDER BY rowid ASC").fetchall()
+            else:
+                rows = con.execute("SELECT * FROM episodes ORDER BY rowid ASC").fetchall()
+
+        with open(path, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(self._row_to_dict(row)) + "\n")
+                written += 1
+        return written
+
+    # ── Auto-summarize (issue #339) ────────────────────────────────────────────
+
+    def _init_summaries_table(self) -> None:
+        """Create the ``summaries`` table if it does not exist."""
+        ddl = """
+        CREATE TABLE IF NOT EXISTS summaries (
+            id       TEXT PRIMARY KEY,
+            ts       REAL NOT NULL,
+            limit_n  INTEGER NOT NULL,
+            summary  TEXT NOT NULL
+        );
+        """
+        with self._conn() as con:
+            con.executescript(ddl)
+
+    def summarize_batch(self, provider_think_fn: Any, limit: int = 100) -> str:
+        """Summarize the last ``limit`` episodes using an LLM provider.
+
+        Fetches recent episodes via :meth:`query_recent`, builds a compact
+        text representation, calls the provider, and stores the result in the
+        ``summaries`` table.
+
+        If the DB is empty or no episodes are returned, returns an empty string
+        without calling the provider.
+
+        Args:
+            provider_think_fn: Callable matching the signature
+                ``(image_bytes: bytes, instruction: str) -> Thought``.
+                Typically ``brain.think``.
+            limit:             Maximum number of recent episodes to summarise.
+                               Defaults to 100.  Uses the capped
+                               :meth:`query_recent` semantics (max 500).
+
+        Returns:
+            The ``raw_text`` of the Thought returned by the provider, or an
+            empty string when there are no episodes to summarise.
+        """
+        self._init_summaries_table()
+
+        effective_limit = max(1, limit)
+        episodes = self.query_recent(limit=effective_limit)
+        if not episodes:
+            return ""
+
+        lines: List[str] = []
+        for ep in episodes:
+            action_type = ""
+            if ep.get("action") and isinstance(ep["action"], dict):
+                action_type = ep["action"].get("type", "")
+            instruction = ep.get("instruction") or ""
+            outcome = ep.get("outcome") or ""
+            lines.append(f"[{action_type}] {instruction} ({outcome})")
+
+        body = "\n".join(lines)
+        prompt = (
+            f"You are summarising the recent activity log of a robot.\n"
+            f"Write a 2-3 sentence natural language summary of the following episodes:\n\n"
+            f"{body}\n\n"
+            f"Summary:"
+        )
+
+        thought = provider_think_fn(b"", prompt)
+        summary_text: str = thought.raw_text if thought is not None else ""
+
+        # Persist the summary.
+        summary_id = str(uuid.uuid4())
+        summary_ts = time.time()
+        with self._conn() as con:
+            con.execute(
+                "INSERT INTO summaries (id, ts, limit_n, summary) VALUES (?, ?, ?, ?)",
+                (summary_id, summary_ts, effective_limit, summary_text),
+            )
+
+        return summary_text
+
+    def get_latest_summary(self) -> Optional[Dict]:
+        """Return the most recently stored summary row, or ``None``.
+
+        Returns:
+            Dict with keys ``id``, ``ts``, ``limit_n``, ``summary``, or
+            ``None`` when the ``summaries`` table is empty or does not exist.
+        """
+        self._init_summaries_table()
+        with self._conn() as con:
+            row = con.execute(
+                "SELECT id, ts, limit_n, summary FROM summaries ORDER BY ts DESC LIMIT 1"
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod

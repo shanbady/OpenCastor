@@ -96,7 +96,7 @@ class VoiceAssistantLoop:
     def _loop(self):
         from castor.hotword import get_detector
 
-        detector = get_detector()
+        detector = get_detector(wake_phrase=self._hotword)
 
         while self._running:
             try:

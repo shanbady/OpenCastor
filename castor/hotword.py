@@ -295,9 +295,17 @@ class WakeWordDetector:
 _detector: Optional[WakeWordDetector] = None
 
 
-def get_detector() -> WakeWordDetector:
-    """Return the process-wide WakeWordDetector."""
+def get_detector(wake_phrase: Optional[str] = None) -> WakeWordDetector:
+    """Return the process-wide WakeWordDetector.
+
+    If *wake_phrase* is provided and differs from the current detector's
+    phrase, the singleton is recreated with the new phrase.
+    """
     global _detector
+    effective = wake_phrase or CASTOR_HOTWORD
     if _detector is None:
-        _detector = WakeWordDetector()
+        _detector = WakeWordDetector(wake_phrase=effective)
+    elif wake_phrase and _detector._wake_phrase != effective:
+        # Phrase changed (e.g. robot name from RCAN config) — recreate.
+        _detector = WakeWordDetector(wake_phrase=effective)
     return _detector

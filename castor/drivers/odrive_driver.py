@@ -2,28 +2,40 @@
 ODrive / VESC brushless motor driver.
 
 Supports:
-  - ODrive v3.x/v0.5.x via native `odrive` Python library (USB)
-  - VESC via `pyvesc` + pyserial (UART/USB serial)
+  - ODrive v3.x/v0.5.x via native ``odrive`` Python library (USB)
+  - VESC via ``pyvesc`` + pyserial (UART/USB serial)
   - Mock fallback when neither is installed
 
-RCAN config (ODrive):
-  drivers:
-  - id: brushless
-    protocol: odrive
-    axis0: 0
-    axis1: 1
-    max_velocity: 20.0    # turns/sec
+RCAN config (ODrive)::
 
-RCAN config (VESC):
-  drivers:
-  - id: brushless
-    protocol: vesc
-    port: /dev/ttyUSB0
-    max_velocity: 5000    # ERPM
+    drivers:
+    - id: brushless
+      protocol: odrive
+      axis0: 0
+      axis1: 1
+      max_velocity: 20.0      # turns/sec
+      control_mode: velocity  # velocity | position | torque
 
-Install: pip install odrive   (ODrive)
-         pip install pyvesc pyserial  (VESC)
+RCAN config (VESC)::
+
+    drivers:
+    - id: brushless
+      protocol: vesc
+      port: /dev/ttyUSB0
+      max_velocity: 5000    # ERPM
+
+Install::
+
+    pip install odrive     (ODrive)
+    pip install pyvesc pyserial  (VESC)
+
+Issue #266 additions:
+  - ``control_mode`` RCAN field: ``velocity`` | ``position`` | ``torque``
+  - ``set_position(axis, pos_turns)`` — position-control setpoint
+  - ``get_encoder()`` → ``{pos_turns, vel_turns_s, error}``
 """
+
+from __future__ import annotations
 
 import logging
 
@@ -31,12 +43,17 @@ from castor.drivers.base import DriverBase
 
 logger = logging.getLogger("OpenCastor.ODrive")
 
+# ---------------------------------------------------------------------------
+# Optional SDK guards
+# ---------------------------------------------------------------------------
+
 try:
     import odrive as _odrive
 
     HAS_ODRIVE = True
 except ImportError:
     HAS_ODRIVE = False
+    _odrive = None  # type: ignore[assignment]
 
 try:
     import pyvesc
@@ -46,9 +63,32 @@ try:
 except ImportError:
     HAS_VESC = False
 
+# ---------------------------------------------------------------------------
+# Control mode constants (ODrive)
+# ---------------------------------------------------------------------------
+
+_CONTROL_MODE_VELOCITY = 2  # ODrive CONTROL_MODE_VELOCITY_CONTROL
+_CONTROL_MODE_POSITION = 3  # ODrive CONTROL_MODE_POSITION_CONTROL
+_CONTROL_MODE_TORQUE = 1  # ODrive CONTROL_MODE_TORQUE_CONTROL
+
+_CONTROL_MODE_MAP = {
+    "velocity": _CONTROL_MODE_VELOCITY,
+    "position": _CONTROL_MODE_POSITION,
+    "torque": _CONTROL_MODE_TORQUE,
+}
+
 
 class ODriveDriver(DriverBase):
-    """ODrive / VESC brushless motor controller."""
+    """ODrive / VESC brushless motor controller.
+
+    Args:
+        config: RCAN driver config dict.  Relevant keys:
+                ``protocol`` (``"odrive"`` | ``"vesc"``),
+                ``axis0`` (int, default 0),
+                ``axis1`` (int, default 1),
+                ``max_velocity`` (float, default 20.0 turns/s or ERPM),
+                ``control_mode`` (``"velocity"`` | ``"position"`` | ``"torque"``).
+    """
 
     def __init__(self, config: dict):
         self.config = config
@@ -56,6 +96,10 @@ class ODriveDriver(DriverBase):
         self._max_vel = float(config.get("max_velocity", 20.0))
         self._axis0_idx = int(config.get("axis0", 0))
         self._axis1_idx = int(config.get("axis1", 1))
+        self._control_mode_name: str = config.get("control_mode", "velocity").lower()
+        self._control_mode_int: int = _CONTROL_MODE_MAP.get(
+            self._control_mode_name, _CONTROL_MODE_VELOCITY
+        )
         self._mode = "mock"
         self._odrv = None
         self._vesc_serial = None
@@ -65,8 +109,11 @@ class ODriveDriver(DriverBase):
                 self._odrv = _odrive.find_any(timeout=5)
                 if self._odrv is not None:
                     self._mode = "hardware"
+                    self._apply_control_mode()
                     logger.info(
-                        "ODrive connected: serial=%s", getattr(self._odrv, "serial_number", "?")
+                        "ODrive connected: serial=%s control_mode=%s",
+                        getattr(self._odrv, "serial_number", "?"),
+                        self._control_mode_name,
                     )
                 else:
                     logger.warning("ODrive not found — mock mode")
@@ -85,16 +132,45 @@ class ODriveDriver(DriverBase):
         if self._mode == "mock":
             logger.info("ODrive/VESC driver running in mock mode (protocol=%s)", self._protocol)
 
-    # ── Helpers ───────────────────────────────────────────────────────
+    # ── Helpers ────────────────────────────────────────────────────────────────
 
     def _odrive_axis(self, idx: int):
+        """Return the ODrive axis object for *idx* (0 or 1).
+
+        Args:
+            idx: Axis index (0 or 1).
+
+        Returns:
+            ODrive axis object or ``None`` if not connected.
+        """
         if self._odrv is None:
             return None
         return self._odrv.axis0 if idx == 0 else self._odrv.axis1
 
-    # ── DriverBase interface ──────────────────────────────────────────
+    def _apply_control_mode(self) -> None:
+        """Push the RCAN ``control_mode`` setting to both ODrive axes."""
+        if self._odrv is None:
+            return
+        for idx in (self._axis0_idx, self._axis1_idx):
+            ax = self._odrive_axis(idx)
+            if ax is None:
+                continue
+            try:
+                ax.controller.config.control_mode = self._control_mode_int
+            except Exception as exc:
+                logger.warning("ODrive control_mode set error (axis %d): %s", idx, exc)
 
-    def move(self, action: dict):
+    # ── DriverBase interface ────────────────────────────────────────────────────
+
+    def move(self, action: dict) -> None:
+        """Move the robot using velocity setpoints.
+
+        Maps ``linear`` / ``angular`` to left/right velocity targets.
+
+        Args:
+            action: Dict with ``linear`` (float) and ``angular`` (float) keys.
+                    Values in [-1, 1] range; scaled by ``max_velocity``.
+        """
         linear = float(action.get("linear", 0.0))
         angular = float(action.get("angular", 0.0))
         vel_l = (linear - angular) * self._max_vel
@@ -117,13 +193,65 @@ class ODriveDriver(DriverBase):
 
         elif self._protocol == "vesc" and self._vesc_serial:
             try:
-                # VESC SetRPM — use left motor RPM as primary signal
                 erpm = int(vel_l)
                 self._vesc_serial.write(pyvesc.encode(pyvesc.SetRPM(erpm)))
             except Exception as exc:
                 logger.error("VESC move error: %s", exc)
 
-    def stop(self):
+    def set_position(self, axis: int, pos_turns: float) -> None:
+        """Set a position-control setpoint for a single axis.
+
+        Requires ``control_mode: position`` in the RCAN config.
+
+        Args:
+            axis:       Axis index (0 or 1).
+            pos_turns:  Target position in turns (encoder counts from origin).
+        """
+        if self._mode == "mock":
+            logger.debug("MOCK set_position axis=%d pos=%.4f turns", axis, pos_turns)
+            return
+
+        if self._protocol == "odrive" and self._odrv:
+            ax = self._odrive_axis(axis)
+            if ax is None:
+                logger.warning("set_position: axis %d not available", axis)
+                return
+            try:
+                ax.controller.input_pos = float(pos_turns)
+            except Exception as exc:
+                logger.error("ODrive set_position error (axis %d): %s", axis, exc)
+
+    def get_encoder(self, axis: int = 0) -> dict:
+        """Read encoder state for *axis*.
+
+        Args:
+            axis: Axis index (0 or 1).
+
+        Returns:
+            Dict with:
+              - ``pos_turns`` (float): Current position in turns.
+              - ``vel_turns_s`` (float): Current velocity in turns/second.
+              - ``error`` (int | None): ODrive axis error code, or ``None``.
+        """
+        if self._mode == "mock":
+            return {"pos_turns": 0.0, "vel_turns_s": 0.0, "error": None}
+
+        if self._protocol == "odrive" and self._odrv:
+            ax = self._odrive_axis(axis)
+            if ax is None:
+                return {"pos_turns": 0.0, "vel_turns_s": 0.0, "error": "axis unavailable"}
+            try:
+                pos = float(ax.encoder.pos_estimate)
+                vel = float(ax.encoder.vel_estimate)
+                err = getattr(ax.encoder, "error", None)
+                return {"pos_turns": pos, "vel_turns_s": vel, "error": err}
+            except Exception as exc:
+                return {"pos_turns": 0.0, "vel_turns_s": 0.0, "error": str(exc)}
+
+        return {"pos_turns": 0.0, "vel_turns_s": 0.0, "error": "protocol unsupported"}
+
+    def stop(self) -> None:
+        """Halt both axes (velocity → 0)."""
         if self._mode == "mock":
             logger.debug("MOCK %s stop", self._protocol)
             return
@@ -141,7 +269,8 @@ class ODriveDriver(DriverBase):
             except Exception:
                 pass
 
-    def close(self):
+    def close(self) -> None:
+        """Stop motors and release resources."""
         self.stop()
         if self._vesc_serial:
             try:
@@ -150,19 +279,30 @@ class ODriveDriver(DriverBase):
                 pass
 
     def health_check(self) -> dict:
+        """Return driver status dict.
+
+        Returns:
+            Dict with ``ok``, ``mode``, ``protocol``, ``control_mode``,
+            optional ``vbus_v``, and ``error``.
+        """
+        base = {
+            "protocol": self._protocol,
+            "control_mode": self._control_mode_name,
+        }
         if self._mode == "mock":
-            return {"ok": True, "mode": "mock", "protocol": self._protocol, "error": None}
+            return {"ok": True, "mode": "mock", "error": None, **base}
         if self._protocol == "odrive" and self._odrv:
             try:
                 vbus = round(self._odrv.vbus_voltage, 2)
-                return {"ok": True, "mode": "hardware", "vbus_v": vbus, "error": None}
+                return {"ok": True, "mode": "hardware", "vbus_v": vbus, "error": None, **base}
             except Exception as exc:
-                return {"ok": False, "mode": "hardware", "error": str(exc)}
+                return {"ok": False, "mode": "hardware", "error": str(exc), **base}
         if self._protocol == "vesc" and self._vesc_serial:
             return {
                 "ok": self._vesc_serial.is_open,
                 "mode": "hardware",
                 "port": self._vesc_serial.port,
                 "error": None,
+                **base,
             }
-        return {"ok": False, "mode": "mock", "error": "no device connected"}
+        return {"ok": False, "mode": "mock", "error": "no device connected", **base}

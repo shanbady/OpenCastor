@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opencastor"
-version = "2026.3.1.14"
+version = "2026.3.1.15"
 description = "The Universal Runtime for Embodied AI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -71,7 +71,10 @@ rpi = [
     "adafruit-circuitpython-pca9685>=3.4.0; sys_platform == 'linux'",
     "adafruit-circuitpython-motor>=3.4.0; sys_platform == 'linux'",
     "neonize==0.3.14.post0",
+    "picamera2>=0.3; sys_platform == 'linux'",
 ]
+elevenlabs = ["elevenlabs>=1.0"]
+sdk = ["httpx>=0.27"]
 whatsapp = ["neonize==0.3.14.post0"]
 whatsapp-twilio = ["twilio>=9.0.0"]
 telegram = ["python-telegram-bot>=21.0"]

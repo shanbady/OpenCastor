@@ -38,6 +38,7 @@ REST API (implemented in api.py):
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 import uuid
@@ -78,6 +79,10 @@ class MissionRunner:
         }
         # job_id → {"waypoints": [...], "loop": bool} — capped at MAX_HISTORY entries
         self._history: Dict[str, Dict[str, Any]] = {}
+        # Dead-reckoning position: updated after each waypoint
+        self._position: Dict[str, float] = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}
+        # Geo-fence bounds (or None for no fencing): {x_min, x_max, y_min, y_max} in metres
+        self._geofence: Optional[Dict[str, float]] = self._parse_geofence(config)
 
     # ------------------------------------------------------------------
     # Public API
@@ -163,6 +168,24 @@ class MissionRunner:
             for jid, v in self._history.items()
         ]
 
+    def position(self) -> Dict[str, float]:
+        """Return the current dead-reckoning position ``{x_m, y_m, heading_deg}``."""
+        with self._lock:
+            return dict(self._position)
+
+    def reset_position(self) -> None:
+        """Reset the dead-reckoning position to the origin."""
+        with self._lock:
+            self._position = {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}
+
+    def set_geofence(self, bounds: Optional[Dict[str, float]]) -> None:
+        """Set or clear the geo-fence boundary.
+
+        Args:
+            bounds: ``{x_min, x_max, y_min, y_max}`` in metres, or ``None`` to disable.
+        """
+        self._geofence = bounds
+
     def stop(self) -> None:
         """Cancel the running mission and wait for the thread to finish."""
         self._stop_event.set()
@@ -182,6 +205,45 @@ class MissionRunner:
         """Return a snapshot of the current mission status."""
         with self._lock:
             return dict(self._status)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_geofence(config: Dict[str, Any]) -> Optional[Dict[str, float]]:
+        """Extract geo-fence config from the RCAN config dict."""
+        gf = (config.get("mission") or {}).get("geofence")
+        if not gf:
+            return None
+        try:
+            return {
+                "x_min": float(gf["x_min"]),
+                "x_max": float(gf["x_max"]),
+                "y_min": float(gf["y_min"]),
+                "y_max": float(gf["y_max"]),
+            }
+        except (KeyError, TypeError, ValueError):
+            logger.warning("Invalid mission.geofence config — geo-fence disabled")
+            return None
+
+    def _update_position(self, heading_deg: float, distance_m: float) -> None:
+        """Update dead-reckoning position after executing one waypoint segment."""
+        with self._lock:
+            self._position["heading_deg"] = (self._position["heading_deg"] + heading_deg) % 360
+            heading_rad = math.radians(self._position["heading_deg"])
+            self._position["x_m"] += distance_m * math.sin(heading_rad)
+            self._position["y_m"] += distance_m * math.cos(heading_rad)
+
+    def _check_geofence(self) -> bool:
+        """Return True if position is within the geo-fence (or no fence is set)."""
+        if self._geofence is None:
+            return True
+        with self._lock:
+            x = self._position["x_m"]
+            y = self._position["y_m"]
+        gf = self._geofence
+        return gf["x_min"] <= x <= gf["x_max"] and gf["y_min"] <= y <= gf["y_max"]
 
     # ------------------------------------------------------------------
     # Internal execution loop
@@ -237,6 +299,23 @@ class MissionRunner:
                             "label": label,
                             "step": step_idx + 1,
                         }
+
+                    # Update dead-reckoning position
+                    self._update_position(heading_deg, distance_m)
+
+                    # Geo-fence check — abort if outside bounds
+                    if not self._check_geofence():
+                        with self._lock:
+                            pos = dict(self._position)
+                            breach_msg = f"geofence_breach: x={pos['x_m']:.2f}m y={pos['y_m']:.2f}m"
+                            self._status["error"] = breach_msg
+                        logger.warning("Mission %s %s", job_id[:8], breach_msg)
+                        if self._driver is not None:
+                            try:
+                                self._driver.stop()
+                            except Exception:
+                                pass
+                        return
 
                     with self._lock:
                         self._status["results"].append(result)

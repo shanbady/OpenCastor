@@ -118,3 +118,57 @@ def test_mqtt_in_auth_map():
     from castor.auth import CHANNEL_AUTH_MAP
 
     assert "mqtt" in CHANNEL_AUTH_MAP
+
+
+# ===========================================================================
+# Issue #252 — MQTT telemetry publisher
+# ===========================================================================
+
+
+class TestMQTTTelemetry:
+    def _make_channel(self, publish_telemetry=True, hz=10):
+        """Create MQTTChannel with telemetry config (no paho needed for __init__)."""
+        from unittest.mock import MagicMock
+
+        config = {
+            "broker_host": "localhost",
+            "broker_port": 1883,
+            "publish_telemetry": publish_telemetry,
+            "telemetry_hz": hz,
+            "metadata": {"robot_name": "test-bot"},
+        }
+        ch = MQTTChannel(config)
+        mock_client = MagicMock()
+        ch._client = mock_client
+        return ch, mock_client
+
+    def test_telemetry_attributes_stored(self):
+        """publish_telemetry and telemetry_hz should be stored on the channel."""
+        ch, _ = self._make_channel(publish_telemetry=True, hz=5)
+        assert ch._publish_telemetry is True
+        assert ch._telemetry_hz == 5.0
+
+    def test_telemetry_disabled_by_default(self):
+        """publish_telemetry defaults to False."""
+        ch = MQTTChannel({"broker_host": "localhost"})
+        assert ch._publish_telemetry is False
+
+    def test_telemetry_loop_publishes_status(self):
+        """_telemetry_loop publishes to opencastor/{robot}/status."""
+        import threading
+        import time
+
+        ch, mock_client = self._make_channel(publish_telemetry=True, hz=20)
+        ch._start_time = time.time()
+
+        stop = threading.Event()
+        ch._telemetry_stop = stop
+
+        t = threading.Thread(target=ch._telemetry_loop, daemon=True)
+        t.start()
+        time.sleep(0.15)  # Allow at least one publish cycle at 20Hz
+        stop.set()
+        t.join(timeout=1.0)
+
+        calls = [str(c) for c in mock_client.publish.call_args_list]
+        assert any("test-bot/status" in c for c in calls)

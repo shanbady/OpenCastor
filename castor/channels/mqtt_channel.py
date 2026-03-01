@@ -25,6 +25,8 @@ Optional config:
     keepalive:                Keepalive in seconds (default: 60)
     qos:                      QoS level 0/1/2 (default: 0)
     tls:                      Enable TLS (default: false)
+    publish_telemetry:        Periodically publish robot state (default: false)
+    telemetry_hz:             Telemetry publish rate in Hz (default: 1)
 
 Install::
 
@@ -44,9 +46,11 @@ RCAN config example::
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import threading
+import time
 from typing import Callable, Optional
 
 from castor.channels.base import BaseChannel
@@ -72,6 +76,7 @@ class MQTTChannel(BaseChannel):
 
     def __init__(self, config: dict, on_message: Optional[Callable] = None):
         super().__init__(config, on_message)
+        self._config = config
         self._broker_host = config.get("broker_host", os.getenv("MQTT_BROKER_HOST", "localhost"))
         self._broker_port = int(config.get("broker_port", os.getenv("MQTT_BROKER_PORT", "1883")))
         self._subscribe_topic = config.get("subscribe_topic", "opencastor/input")
@@ -88,6 +93,13 @@ class MQTTChannel(BaseChannel):
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._connected = threading.Event()
         self._running = False
+        # Telemetry publisher
+        self._publish_telemetry = bool(config.get("publish_telemetry", False))
+        self._telemetry_hz = float(config.get("telemetry_hz", 1.0))
+        self._telemetry_stop = threading.Event()
+        self._telemetry_thread: Optional[threading.Thread] = None
+        self._last_action: Optional[dict] = None
+        self._start_time: Optional[float] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -129,9 +141,22 @@ class MQTTChannel(BaseChannel):
             self._publish_topic,
         )
 
+        if self._publish_telemetry:
+            self._start_time = time.time()
+            self._telemetry_stop.clear()
+            self._telemetry_thread = threading.Thread(
+                target=self._telemetry_loop, daemon=True, name="mqtt-telemetry"
+            )
+            self._telemetry_thread.start()
+            logger.info("MQTT telemetry publisher started at %.1f Hz", self._telemetry_hz)
+
     async def stop(self):
         """Disconnect from the MQTT broker."""
         self._running = False
+        if self._publish_telemetry and self._telemetry_thread is not None:
+            self._telemetry_stop.set()
+            self._telemetry_thread.join(timeout=2)
+            self._telemetry_thread = None
         if self._client:
             self._client.loop_stop()
             self._client.disconnect()
@@ -197,8 +222,39 @@ class MQTTChannel(BaseChannel):
                 reply = future.result(timeout=30.0)
                 if reply and self._client:
                     self._client.publish(self._publish_topic, reply.encode(), qos=self._qos)
+                    # Store last action for telemetry publisher
+                    try:
+                        parsed = json.loads(reply)
+                        if isinstance(parsed, dict) and "action" in parsed:
+                            self._last_action = parsed["action"]
+                        elif isinstance(parsed, dict):
+                            self._last_action = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        self._last_action = {"text": reply[:200]}
             except Exception as exc:
                 logger.warning("MQTT message handling error: %s", exc)
+
+    def _telemetry_loop(self) -> None:
+        """Background thread: publish robot state to MQTT at ``telemetry_hz`` Hz."""
+        interval = 1.0 / max(0.1, self._telemetry_hz)
+        robot = self._config.get("metadata", {}).get("robot_name", "robot")
+        while not self._telemetry_stop.is_set():
+            try:
+                uptime = time.time() - (self._start_time or time.time())
+                self._client.publish(
+                    f"opencastor/{robot}/status",
+                    json.dumps({"running": True, "uptime_s": round(uptime, 1)}),
+                    qos=self._qos,
+                )
+                if self._last_action:
+                    self._client.publish(
+                        f"opencastor/{robot}/action",
+                        json.dumps(self._last_action),
+                        qos=self._qos,
+                    )
+            except Exception as exc:
+                logger.warning("MQTT telemetry publish error: %s", exc)
+            self._telemetry_stop.wait(interval)
 
     def _handle_command_bridge(self, payload: str) -> None:
         """Forward a command_topic message to the brain and publish the result.
@@ -206,8 +262,6 @@ class MQTTChannel(BaseChannel):
         The payload may be plain text (treated as instruction) or a JSON object
         with an ``instruction`` key.
         """
-        import json
-
         try:
             data = json.loads(payload)
             instruction = data.get("instruction", payload) if isinstance(data, dict) else payload

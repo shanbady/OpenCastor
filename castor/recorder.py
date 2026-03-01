@@ -28,6 +28,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -154,6 +155,10 @@ class VideoRecorder:
                 frame_dir.mkdir(exist_ok=True)
                 meta.path = frame_dir
 
+            # Initialise the index entry now so annotations can be added during recording
+            self._index[rec_id] = {**meta.to_dict(), "annotations": []}
+            self._save_index()
+
             logger.info("Recording started: id=%s name=%s path=%s", rec_id, name, path)
             return rec_id
 
@@ -213,7 +218,9 @@ class VideoRecorder:
                 self._writer = None
 
             self._current = None
-            self._index[meta.id] = meta.to_dict()
+            # Preserve any annotations accumulated during recording
+            existing_annotations = self._index.get(meta.id, {}).get("annotations", [])
+            self._index[meta.id] = {**meta.to_dict(), "annotations": existing_annotations}
             self._save_index()
 
             logger.info(
@@ -234,6 +241,104 @@ class VideoRecorder:
         """Metadata for the active recording, or None."""
         with self._lock:
             return self._current.to_dict() if self._current else None
+
+    # ------------------------------------------------------------------
+    # Annotations
+    # ------------------------------------------------------------------
+
+    _MAX_ANNOTATIONS = 500
+
+    def add_annotation(
+        self,
+        rec_id: str,
+        timestamp_s: float,
+        label: str,
+        action: Optional[str] = None,
+    ) -> Optional[str]:
+        """Add a timed annotation to a recording.
+
+        Args:
+            rec_id: Recording ID to annotate.
+            timestamp_s: Offset in seconds from the start of the recording.
+            label: Human-readable label for the segment.
+            action: Optional action string (e.g. "move_forward").
+
+        Returns:
+            Annotation ID (UUID4 string) on success, or None if rec_id not found.
+        """
+        with self._lock:
+            entry = self._index.get(rec_id)
+            if entry is None:
+                return None
+
+            if "annotations" not in entry:
+                entry["annotations"] = []
+
+            annotation_id = str(uuid.uuid4())
+            annotation: Dict[str, Any] = {
+                "id": annotation_id,
+                "timestamp_s": timestamp_s,
+                "label": label,
+                "action": action,
+                "created_at": time.time(),
+            }
+            entry["annotations"].append(annotation)
+
+            # FIFO eviction when over the limit
+            if len(entry["annotations"]) > self._MAX_ANNOTATIONS:
+                entry["annotations"] = entry["annotations"][-self._MAX_ANNOTATIONS :]
+
+            self._save_index()
+            logger.debug(
+                "Annotation added: rec_id=%s annotation_id=%s label=%r ts=%.3f",
+                rec_id,
+                annotation_id,
+                label,
+                timestamp_s,
+            )
+            return annotation_id
+
+    def get_annotations(self, rec_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Return all annotations for a recording, sorted by timestamp ascending.
+
+        Args:
+            rec_id: Recording ID.
+
+        Returns:
+            Sorted list of annotation dicts, or None if rec_id not found.
+        """
+        with self._lock:
+            entry = self._index.get(rec_id)
+            if entry is None:
+                return None
+            annotations = list(entry.get("annotations", []))
+        return sorted(annotations, key=lambda a: a.get("timestamp_s", 0.0))
+
+    def delete_annotation(self, rec_id: str, annotation_id: str) -> bool:
+        """Remove an annotation by ID from a recording.
+
+        Args:
+            rec_id: Recording ID.
+            annotation_id: UUID string of the annotation to remove.
+
+        Returns:
+            True if the annotation was found and deleted, False otherwise.
+        """
+        with self._lock:
+            entry = self._index.get(rec_id)
+            if entry is None:
+                return False
+
+            annotations = entry.get("annotations", [])
+            original_len = len(annotations)
+            entry["annotations"] = [a for a in annotations if a.get("id") != annotation_id]
+
+            if len(entry["annotations"]) == original_len:
+                return False
+
+            self._save_index()
+            logger.debug("Annotation deleted: rec_id=%s annotation_id=%s", rec_id, annotation_id)
+            return True
 
     # ------------------------------------------------------------------
     # Listing

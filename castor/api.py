@@ -2268,6 +2268,138 @@ async def nav_mission_history():
 
 
 # ---------------------------------------------------------------------------
+# Mission position + geo-fence endpoints (issue #249)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/nav/mission/position", dependencies=[Depends(verify_token)])
+async def nav_mission_position():
+    """Return the current dead-reckoning position of the robot.
+
+    Position is accumulated across waypoints using wheel-odometry physics from
+    the ``physics`` block in the RCAN config.  Resets to (0, 0) when a new
+    mission starts.
+
+    Returns:
+        200: ``{"x_m": float, "y_m": float, "heading_deg": float}``
+    """
+    if state.mission_runner is None:
+        return {"x_m": 0.0, "y_m": 0.0, "heading_deg": 0.0}
+    return state.mission_runner.position()
+
+
+class _GeofenceRequest(BaseModel):
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+
+
+@app.post("/api/nav/mission/geofence", dependencies=[Depends(verify_token)])
+async def nav_mission_set_geofence(req: _GeofenceRequest):
+    """Set a rectangular geo-fence boundary.
+
+    Any running or future mission will abort if the robot's dead-reckoning
+    position leaves this bounding box.
+
+    Body (JSON)::
+
+        {"x_min": -2.0, "x_max": 2.0, "y_min": -2.0, "y_max": 2.0}
+
+    Returns:
+        200: ``{"ok": true, "geofence": {x_min, x_max, y_min, y_max}}``
+    """
+    if req.x_min >= req.x_max or req.y_min >= req.y_max:
+        raise HTTPException(
+            status_code=422,
+            detail="x_min must be < x_max and y_min must be < y_max",
+        )
+    bounds = {"x_min": req.x_min, "x_max": req.x_max, "y_min": req.y_min, "y_max": req.y_max}
+    if state.mission_runner is None:
+        from castor.mission import MissionRunner
+
+        state.mission_runner = MissionRunner(state.driver, state.config or {})
+    state.mission_runner.set_geofence(bounds)
+    return {"ok": True, "geofence": bounds}
+
+
+@app.delete("/api/nav/mission/geofence", dependencies=[Depends(verify_token)])
+async def nav_mission_clear_geofence():
+    """Clear the geo-fence (disable boundary enforcement).
+
+    Returns:
+        200: ``{"ok": true, "geofence": null}``
+    """
+    if state.mission_runner is not None:
+        state.mission_runner.set_geofence(None)
+    return {"ok": True, "geofence": None}
+
+
+# ---------------------------------------------------------------------------
+# Arduino sensor WebSocket stream (issue #248)
+# ---------------------------------------------------------------------------
+
+
+@app.websocket("/ws/arduino/sensors")
+async def ws_arduino_sensors(websocket: WebSocket, token: str = ""):
+    """WebSocket endpoint that streams Arduino sensor readings at a configurable rate.
+
+    Query parameters:
+        ``?token=<api_token>``            — required when API_TOKEN is set
+        ``?sensor_ids=hcsr04,dht22``      — comma-separated sensor IDs to poll
+        ``?rate_hz=5``                    — push rate in Hz (1–20, default 5)
+
+    Pushed frame schema::
+
+        {
+            "ts":      float,             # Unix timestamp
+            "sensors": {id: data, ...},   # per-sensor readings (None if unavailable)
+        }
+
+    Requires an ``ArduinoSerialDriver`` as the active driver.
+    """
+    if API_TOKEN and token != API_TOKEN:
+        await websocket.close(code=1008)
+        return
+
+    if state.driver is None or not hasattr(state.driver, "query_sensor"):
+        await websocket.close(code=1011)
+        return
+
+    params = websocket.query_params
+    raw_ids = params.get("sensor_ids", "hcsr04")
+    sensor_ids = [s.strip() for s in raw_ids.split(",") if s.strip()]
+    try:
+        rate_hz = max(0.1, min(20.0, float(params.get("rate_hz", "5"))))
+    except ValueError:
+        rate_hz = 5.0
+    interval = 1.0 / rate_hz
+
+    await websocket.accept()
+    logger.debug("WS arduino/sensors connected: sensors=%s rate=%.1fHz", sensor_ids, rate_hz)
+
+    try:
+        while True:
+            ts = time.time()
+            readings = {}
+            for sid in sensor_ids:
+                try:
+                    readings[sid] = await asyncio.to_thread(state.driver.query_sensor, sid)
+                except Exception:
+                    readings[sid] = None
+            try:
+                await websocket.send_json({"ts": ts, "sensors": readings})
+            except WebSocketDisconnect:
+                break
+            await asyncio.sleep(interval)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.debug("WS arduino/sensors error: %s", exc)
+    logger.debug("WS arduino/sensors disconnected")
+
+
+# ---------------------------------------------------------------------------
 # Arduino sensor + servo endpoints (issues #242, #244)
 # ---------------------------------------------------------------------------
 
@@ -2484,6 +2616,74 @@ async def recording_delete(rec_id: str):
     if not removed:
         raise HTTPException(status_code=404, detail="Recording not found")
     return {"ok": True, "id": rec_id}
+
+
+# ---------------------------------------------------------------------------
+# Recording annotation endpoints (issue #250)
+# ---------------------------------------------------------------------------
+
+
+class _AnnotationRequest(BaseModel):
+    timestamp_s: float
+    label: str
+    action: Optional[str] = None
+
+
+@app.post("/api/recording/{rec_id}/annotations", dependencies=[Depends(verify_token)])
+async def recording_add_annotation(rec_id: str, req: _AnnotationRequest):
+    """Add a timed annotation label to a recording.
+
+    Body (JSON)::
+
+        {"timestamp_s": 3.5, "label": "turning left", "action": "turn_left"}
+
+    Returns:
+        200: ``{"ok": true, "annotation_id": str}``
+        404: recording not found
+    """
+    from castor.recorder import get_recorder
+
+    ann_id = get_recorder().add_annotation(rec_id, req.timestamp_s, req.label, req.action)
+    if ann_id is None:
+        raise HTTPException(status_code=404, detail=f"Recording not found: {rec_id}")
+    return {"ok": True, "annotation_id": ann_id}
+
+
+@app.get("/api/recording/{rec_id}/annotations", dependencies=[Depends(verify_token)])
+async def recording_get_annotations(rec_id: str):
+    """List all annotations for a recording, sorted by timestamp.
+
+    Returns:
+        200: ``{"annotations": [{id, timestamp_s, label, action, created_at}, ...]}``
+        404: recording not found
+    """
+    from castor.recorder import get_recorder
+
+    annotations = get_recorder().get_annotations(rec_id)
+    if annotations is None:
+        raise HTTPException(status_code=404, detail=f"Recording not found: {rec_id}")
+    return {"annotations": annotations}
+
+
+@app.delete(
+    "/api/recording/{rec_id}/annotations/{annotation_id}", dependencies=[Depends(verify_token)]
+)
+async def recording_delete_annotation(rec_id: str, annotation_id: str):
+    """Delete a specific annotation from a recording.
+
+    Returns:
+        200: ``{"ok": true}``
+        404: recording or annotation not found
+    """
+    from castor.recorder import get_recorder
+
+    deleted = get_recorder().delete_annotation(rec_id, annotation_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Annotation {annotation_id!r} not found in recording {rec_id!r}",
+        )
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

@@ -298,3 +298,78 @@ def test_api_behavior_stop():
     # Cleanup
     state.behavior_runner = None
     state.behavior_job = None
+
+
+# ===========================================================================
+# Issue #253 — BehaviorRunner parallel step type
+# ===========================================================================
+
+
+class TestBehaviorParallelStep:
+    def _make_runner(self):
+        from castor.behaviors import BehaviorRunner
+
+        return BehaviorRunner(driver=None, brain=None, speaker=None, config={})
+
+    def test_parallel_runs_all_inner_steps(self):
+        """All inner steps should execute."""
+        results = []
+
+        runner = self._make_runner()
+        # Patch _step_wait to record calls
+        original_wait = runner._step_wait
+
+        def recording_wait(step):
+            results.append(step.get("seconds", 1.0))
+            # Don't actually sleep
+        runner._step_handlers["wait"] = recording_wait
+
+        behavior = {
+            "name": "parallel_test",
+            "steps": [
+                {
+                    "type": "parallel",
+                    "timeout_s": 2.0,
+                    "steps": [
+                        {"type": "wait", "seconds": 0.0},
+                        {"type": "wait", "seconds": 0.0},
+                    ],
+                }
+            ],
+        }
+        runner.run(behavior)
+        assert len(results) == 2
+
+    def test_parallel_empty_steps_logs_warning(self, caplog):
+        """Empty steps list should log a warning and not raise."""
+        import logging
+
+        runner = self._make_runner()
+        with caplog.at_level(logging.WARNING, logger="OpenCastor.Behaviors"):
+            behavior = {
+                "name": "empty_parallel",
+                "steps": [{"type": "parallel", "steps": []}],
+            }
+            runner.run(behavior)
+        assert any("parallel" in r.message.lower() for r in caplog.records)
+
+    def test_parallel_unknown_step_type_skips(self):
+        """Unknown step types inside parallel should be skipped gracefully."""
+        runner = self._make_runner()
+        behavior = {
+            "name": "bad_inner",
+            "steps": [
+                {
+                    "type": "parallel",
+                    "timeout_s": 2.0,
+                    "steps": [{"type": "does_not_exist"}],
+                }
+            ],
+        }
+        # Should not raise
+        runner.run(behavior)
+
+    def test_parallel_step_registered_in_handlers(self):
+        """'parallel' should be in the step_handlers dispatch table."""
+        runner = self._make_runner()
+        assert "parallel" in runner._step_handlers

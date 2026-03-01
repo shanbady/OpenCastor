@@ -702,3 +702,179 @@ class TestArduinoEndpoints:
         api_mod.state.driver = d
         resp = mission_client.post("/api/arduino/servo", json={"pin": 9, "angle": 45})
         assert resp.status_code == 503
+
+
+# ===========================================================================
+# Issue #249 — Mission geo-fence position tracking
+# ===========================================================================
+
+
+class TestMissionGeoFence:
+    def test_position_starts_at_origin(self):
+        """Position should be (0, 0, 0) when a new MissionRunner is created."""
+        from castor.mission import MissionRunner
+
+        runner = MissionRunner(_make_driver(), _make_config())
+        pos = runner.position()
+        assert pos["x_m"] == 0.0
+        assert pos["y_m"] == 0.0
+        assert pos["heading_deg"] == 0.0
+
+    def test_position_updates_after_waypoint(self):
+        """Dead-reckoning position updates after a completed waypoint."""
+        from castor.mission import MissionRunner
+
+        driver = _make_driver()
+        runner = MissionRunner(driver, _make_config())
+
+        with patch("castor.mission.WaypointNav") as MockNav:
+            MockNav.return_value.execute.return_value = {"ok": True, "duration_s": 0.01}
+            runner.start([{"distance_m": 1.0, "heading_deg": 0}])
+            for _ in range(50):
+                if not runner.status()["running"]:
+                    break
+                time.sleep(0.05)
+
+        pos = runner.position()
+        # Heading 0° → y_m increases by distance_m * cos(0) = 1.0
+        assert abs(pos["y_m"] - 1.0) < 0.01
+        assert abs(pos["x_m"]) < 0.01
+
+    def test_geofence_breach_stops_mission(self):
+        """Mission aborts when position leaves the geo-fence bounds."""
+        from castor.mission import MissionRunner
+
+        driver = _make_driver()
+        runner = MissionRunner(driver, _make_config())
+        # Tiny fence: only 0.1m in each direction — first 1m waypoint breaches it
+        runner.set_geofence({"x_min": -0.1, "x_max": 0.1, "y_min": -0.1, "y_max": 0.1})
+
+        with patch("castor.mission.WaypointNav") as MockNav:
+            MockNav.return_value.execute.return_value = {"ok": True, "duration_s": 0.01}
+            runner.start([{"distance_m": 1.0, "heading_deg": 0}])
+            for _ in range(50):
+                if not runner.status()["running"]:
+                    break
+                time.sleep(0.05)
+
+        status = runner.status()
+        assert not status["running"]
+        assert "geofence_breach" in (status["error"] or "")
+
+    def test_no_geofence_allows_any_position(self):
+        """Without a geo-fence, mission completes normally regardless of position."""
+        from castor.mission import MissionRunner
+
+        driver = _make_driver()
+        runner = MissionRunner(driver, _make_config())
+
+        with patch("castor.mission.WaypointNav") as MockNav:
+            MockNav.return_value.execute.return_value = {"ok": True, "duration_s": 0.01}
+            runner.start([{"distance_m": 100.0, "heading_deg": 0}])
+            for _ in range(50):
+                if not runner.status()["running"]:
+                    break
+                time.sleep(0.05)
+
+        status = runner.status()
+        assert status["error"] is None or status["error"] == ""
+
+    def test_geofence_api_set_returns_ok(self, mission_client):
+        """POST /api/nav/mission/geofence sets a geo-fence and returns 200."""
+        resp = mission_client.post(
+            "/api/nav/mission/geofence",
+            json={"x_min": -2.0, "x_max": 2.0, "y_min": -2.0, "y_max": 2.0},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_geofence_api_invalid_bounds_returns_422(self, mission_client):
+        """Inverted bounds (x_min >= x_max) return 422."""
+        resp = mission_client.post(
+            "/api/nav/mission/geofence",
+            json={"x_min": 2.0, "x_max": -2.0, "y_min": -2.0, "y_max": 2.0},
+        )
+        assert resp.status_code == 422
+
+    def test_geofence_api_clear_returns_null(self, mission_client):
+        """DELETE /api/nav/mission/geofence returns geofence: null."""
+        import castor.api as api_mod
+        from castor.mission import MissionRunner
+
+        api_mod.state.mission_runner = MissionRunner(_make_driver(), _make_config())
+        api_mod.state.mission_runner.set_geofence(
+            {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0}
+        )
+
+        resp = mission_client.delete("/api/nav/mission/geofence")
+        assert resp.status_code == 200
+        assert resp.json()["geofence"] is None
+
+    def test_position_api_returns_origin_when_no_runner(self, mission_client):
+        """GET /api/nav/mission/position returns (0,0,0) when no runner exists."""
+        import castor.api as api_mod
+
+        api_mod.state.mission_runner = None
+        resp = mission_client.get("/api/nav/mission/position")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["x_m"] == 0.0
+        assert body["y_m"] == 0.0
+
+
+# ===========================================================================
+# Issue #250 — Recording annotations
+# ===========================================================================
+
+
+class TestRecordingAnnotations:
+    def _recorder_with_recording(self, tmp_path):
+        """Return (recorder, rec_id) with an active recording in a temp dir."""
+        from castor.recorder import VideoRecorder
+
+        recorder = VideoRecorder(output_dir=tmp_path)
+        rec_id = recorder.start("test-rec")
+        recorder.stop()
+        return recorder, rec_id
+
+    def test_add_annotation_returns_id(self, tmp_path):
+        recorder, rec_id = self._recorder_with_recording(tmp_path)
+        ann_id = recorder.add_annotation(rec_id, 1.5, "moving forward", "move")
+        assert ann_id is not None
+        assert len(ann_id) == 36  # UUID4
+
+    def test_get_annotations_returns_sorted_list(self, tmp_path):
+        recorder, rec_id = self._recorder_with_recording(tmp_path)
+        recorder.add_annotation(rec_id, 3.0, "third")
+        recorder.add_annotation(rec_id, 1.0, "first")
+        recorder.add_annotation(rec_id, 2.0, "second")
+
+        annotations = recorder.get_annotations(rec_id)
+        assert annotations is not None
+        assert len(annotations) == 3
+        timestamps = [a["timestamp_s"] for a in annotations]
+        assert timestamps == sorted(timestamps)
+
+    def test_delete_annotation_returns_true(self, tmp_path):
+        recorder, rec_id = self._recorder_with_recording(tmp_path)
+        ann_id = recorder.add_annotation(rec_id, 0.5, "test label")
+        deleted = recorder.delete_annotation(rec_id, ann_id)
+        assert deleted is True
+        assert recorder.get_annotations(rec_id) == []
+
+    def test_delete_nonexistent_returns_false(self, tmp_path):
+        recorder, rec_id = self._recorder_with_recording(tmp_path)
+        assert recorder.delete_annotation(rec_id, "nonexistent-id") is False
+
+    def test_add_annotation_unknown_rec_returns_none(self, tmp_path):
+        from castor.recorder import VideoRecorder
+
+        recorder = VideoRecorder(output_dir=tmp_path)
+        result = recorder.add_annotation("nonexistent-id", 1.0, "label")
+        assert result is None
+
+    def test_get_annotations_unknown_rec_returns_none(self, tmp_path):
+        from castor.recorder import VideoRecorder
+
+        recorder = VideoRecorder(output_dir=tmp_path)
+        assert recorder.get_annotations("nonexistent-id") is None

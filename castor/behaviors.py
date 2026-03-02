@@ -1970,7 +1970,7 @@ class BehaviorRunner:
             return
 
         try:
-            result = self._eval_condition(condition)
+            result = self._eval_expr(condition)
         except Exception as exc:
             logger.warning("assert step: condition evaluation error: %s", exc)
             result = False
@@ -1986,7 +1986,7 @@ class BehaviorRunner:
             logger.error(msg)
             self._running = False
 
-    def _eval_condition(self, condition: str) -> bool:
+    def _eval_expr(self, condition: str) -> bool:
         """Evaluate a simple ``lhs op rhs`` condition string.
 
         Substitutes ``$var.<name>`` tokens from ``self._vars`` before
@@ -2192,7 +2192,7 @@ class BehaviorRunner:
             return
 
         try:
-            result = self._eval_condition(condition)
+            result = self._eval_expr(condition)
         except Exception as exc:
             logger.warning("unless step: condition eval error: %s — skipping", exc)
             return
@@ -2230,7 +2230,7 @@ class BehaviorRunner:
             raise _BreakLoop("break_on: unconditional break")
 
         try:
-            result = self._eval_condition(condition)
+            result = self._eval_expr(condition)
         except Exception as exc:
             logger.warning("break_on step: condition eval error: %s — not breaking", exc)
             return

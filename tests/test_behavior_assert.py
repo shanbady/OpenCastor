@@ -130,21 +130,21 @@ def test_assert_unset_var_causes_warn(caplog):
 
 def test_eval_condition_gt_true():
     runner = _make_runner()
-    assert runner._eval_condition("10 > 5") is True
+    assert runner._eval_expr("10 > 5") is True
 
 
 def test_eval_condition_gt_false():
     runner = _make_runner()
-    assert runner._eval_condition("1 > 5") is False
+    assert runner._eval_expr("1 > 5") is False
 
 
 def test_eval_condition_no_operator_raises():
     runner = _make_runner()
     with pytest.raises(ValueError):
-        runner._eval_condition("no operator here")
+        runner._eval_expr("no operator here")
 
 
 def test_eval_condition_non_numeric_raises():
     runner = _make_runner()
     with pytest.raises(ValueError):
-        runner._eval_condition("abc > 5")
+        runner._eval_expr("abc > 5")

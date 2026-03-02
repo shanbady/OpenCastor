@@ -1025,9 +1025,7 @@ class LidarDriver:
                             cells_updated += 1
                         self._slam_map[row][col] = 1.0
 
-            total_occupied = sum(
-                1 for row in self._slam_map for v in row if v > 0.0
-            )
+            total_occupied = sum(1 for row in self._slam_map for v in row if v > 0.0)
 
         return {
             "cells_updated": cells_updated,

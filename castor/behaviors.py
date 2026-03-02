@@ -2016,9 +2016,7 @@ class BehaviorRunner:
                 self._events[event_name] = _th.Event()
             ev = self._events[event_name]
 
-        logger.debug(
-            "event_trigger: waiting for %r (timeout_s=%.1f)", event_name, timeout_s
-        )
+        logger.debug("event_trigger: waiting for %r (timeout_s=%.1f)", event_name, timeout_s)
         fired = ev.wait(timeout=timeout_s if timeout_s > 0 else None)
 
         if fired:

@@ -1036,8 +1036,15 @@ class EpisodeMemory:
         import time as _time
 
         _COLUMNS = [
-            "id", "ts", "instruction", "raw_thought",
-            "action_type", "latency_ms", "outcome", "source", "tags",
+            "id",
+            "ts",
+            "instruction",
+            "raw_thought",
+            "action_type",
+            "latency_ms",
+            "outcome",
+            "source",
+            "tags",
         ]
 
         try:
@@ -1063,22 +1070,26 @@ class EpisodeMemory:
                 for row in rows:
                     action_json = row[4]
                     try:
-                        action_type = _json.loads(action_json).get("type", "") if action_json else ""
+                        action_type = (
+                            _json.loads(action_json).get("type", "") if action_json else ""
+                        )
                     except Exception:
                         action_type = ""
                     raw_tags = row[8]
                     tags_str = raw_tags if raw_tags else ""
-                    writer.writerow({
-                        "id": row[0],
-                        "ts": row[1],
-                        "instruction": row[2] or "",
-                        "raw_thought": row[3] or "",
-                        "action_type": action_type,
-                        "latency_ms": row[5] or 0.0,
-                        "outcome": row[6] or "",
-                        "source": row[7] or "",
-                        "tags": tags_str,
-                    })
+                    writer.writerow(
+                        {
+                            "id": row[0],
+                            "ts": row[1],
+                            "instruction": row[2] or "",
+                            "raw_thought": row[3] or "",
+                            "action_type": action_type,
+                            "latency_ms": row[5] or 0.0,
+                            "outcome": row[6] or "",
+                            "source": row[7] or "",
+                            "tags": tags_str,
+                        }
+                    )
 
             return {"path": path, "rows_written": len(rows), "columns": _COLUMNS}
 

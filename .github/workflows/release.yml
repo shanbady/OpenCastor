@@ -39,7 +39,7 @@ jobs:
       contents: read
     steps:
       - name: Verify tag commit is on main and CI passed
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;

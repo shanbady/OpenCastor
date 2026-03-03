@@ -15,7 +15,7 @@ jobs:
     name: "Check GitHub Release vs PyPI"
     steps:
       - name: Compare latest GitHub release and PyPI version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;

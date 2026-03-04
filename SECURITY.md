@@ -2,62 +2,73 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 2026.x  | Yes       |
-| < 2026  | No        |
+| Version | Status | Supported Until |
+|---------|--------|-----------------|
+| v2026.3.x (current) | ✅ Active | Until v2026.6 released |
+| v2026.2.x | 🔶 Security fixes only | 2026-09-01 |
+| Earlier | ❌ End of life | — |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in OpenCastor, please report it responsibly.
+**Do not file a public GitHub issue for security vulnerabilities.**
 
-**Do NOT open a public GitHub issue for security vulnerabilities.**
+Report privately:
+- **GitHub Security Advisories** (preferred): [github.com/craigm26/OpenCastor/security/advisories/new](https://github.com/craigm26/OpenCastor/security/advisories/new)
+- **Email**: security@continuon.ai
 
-### How to Report
+Include: version affected, description, reproduction steps, impact assessment, and proposed fix if you have one.
 
-1. **Email**: Send details to **security@opencastor.com**
-2. **GitHub**: Use the [Security Advisories](https://github.com/craigm26/OpenCastor/security/advisories/new) feature (private)
+## Response Timeline
 
-### What to Include
+| Stage | Commitment |
+|-------|-----------|
+| Acknowledgement | Within 48 hours |
+| Triage | Within 7 days |
+| Updates | Every 14 days |
+| Critical/High patch | Within 30 days |
+| Medium patch | Within 90 days |
+| CVE coordination | On request |
 
-- Description of the vulnerability
-- Steps to reproduce
-- Affected versions
-- Potential impact (e.g., motor safety, credential exposure, unauthorized access)
+## Scope
 
-### Response Timeline
+**In scope:**
+- Prompt injection bypasses — natural language inputs that cause OpenCastor to execute unsafe motor commands
+- Safety invariant bypasses — any path that allows remote commands to override on-device safety checks
+- RCAN RBAC bypass — ways to issue commands beyond a principal's declared role
+- Authentication weaknesses — token forgery, session fixation, credential exposure
+- Audit log tampering — attacks against the commitment chain or HMAC integrity
+- §16 AI accountability bypass — ways to issue AI commands without model identity being recorded
+- HiTL gate bypass — paths that execute PENDING_AUTH commands without authorization
+- Dependency vulnerabilities with direct exploitability (not just theoretical)
 
-- **Acknowledgment**: Within 48 hours
-- **Assessment**: Within 7 days
-- **Fix or mitigation**: Within 30 days for critical issues
+**Physical safety vulnerabilities are treated as Critical regardless of exploitability complexity.** Any finding that could cause a robot to move unsafely is immediately escalated.
 
-### Scope
+**Out of scope:**
+- Theoretical vulnerabilities without a realistic attack path
+- Hardware-level attacks requiring physical access (out of software scope)
+- Social engineering
+- Denial of service that does not affect physical safety
 
-The following are in scope for security reports:
+## Dependency Vulnerabilities
 
-- **Motor safety**: Bypassing speed limits, safety clamps, or emergency stop
-- **Credential exposure**: API keys, tokens, or secrets leaked via logs, config export, or network
-- **Unauthorized access**: Bypassing API authentication or RBAC controls
-- **Injection**: Command injection via config files, channel messages, or API inputs
-- **Privilege escalation**: Gaining elevated permissions in the virtual filesystem or RCAN RBAC
+OpenCastor uses Dependabot for automated dependency scanning. If you discover a vulnerability in a dependency before Dependabot flags it, please report it privately — we'll coordinate with the upstream maintainer.
 
-### Out of Scope
+## SBOM
 
-- Issues requiring physical access to the robot hardware
-- Denial of service against locally-running instances
-- Social engineering attacks against project maintainers
+A Software Bill of Materials (CycloneDX 1.6 JSON) is attached to each release. Verify the SBOM hash matches the release artifact before use in production environments.
 
-## Security Architecture
+## Physical Safety Disclosure Policy
 
-OpenCastor implements multiple defense layers:
+Vulnerabilities that could cause physical harm (uncontrolled robot motion, safety system bypass) follow a **shorter embargo**: we commit to a patch within **14 days** and will coordinate disclosure with the reporter, relevant hardware vendors, and CISA if warranted.
 
-- **API Authentication**: Optional bearer token (`OPENCASTOR_API_TOKEN`) and JWT-based RCAN auth
-- **RBAC**: Role-based access control (Guest/User/Operator/Admin/Creator) for the virtual filesystem
-- **Safety Clamping**: Driver layer enforces physical limits regardless of AI output
-- **Emergency Stop**: Hardware-level stop accessible via API, dashboard, CLI, and messaging channels
-- **Approval Gate**: Dangerous motor commands can require human approval before execution
-- **Geofence**: Configurable operating radius limit with automatic stop
-- **Watchdog**: Auto-stops motors if the AI brain becomes unresponsive
-- **Audit Log**: Append-only record of all motor commands, approvals, and config changes
-- **Privacy Policy**: Default-deny for camera streaming, audio recording, and location sharing
-- **Secrets Management**: API keys stored in `.env` (gitignored), never in config files
+## CVE Process
+
+Critical and High findings: we request a CVE via GitHub's CVE numbering authority partnership and coordinate a 90-day maximum embargo with the reporter.
+
+## Responsible Disclosure Hall of Fame
+
+*(None yet — be the first.)*
+
+---
+
+Policy aligned with ISO/IEC 29147 (vulnerability disclosure), ISO/IEC 30111 (vulnerability handling), and CISA coordinated vulnerability disclosure guidelines.

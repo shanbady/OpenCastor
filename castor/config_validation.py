@@ -48,8 +48,8 @@ OPTIONAL_AGENT_KEYS: List[str] = [
     "latency_budget_ms",
     "safety_stop",
     "confidence_gates",  # v1.2: list of confidence gate definitions
-    "hitl_gates",        # v1.2: list of HiTL gate definitions
-    "security_level",    # v1.2: agent-level security override
+    "hitl_gates",  # v1.2: list of HiTL gate definitions
+    "security_level",  # v1.2: agent-level security override
 ]
 
 # Required keys inside the 'metadata' block
@@ -100,9 +100,7 @@ def validate_rcan_config(config: dict) -> Tuple[bool, List[str]]:
                 _VALID_CONF_ON_FAIL = {"block", "escalate", "allow"}
                 for i, gate in enumerate(confidence_gates):
                     if not isinstance(gate, dict):
-                        errors.append(
-                            f"agent.confidence_gates[{i}] must be a mapping (dict)"
-                        )
+                        errors.append(f"agent.confidence_gates[{i}] must be a mapping (dict)")
                         continue
                     for field in ("scope", "min_confidence", "on_fail"):
                         if field not in gate:
@@ -125,9 +123,7 @@ def validate_rcan_config(config: dict) -> Tuple[bool, List[str]]:
                 _VALID_HITL_ON_FAIL = {"block", "allow"}
                 for i, gate in enumerate(hitl_gates):
                     if not isinstance(gate, dict):
-                        errors.append(
-                            f"agent.hitl_gates[{i}] must be a mapping (dict)"
-                        )
+                        errors.append(f"agent.hitl_gates[{i}] must be a mapping (dict)")
                         continue
                     for field in ("action_types", "require_auth"):
                         if field not in gate:

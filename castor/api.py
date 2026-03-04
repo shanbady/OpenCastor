@@ -5960,6 +5960,7 @@ async def doctor_cpu_temperature():
 # F4: Thought Log endpoint
 # ---------------------------------------------------------------------------
 
+
 @app.get("/api/thoughts/{thought_id}", dependencies=[Depends(verify_token)])
 async def get_thought(thought_id: str, request: Request):
     """Return a recorded Thought by ID.
@@ -5975,6 +5976,7 @@ async def get_thought(thought_id: str, request: Request):
     # Include reasoning only for admin/operator (config scope)
     role = getattr(request.state, "jwt_role", "viewer")
     from castor.auth_jwt import ROLES
+
     include_reasoning = ROLES.get(role, 0) >= ROLES.get("operator", 2)
 
     entry = state.thought_log.get(thought_id, include_reasoning=include_reasoning)
@@ -5986,6 +5988,7 @@ async def get_thought(thought_id: str, request: Request):
 # ---------------------------------------------------------------------------
 # F3: HiTL authorization endpoint
 # ---------------------------------------------------------------------------
+
 
 class HiTLAuthorizeRequest(BaseModel):
     pending_id: str

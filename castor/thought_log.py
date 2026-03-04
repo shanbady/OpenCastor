@@ -29,7 +29,11 @@ class ThoughtLog:
         if storage_path:
             try:
                 import os
-                os.makedirs(os.path.dirname(storage_path) if os.path.dirname(storage_path) else ".", exist_ok=True)
+
+                os.makedirs(
+                    os.path.dirname(storage_path) if os.path.dirname(storage_path) else ".",
+                    exist_ok=True,
+                )
             except Exception as exc:
                 logger.debug("ThoughtLog storage dir error (non-fatal): %s", exc)
 

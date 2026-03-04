@@ -971,27 +971,27 @@ def main():
         logger.debug(f"Audit log skipped: {e}")
 
     # 6g-i. CONFIDENCE GATE ENFORCER (F2)
-    confidence_gate_enforcer = None
+    _confidence_gate_enforcer = None
     try:
-        from castor.configure import parse_confidence_gates
         from castor.confidence_gate import ConfidenceGateEnforcer
+        from castor.configure import parse_confidence_gates
 
         _cgates = parse_confidence_gates(config)
         if _cgates:
-            confidence_gate_enforcer = ConfidenceGateEnforcer(_cgates)
+            _confidence_gate_enforcer = ConfidenceGateEnforcer(_cgates)
             logger.info("Confidence gate enforcer active (%d gates)", len(_cgates))
     except Exception as e:
         logger.debug(f"Confidence gate enforcer skipped: {e}")
 
     # 6g-ii. HiTL GATE MANAGER (F3)
-    hitl_gate_manager = None
+    _hitl_gate_manager = None
     try:
         from castor.configure import parse_hitl_gates
         from castor.hitl_gate import HiTLGateManager
 
         _hgates = parse_hitl_gates(config)
         if _hgates:
-            hitl_gate_manager = HiTLGateManager(_hgates, audit=audit)
+            _hitl_gate_manager = HiTLGateManager(_hgates, audit=audit)
             logger.info("HiTL gate manager active (%d gates)", len(_hgates))
     except Exception as e:
         logger.debug(f"HiTL gate manager skipped: {e}")

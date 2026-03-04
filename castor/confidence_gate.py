@@ -15,7 +15,7 @@ Config example (RCAN YAML):
           on_fail: block
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Literal, Optional
 
@@ -24,7 +24,7 @@ class GateOutcome(Enum):
     PASS = "pass"
     ESCALATE = "escalate"
     BLOCK = "block"
-    BYPASS = "bypass"   # on_fail: allow — command proceeds, flagged in audit
+    BYPASS = "bypass"  # on_fail: allow — command proceeds, flagged in audit
 
 
 @dataclass

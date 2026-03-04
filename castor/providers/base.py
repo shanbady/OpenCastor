@@ -37,7 +37,7 @@ class Thought:
     provider: str = ""
     model: str = ""
     model_version: Optional[str] = None
-    layer: str = "fast"           # reactive | fast | planner
+    layer: str = "fast"  # reactive | fast | planner
     latency_ms: Optional[int] = None
     escalated: bool = False
     gate_bypassed: bool = False

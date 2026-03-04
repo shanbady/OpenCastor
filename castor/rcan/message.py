@@ -42,7 +42,7 @@ class MessageType(IntEnum):
     HANDOFF = 6
     ACK = 7
     ERROR = 8
-    AUTHORIZE = 9     # Out-of-band authorization for HiTL gate (RCAN v1.2)
+    AUTHORIZE = 9  # Out-of-band authorization for HiTL gate (RCAN v1.2)
     PENDING_AUTH = 10  # Notification that HiTL gate is awaiting authorization (RCAN v1.2)
 
 
@@ -167,7 +167,7 @@ class RCANMessage:
         principal: str,
         decision: str,
         **kwargs: Any,
-    ) -> "RCANMessage":
+    ) -> RCANMessage:
         """Create an AUTHORIZE message for out-of-band HiTL gate authorization.
 
         Args:
@@ -182,9 +182,7 @@ class RCANMessage:
             ValueError: If *decision* is not ``'approve'`` or ``'deny'``.
         """
         if decision not in ("approve", "deny"):
-            raise ValueError(
-                f"AUTHORIZE decision must be 'approve' or 'deny', got {decision!r}"
-            )
+            raise ValueError(f"AUTHORIZE decision must be 'approve' or 'deny', got {decision!r}")
         payload: Dict[str, Any] = {
             "ref_message_id": ref_message_id,
             "principal": principal,
@@ -210,7 +208,7 @@ class RCANMessage:
         description: str,
         timeout_remaining_ms: int,
         **kwargs: Any,
-    ) -> "RCANMessage":
+    ) -> RCANMessage:
         """Create a PENDING_AUTH notification message.
 
         Sent by the HiTL gate to notify subscribers that an action is

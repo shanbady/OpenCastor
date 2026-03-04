@@ -963,15 +963,15 @@ class ConformanceChecker:
                 continue
 
             # Required fields
-            for field in ("scope", "min_confidence", "on_fail"):
-                if field not in gate:
+            for fname in ("scope", "min_confidence", "on_fail"):
+                if fname not in gate:
                     results.append(
                         ConformanceResult(
-                            check_id=f"{cid_base}.{field}",
+                            check_id=f"{cid_base}.{fname}",
                             category="rcan_v12",
                             status="fail",
-                            detail=f"confidence_gates[{i}] missing required field '{field}'",
-                            fix=f"Add '{field}:' to confidence_gates[{i}]",
+                            detail=f"confidence_gates[{i}] missing required field '{fname}'",
+                            fix=f"Add '{fname}:' to confidence_gates[{i}]",
                         )
                     )
 
@@ -1069,15 +1069,15 @@ class ConformanceChecker:
                 continue
 
             # Required fields
-            for field in ("action_types", "require_auth"):
-                if field not in gate:
+            for fname in ("action_types", "require_auth"):
+                if fname not in gate:
                     results.append(
                         ConformanceResult(
-                            check_id=f"{cid_base}.{field}",
+                            check_id=f"{cid_base}.{fname}",
                             category="rcan_v12",
                             status="fail",
-                            detail=f"hitl_gates[{i}] missing required field '{field}'",
-                            fix=f"Add '{field}:' to hitl_gates[{i}]",
+                            detail=f"hitl_gates[{i}] missing required field '{fname}'",
+                            fix=f"Add '{fname}:' to hitl_gates[{i}]",
                         )
                     )
 

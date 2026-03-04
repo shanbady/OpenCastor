@@ -302,6 +302,7 @@ def _show_config(config: dict, has_rich: bool, console):
 # Gate config parsing (used by main.py / api.py at startup)
 # ---------------------------------------------------------------------------
 
+
 def parse_confidence_gates(config: dict) -> list:
     """Parse ``agent.confidence_gates`` from a config dict.
 
@@ -331,6 +332,7 @@ def parse_confidence_gates(config: dict) -> list:
             )
         except (KeyError, TypeError, ValueError) as exc:
             import logging
+
             logging.getLogger("OpenCastor.Configure").warning(
                 "Skipping malformed confidence_gate entry: %s (%s)", g, exc
             )
@@ -370,6 +372,7 @@ def parse_hitl_gates(config: dict) -> list:
             )
         except (KeyError, TypeError, ValueError) as exc:
             import logging
+
             logging.getLogger("OpenCastor.Configure").warning(
                 "Skipping malformed hitl_gate entry: %s (%s)", g, exc
             )

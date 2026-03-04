@@ -199,6 +199,7 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # v4.3.1
 
@@ -218,6 +219,32 @@ jobs:
         run: |
           pip install twine
           twine check dist/*
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py environment \
+            --output-format json \
+            --outfile opencastor-${{ github.ref_name }}-sbom.cyclonedx.json
+          echo "SBOM generated:"
+          python3 -c "import json; d=json.load(open('opencastor-${{ github.ref_name }}-sbom.cyclonedx.json')); print(f'Components: {len(d.get(\"components\", []))}')"
+
+      - name: Attach SBOM to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: opencastor-${{ github.ref_name }}-sbom.cyclonedx.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update sbom/ directory
+        run: |
+          mkdir -p sbom
+          cp opencastor-${{ github.ref_name }}-sbom.cyclonedx.json sbom/opencastor-latest-sbom.cyclonedx.json
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add sbom/
+          git diff --staged --quiet || git commit -m "chore(sbom): update SBOM for ${{ github.ref_name }}"
+          git push
 
       - name: Publish to PyPI (Trusted Publisher / OIDC)
         id: publish_oidc

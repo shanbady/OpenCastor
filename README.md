@@ -11,6 +11,7 @@
   <a href="https://github.com/craigm26/OpenCastor/blob/main/LICENSE"><img src="https://img.shields.io/github/license/craigm26/OpenCastor?color=green" alt="License"></a>
   <a href="https://pypi.org/project/opencastor/"><img src="https://img.shields.io/pypi/pyversions/opencastor" alt="Python"></a>
   <a href="https://discord.gg/jMjA8B26Bq"><img src="https://img.shields.io/discord/1234567890?label=Discord&color=5865F2" alt="Discord"></a>
+  <a href="./sbom/"><img src="https://img.shields.io/badge/SBOM-CycloneDX-blue" alt="SBOM"></a>
 </p>
 
 <p align="center">
@@ -633,6 +634,12 @@ there's probably a preset for it.
   degraded cells that drop voltage and confuse motor drivers.
 - **Firmware toolchains vary by kit.** Use each preset's `notes` section for the
   expected firmware/runtime path and connection mode.
+
+## 🔒 Security
+
+- **Vulnerability reporting**: See [SECURITY.md](SECURITY.md)
+- **Software Bill of Materials (SBOM)**: [`sbom/`](./sbom/) — CycloneDX 1.6 JSON, updated on every release
+- **EO 14028 compliance**: OpenCastor generates a machine-readable SBOM for every release per US Executive Order 14028 (May 2021) and the CISA recommended minimum elements. This enables federal procurement and satisfies EU Cyber Resilience Act requirements.
 
 ## 🤝 Contributing
 

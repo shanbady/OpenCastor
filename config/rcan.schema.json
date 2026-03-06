@@ -18,7 +18,7 @@
     "rcan_version": {
       "type": "string",
       "description": "Semantic version of the RCAN spec this config targets.",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?$"
+      "pattern": "^\\d+\\.\\d+(\\.\\d+(-[a-zA-Z0-9.]+)?)?$"
     },
     "metadata": {
       "type": "object",

@@ -1,0 +1,27 @@
+rcan_version: "1.1.0"
+
+metadata:
+  robot_name: "TestBot"
+  robot_uuid: "00000000-0000-0000-0000-000000000001"
+  author: "OpenCastor Tests"
+  license: "Apache-2.0"
+  tags:
+    - test
+    - fixture
+  description: "Minimal RCAN config fixture for integration tests."
+
+agent:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5"
+  vision_enabled: false
+  latency_budget_ms: 200
+  safety_stop: true
+
+physics:
+  type: "four_wheel_drive"
+  dof: 4
+
+drivers:
+  - id: "motor_driver"
+    protocol: "pca9685_i2c"
+    port: "/dev/i2c-1"

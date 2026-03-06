@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pathlib
 import pytest
 import yaml
 
@@ -170,7 +171,7 @@ def test_cli_register_subcommand_exists():
     import subprocess, sys
     result = subprocess.run(
         [sys.executable, "-m", "castor.cli", "register", "--help"],
-        capture_output=True, text=True, cwd=os.path.expanduser("~/OpenCastor"),
+        capture_output=True, text=True, cwd=str(pathlib.Path(__file__).parent.parent),
     )
     assert "rcan.dev" in result.stdout or "register" in result.stdout.lower()
 
@@ -179,6 +180,6 @@ def test_cli_compliance_subcommand_exists():
     import subprocess, sys
     result = subprocess.run(
         [sys.executable, "-m", "castor.cli", "compliance", "--help"],
-        capture_output=True, text=True, cwd=os.path.expanduser("~/OpenCastor"),
+        capture_output=True, text=True, cwd=str(pathlib.Path(__file__).parent.parent),
     )
     assert "conformance" in result.stdout.lower() or "rcan" in result.stdout.lower() or result.returncode == 0

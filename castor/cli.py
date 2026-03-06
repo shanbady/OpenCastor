@@ -166,7 +166,7 @@ def cmd_wizard(args) -> None:
     if getattr(args, "web", False):
         from castor.web_wizard import launch_web_wizard
 
-        launch_web_wizard(port=getattr(args, "web_port", 8080))
+        launch_web_wizard(port=getattr(args, "web_port", 8765))
         return
 
     from castor.wizard import main as run_wizard
@@ -3034,7 +3034,7 @@ def main() -> None:
     p_wizard.add_argument("--simple", action="store_true", help="QuickStart mode")
     p_wizard.add_argument("--accept-risk", action="store_true", help="Skip safety prompt")
     p_wizard.add_argument("--web", action="store_true", help="Open browser-based wizard")
-    p_wizard.add_argument("--web-port", type=int, default=8080, help="Port for web wizard")
+    p_wizard.add_argument("--web-port", type=int, default=8765, help="Port for web wizard")
 
     # castor dashboard — starts robot + tmux TUI immediately
     p_dash = sub.add_parser(

@@ -3822,6 +3822,13 @@ def _execute_action(action: dict):
 
     _action_t0 = time.perf_counter()
 
+    # Sign action payload if Ed25519 signing is configured (RCAN §16, issue #441)
+    try:
+        from castor.rcan.message_signing import sign_action_payload
+        action = sign_action_payload(action, state.config)
+    except Exception as _se:
+        logger.debug("Action signing skipped (non-fatal): %s", _se)
+
     # Seal a CommitmentRecord for every action (RCAN §16 audit trail)
     try:
         from castor.rcan.commitment_chain import get_commitment_chain
@@ -4199,6 +4206,17 @@ async def on_startup():
                     logger.info("Provider fallback manager ready")
                 except Exception as _pf_exc:
                     logger.warning("Provider fallback init failed: %s", _pf_exc)
+
+            # Initialize message signing (RCAN §16, issue #441)
+            try:
+                from castor.rcan.message_signing import get_signer as _get_signer
+                _sig = _get_signer(state.config)
+                if _sig and _sig.available:
+                    logger.info("RCAN message signing ready (kid=%s)", _sig.key_id)
+                    if state.fs:
+                        state.fs.proc.set_value("rcan_signing_kid", _sig.key_id)
+            except Exception as _se:
+                logger.debug("RCAN signing init skipped: %s", _se)
 
             # Initialize multi-provider failover chain (agent.fallbacks in RCAN YAML)
             _agent_cfg = state.config.get("agent", {})

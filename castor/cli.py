@@ -380,6 +380,79 @@ def cmd_snapshot(args) -> None:
             print()
 
 
+def cmd_fleet(args) -> None:
+    """Handle castor fleet subcommands."""
+    import yaml, json as _json
+
+    fleet_cmd = getattr(args, "fleet_cmd", None)
+    if fleet_cmd is None:
+        print("Usage: castor fleet <list|resolve|status>")
+        return
+
+    config_path = getattr(args, "config", None) or _find_default_config()
+    config: dict = {}
+    if config_path:
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as exc:
+            print(f"⚠️  Could not load config: {exc}")
+
+    from castor.fleet.group_policy import FleetManager
+    fm = FleetManager.from_config(config)
+
+    if fleet_cmd == "list":
+        print(fm.summary())
+        for g in fm.list_groups():
+            if g.robots:
+                print(f"\n  {g.name}:")
+                for rrn in g.robots:
+                    print(f"    • {rrn}")
+                if g.policy:
+                    keys = list(g.policy.keys())
+                    print(f"    policy keys: {', '.join(keys)}")
+
+    elif fleet_cmd == "resolve":
+        rrn = args.rrn
+        merged = fm.resolve_config(rrn, config)
+        groups = fm.get_robot_groups(rrn)
+        if getattr(args, "output_json", False):
+            print(_json.dumps(merged, indent=2))
+        else:
+            group_names = [g.name for g in groups] or ["(none)"]
+            print(f"\n🤖 {rrn}")
+            print(f"  Groups: {', '.join(group_names)}")
+            agent = merged.get("agent", {})
+            print(f"  Provider: {agent.get('provider', '?')} / {agent.get('model', '?')}")
+            cg = agent.get("confidence_gates", [])
+            if cg:
+                print(f"  Confidence gate: {cg[0].get('threshold', '?')}")
+            hitl = agent.get("hitl_gates", [])
+            if hitl:
+                print(f"  HiTL gates: {len(hitl)}")
+
+    elif fleet_cmd == "status":
+        all_rrns: list[str] = []
+        for g in fm.list_groups():
+            all_rrns.extend(g.robots)
+        all_rrns = sorted(set(all_rrns))
+        if not all_rrns:
+            print("No robots defined in any group.")
+            return
+        print(f"\n{'RRN':<20}  Groups")
+        print("-" * 50)
+        for rrn in all_rrns:
+            groups = fm.get_robot_groups(rrn)
+            print(f"{rrn:<20}  {', '.join(g.name for g in groups) or '(none)'}")
+
+
+def _find_default_config() -> str | None:
+    """Look for a .rcan.yaml in the current directory."""
+    import glob
+    candidates = glob.glob("*.rcan.yaml") + glob.glob("*.rcan.yml")
+    return candidates[0] if candidates else None
+
+
 def cmd_inspect(args) -> None:
     """Query a robot's live RCAN profile, safety state, and telemetry."""
     import json as _json
@@ -3239,6 +3312,26 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # castor fleet
+    p_fleet = sub.add_parser(
+        "fleet",
+        help="Manage robot group policies",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Examples:\n  castor fleet list --config bob.rcan.yaml\n  castor fleet resolve RRN-00000042 --config bob.rcan.yaml\n  castor fleet apply-all --config bob.rcan.yaml",
+    )
+    fleet_sub = p_fleet.add_subparsers(dest="fleet_cmd")
+
+    p_fl_list = fleet_sub.add_parser("list", help="List all defined groups")
+    p_fl_list.add_argument("--config", default=None)
+
+    p_fl_resolve = fleet_sub.add_parser("resolve", help="Show resolved config for a robot")
+    p_fl_resolve.add_argument("rrn", help="Robot Registry Number")
+    p_fl_resolve.add_argument("--config", default=None)
+    p_fl_resolve.add_argument("--json", action="store_true", dest="output_json")
+
+    p_fl_status = fleet_sub.add_parser("status", help="Show which groups each robot belongs to")
+    p_fl_status.add_argument("--config", default=None)
+
     # castor inspect
     p_inspect = sub.add_parser(
         "inspect",
@@ -4110,6 +4203,7 @@ def main() -> None:
         "dashboard-tui": cmd_dashboard_tui,
         "token": cmd_token,
         "discover": cmd_discover,
+        "fleet": cmd_fleet,
         "inspect": cmd_inspect,
         "register": cmd_register,
         "compliance": cmd_compliance,

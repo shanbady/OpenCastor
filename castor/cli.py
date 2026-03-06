@@ -1330,8 +1330,32 @@ def cmd_export(args) -> None:
 
 
 def cmd_export_finetune(args) -> None:
-    """castor export finetune."""
-    print("castor export finetune: not yet implemented.")
+    """castor export-finetune — export episode memory as a fine-tuning dataset."""
+    from castor.finetune import export_episodes
+    from castor.memory import EpisodeMemory
+
+    fmt = getattr(args, "format", "chatml")
+    limit = getattr(args, "limit", 1000)
+    require_action = getattr(args, "require_action", False)
+    output = getattr(args, "output", None)
+
+    if output is None:
+        output = f"robot_dataset_{fmt}.jsonl"
+
+    mem = EpisodeMemory()
+
+    if require_action:
+        # Filter to episodes that have a parsed action in their metadata
+        original_recent = mem.recent
+
+        def _filtered_recent(n: int):
+            all_eps = original_recent(n=n * 4)
+            return [e for e in all_eps if e.get("action") or e.get("parsed_action")][:n]
+
+        mem.recent = _filtered_recent  # type: ignore[method-assign]
+
+    n = export_episodes(mem, output, fmt=fmt, limit=limit)
+    print(f"  ✅ Exported {n} episodes → {output} (format: {fmt})")
 
 
 def cmd_fix(args) -> None:

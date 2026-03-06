@@ -380,6 +380,187 @@ def cmd_snapshot(args) -> None:
             print()
 
 
+def cmd_inspect(args) -> None:
+    """Query a robot's live RCAN profile, safety state, and telemetry."""
+    import json as _json
+    import sys
+
+    output: dict = {}
+    rrn = args.rrn
+
+    # --- Registry lookup ---
+    registry_data: dict = {}
+    if rrn:
+        try:
+            import asyncio
+            from rcan.registry import RegistryClient
+
+            async def _lookup():
+                async with RegistryClient() as c:
+                    entry = await c.get_robot(rrn)
+                    return entry.to_dict()
+
+            registry_data = asyncio.run(_lookup())
+            output["registry"] = registry_data
+        except Exception as exc:
+            output["registry"] = {"error": str(exc), "rrn": rrn}
+
+    # --- Local config ---
+    config_path = args.config
+    config_data: dict = {}
+    if config_path:
+        try:
+            import yaml
+            with open(config_path) as f:
+                config_data = yaml.safe_load(f) or {}
+            meta = config_data.get("metadata", {})
+            output["config"] = {
+                "file": config_path,
+                "robot_name": meta.get("robot_name", ""),
+                "manufacturer": meta.get("manufacturer", ""),
+                "model": meta.get("model", ""),
+                "version": meta.get("version", ""),
+                "rrn": meta.get("rrn", ""),
+                "rcan_uri": meta.get("rcan_uri", ""),
+                "rcan_version": config_data.get("rcan_version", ""),
+                "provider": config_data.get("agent", {}).get("provider", ""),
+                "ai_model": config_data.get("agent", {}).get("model", ""),
+            }
+        except Exception as exc:
+            output["config"] = {"error": str(exc)}
+
+    # --- Gateway live status ---
+    gateway_url = args.gateway or (config_data or {}).get("gateway", {}).get("url", "")
+    if not gateway_url:
+        # Try default local gateway
+        gateway_url = "http://localhost:8080"
+
+    try:
+        import urllib.request
+        import os
+        token = os.environ.get("OPENCASTOR_API_TOKEN", "")
+        req = urllib.request.Request(
+            f"{gateway_url}/api/status",
+            headers={"Authorization": f"Bearer {token}"} if token else {},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            status_data = _json.loads(resp.read())
+        output["live"] = {
+            "gateway": gateway_url,
+            "uptime_s": status_data.get("uptime_s"),
+            "brain": status_data.get("brain"),
+            "driver": status_data.get("driver"),
+            "channels": status_data.get("channels_active", []),
+            "safety_state": status_data.get("safety", {}).get("state", "unknown"),
+            "ruri": status_data.get("ruri"),
+        }
+    except Exception as exc:
+        output["live"] = {"gateway": gateway_url, "error": str(exc)}
+
+    # --- Commitment chain ---
+    try:
+        from castor.rcan.commitment_chain import get_commitment_chain
+        cc = get_commitment_chain()
+        valid, count, errors = cc.verify_log()
+        output["commitment_chain"] = {
+            "records": count,
+            "valid": valid,
+            "errors": errors[:3] if errors else [],
+        }
+    except Exception:
+        pass
+
+    # --- Compliance ---
+    if config_data:
+        try:
+            from castor.rcan.sdk_bridge import check_compliance
+            issues = check_compliance(config_data)
+            l1_ok = not any(i.startswith("L1") for i in issues)
+            l2_ok = l1_ok and not any(i.startswith("L2") for i in issues)
+            l3_ok = l2_ok and not any(i.startswith("L3") for i in issues)
+            output["compliance"] = {
+                "level": "L3" if l3_ok else "L2" if l2_ok else "L1" if l1_ok else "FAIL",
+                "issues": issues,
+            }
+        except Exception:
+            pass
+
+    if getattr(args, "output_json", False):
+        print(_json.dumps(output, indent=2))
+        return
+
+    # --- Human-readable output ---
+    try:
+        from rich.console import Console
+        from rich.table import Table
+        con = Console()
+        HAS_RICH = True
+    except ImportError:
+        con = None
+        HAS_RICH = False
+
+    def _pr(text, **kw):
+        if HAS_RICH and con:
+            con.print(text, **kw)
+        else:
+            import re
+            print(re.sub(r"\[/?[a-z_ ]+\]", "", text))
+
+    _pr(f"\n🤖 [bold]castor inspect[/bold]" + (f" {rrn}" if rrn else "") + "\n")
+
+    if "registry" in output:
+        reg = output["registry"]
+        _pr("[bold]Registry (rcan.dev)[/bold]")
+        if "error" in reg:
+            _pr(f"  ⚠️  {reg['error']}", style="yellow")
+        else:
+            _pr(f"  RRN:    {reg.get('rrn', '?')}")
+            _pr(f"  URI:    {reg.get('uri', reg.get('rcan_uri', '?'))}")
+            _pr(f"  Tier:   {reg.get('verification_tier', '?')}")
+            _pr(f"  View:   https://rcan.dev/registry/{reg.get('rrn', '')}")
+
+    if "config" in output:
+        cfg = output["config"]
+        _pr("\n[bold]Local Config[/bold]")
+        if "error" in cfg:
+            _pr(f"  ⚠️  {cfg['error']}", style="yellow")
+        else:
+            _pr(f"  File:     {cfg.get('file', '')}")
+            _pr(f"  Robot:    {cfg.get('robot_name', '')} ({cfg.get('manufacturer', '')}/{cfg.get('model', '')} {cfg.get('version', '')})")
+            _pr(f"  Provider: {cfg.get('provider', '')} / {cfg.get('ai_model', '')}")
+            if cfg.get("rrn"):
+                _pr(f"  RRN:      {cfg['rrn']}")
+
+    if "live" in output:
+        live = output["live"]
+        _pr("\n[bold]Live Gateway[/bold]")
+        if "error" in live:
+            _pr(f"  ⚠️  {live['gateway']}: {live['error']}", style="yellow")
+        else:
+            _pr(f"  Gateway:  {live.get('gateway', '')}")
+            _pr(f"  Uptime:   {live.get('uptime_s', '?')}s")
+            _pr(f"  Brain:    {'✅' if live.get('brain') else '❌'}")
+            _pr(f"  Driver:   {'✅' if live.get('driver') else '❌'}")
+            _pr(f"  Safety:   {live.get('safety_state', 'unknown')}")
+            if live.get("channels"):
+                _pr(f"  Channels: {', '.join(live['channels'])}")
+
+    if "commitment_chain" in output:
+        cc = output["commitment_chain"]
+        valid_str = "✅" if cc.get("valid") else "⚠️"
+        _pr(f"\n[bold]Commitment Chain[/bold]  {valid_str} {cc.get('records', 0)} records")
+
+    if "compliance" in output:
+        comp = output["compliance"]
+        level = comp.get("level", "?")
+        color = "green" if level == "L3" else "yellow" if level in ("L1", "L2") else "red"
+        _pr(f"\n[bold]RCAN Compliance[/bold]  [{color}]{level}[/{color}]")
+        for issue in comp.get("issues", [])[:5]:
+            _pr(f"  ⚠️  {issue}", style="yellow")
+
+    _pr("")
+
+
 def cmd_register(args) -> None:
     """Register this robot with rcan.dev and get a globally unique RRN."""
     import os
@@ -3058,6 +3239,20 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # castor inspect
+    p_inspect = sub.add_parser(
+        "inspect",
+        help="Query a robot's live RCAN profile, safety state, and telemetry",
+        epilog="Examples:\n  castor inspect RRN-00000042\n  castor inspect --config bob.rcan.yaml",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_inspect.add_argument(
+        "rrn", nargs="?", default=None, help="Robot Registry Number (e.g. RRN-00000042)"
+    )
+    p_inspect.add_argument("--config", default=None, help="Local RCAN config file to inspect")
+    p_inspect.add_argument("--gateway", default=None, help="Gateway URL (e.g. http://localhost:8080)")
+    p_inspect.add_argument("--json", action="store_true", dest="output_json", help="JSON output")
+
     # castor register
     p_register = sub.add_parser(
         "register",
@@ -3915,6 +4110,7 @@ def main() -> None:
         "dashboard-tui": cmd_dashboard_tui,
         "token": cmd_token,
         "discover": cmd_discover,
+        "inspect": cmd_inspect,
         "register": cmd_register,
         "compliance": cmd_compliance,
         "doctor": cmd_doctor,

@@ -3820,6 +3820,8 @@ def _execute_action(action: dict):
     """Translate an action dict into driver commands."""
     action_type = action.get("type", "")
 
+    _action_t0 = time.perf_counter()
+
     # Seal a CommitmentRecord for every action (RCAN §16 audit trail)
     try:
         from castor.rcan.commitment_chain import get_commitment_chain
@@ -3833,6 +3835,8 @@ def _execute_action(action: dict):
                 confidence=action.get("confidence"),
                 model_identity=action.get("model_identity"),
             )
+            from castor.metrics import get_registry as _get_metrics
+            _get_metrics().record_commitment()
     except Exception as _ce:
         logger.debug("CommitmentRecord skipped (non-fatal): %s", _ce)
     if action_type == "move":
@@ -4195,6 +4199,31 @@ async def on_startup():
                     logger.info("Provider fallback manager ready")
                 except Exception as _pf_exc:
                     logger.warning("Provider fallback init failed: %s", _pf_exc)
+
+            # Initialize multi-provider failover chain (agent.fallbacks in RCAN YAML)
+            _agent_cfg = state.config.get("agent", {})
+            if _agent_cfg.get("fallbacks"):
+                try:
+                    from castor.providers.failover import ProviderFailoverChain
+                    from castor.brain import build_provider  # provider factory
+
+                    def _provider_factory(pkey: str, pmodel: str):
+                        cfg_copy = dict(state.config)
+                        cfg_copy.setdefault("agent", {})["provider"] = pkey
+                        cfg_copy["agent"]["model"] = pmodel
+                        return build_provider(cfg_copy)
+
+                    failover_chain = ProviderFailoverChain.from_config(
+                        state.config, _provider_factory
+                    )
+                    if failover_chain is not None:
+                        state.failover_chain = failover_chain
+                        logger.info(
+                            "Multi-provider failover chain ready: %d fallback(s)",
+                            len(failover_chain._fallbacks),
+                        )
+                except Exception as _fc_exc:
+                    logger.warning("Failover chain init failed (non-fatal): %s", _fc_exc)
 
             # Initialize driver (simulation-safe)
             from castor.drivers import get_driver

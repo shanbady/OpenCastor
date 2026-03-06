@@ -576,6 +576,53 @@ class MetricsRegistry:
         if self._enabled:
             self._request_rate.record(endpoint)
 
+    # ------------------------------------------------------------------
+    # RCAN §16 — Safety, audit, and AI accountability metrics
+    # ------------------------------------------------------------------
+
+    def record_safety_block(self, action_type: str, reason: str = "") -> None:
+        """Increment the safety-block counter for *action_type*."""
+        if not self._enabled:
+            return
+        c = self._counters.get("opencastor_safety_blocks_total")
+        if c:
+            short_reason = (reason or "unknown")[:40].replace("\n", " ")
+            c.inc(action_type=action_type, reason=short_reason)
+
+    def record_action(self, action_type: str, approved: bool, duration_ms: float) -> None:
+        """Record a robot action execution with approval status and duration."""
+        if not self._enabled:
+            return
+        c = self._counters.get("opencastor_action_total")
+        if c:
+            c.inc(action_type=action_type, approved=str(approved).lower())
+        lat = self._counters.get("opencastor_action_duration_ms")
+        if lat:
+            lat.inc(action_type=action_type, value=duration_ms)
+
+    def record_confidence_gate(self, action_type: str, confidence: float) -> None:
+        """Record the last confidence gate value for an action type."""
+        with self._lock:
+            if not hasattr(self, "_confidence_values"):
+                self._confidence_values: dict[str, float] = {}
+            self._confidence_values[action_type] = confidence
+
+    def record_commitment(self) -> None:
+        """Increment the CommitmentRecord sealed counter."""
+        if not self._enabled:
+            return
+        c = self._counters.get("opencastor_commitment_records_total")
+        if c:
+            c.inc()
+
+    def record_failover(self, from_provider: str, to_provider: str) -> None:
+        """Record a provider failover event."""
+        if not self._enabled:
+            return
+        c = self._counters.get("opencastor_failover_total")
+        if c:
+            c.inc(from_provider=from_provider, to_provider=to_provider)
+
     def update_status(
         self,
         robot: str = "robot",

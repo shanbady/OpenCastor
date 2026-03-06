@@ -1952,6 +1952,167 @@ def _verify_telegram_token(token):
         print(f"    {Colors.WARNING}[WARN]{Colors.ENDC} Could not verify token: {e}")
 
 
+def _offer_rcan_registration(rcan_data: dict, robot_name: str, config_filename: str) -> str | None:
+    """
+    Offer to register the robot with rcan.dev during wizard setup.
+
+    Attempts programmatic registration if an API key is available.
+    Falls back to showing the manual registration URL with pre-filled
+    query parameters. Never blocks wizard completion.
+
+    Returns the RRN string (e.g. ``"RRN-00000042"``) on success, or None.
+    """
+    print(f"\n{Colors.HEADER}--- RCAN REGISTRY ---{Colors.ENDC}")
+    print("  Get a globally unique Robot ID (RRN) for your robot at rcan.dev.")
+    print("  Free. Takes 30 seconds. Gives your robot a verifiable identity.\n")
+
+    try:
+        ans = input_default("Register this robot with rcan.dev now?", "Y").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+    if ans not in ("y", "yes", ""):
+        _print_manual_registration_url(rcan_data, robot_name)
+        return None
+
+    # Extract metadata from rcan_data
+    meta = rcan_data.get("metadata", {})
+    manufacturer = (
+        meta.get("manufacturer")
+        or input_default("  Manufacturer / org name", "opencastor").strip()
+    )
+    model = (
+        meta.get("model")
+        or input_default("  Model name", robot_name.lower().replace(" ", "-")).strip()
+    )
+    version = meta.get("version") or meta.get("firmware_version") or "v1"
+    device_id = (
+        meta.get("robot_uuid", "")[:8]
+        or meta.get("device_id")
+        or f"unit-{robot_name.lower()[:6]}"
+    )
+
+    # Check for existing API key
+    api_key = (
+        os.environ.get("RCAN_API_KEY")
+        or os.environ.get("OPENCASTOR_RCAN_KEY")
+        or ""
+    )
+
+    if not api_key:
+        print(
+            f"\n  {Colors.BLUE}[rcan.dev]{Colors.ENDC} No RCAN API key found.\n"
+            f"  To register programmatically, get a free key at: "
+            f"{Colors.BLUE}https://rcan.dev/register{Colors.ENDC}\n"
+        )
+        try:
+            key_input = input(
+                "  Paste API key (or press Enter to register manually via browser): "
+            ).strip()
+        except (EOFError, KeyboardInterrupt):
+            key_input = ""
+
+        if key_input:
+            api_key = key_input
+            _write_env_var("RCAN_API_KEY", api_key)
+            print(f"  {Colors.GREEN}✓{Colors.ENDC} API key saved.\n")
+
+    if api_key:
+        return _programmatic_register(
+            api_key=api_key,
+            manufacturer=manufacturer,
+            model=model,
+            version=version,
+            device_id=device_id,
+            meta=meta,
+            robot_name=robot_name,
+        )
+    else:
+        _print_manual_registration_url(rcan_data, robot_name, manufacturer, model, version)
+        return None
+
+
+def _programmatic_register(
+    api_key: str,
+    manufacturer: str,
+    model: str,
+    version: str,
+    device_id: str,
+    meta: dict,
+    robot_name: str,
+) -> str | None:
+    """Attempt to register via the rcan.dev API. Returns RRN or None."""
+    print(f"  {Colors.BLUE}[rcan.dev]{Colors.ENDC} Registering robot...", end=" ", flush=True)
+    try:
+        import asyncio
+        from rcan.registry import RegistryClient
+
+        async def _do_register():
+            async with RegistryClient(api_key=api_key) as client:
+                return await client.register(
+                    manufacturer=manufacturer,
+                    model=model,
+                    version=version,
+                    device_id=device_id,
+                    metadata={
+                        "robot_name": robot_name,
+                        "description": meta.get("description", ""),
+                        "rcan_version": "1.2",
+                        "opencastor": True,
+                    },
+                )
+
+        result = asyncio.run(_do_register())
+        rrn = result.get("rrn", "")
+        if rrn:
+            print(f"{Colors.GREEN}✓{Colors.ENDC}")
+            print(f"\n  {Colors.GREEN}✅ Robot registered!{Colors.ENDC}")
+            print(f"  {Colors.BOLD}RRN:{Colors.ENDC}  {rrn}")
+            print(f"  {Colors.BOLD}URI:{Colors.ENDC}  {result.get('uri', '')}")
+            print(
+                f"  {Colors.BOLD}View:{Colors.ENDC} "
+                f"{Colors.BLUE}https://rcan.dev/registry/{rrn}{Colors.ENDC}\n"
+            )
+            return rrn
+        else:
+            print(f"{Colors.WARNING}unexpected response{Colors.ENDC}")
+            _print_manual_registration_url({}, robot_name, manufacturer, model, version)
+            return None
+
+    except ImportError:
+        print(f"{Colors.WARNING}rcan package not available{Colors.ENDC}")
+        _print_manual_registration_url({}, robot_name, manufacturer, model, version)
+        return None
+    except Exception as exc:
+        print(f"{Colors.FAIL}failed{Colors.ENDC}")
+        print(f"  Error: {exc}")
+        print(f"  You can register manually at: {Colors.BLUE}https://rcan.dev/registry{Colors.ENDC}\n")
+        return None
+
+
+def _print_manual_registration_url(
+    rcan_data: dict,
+    robot_name: str,
+    manufacturer: str = "",
+    model: str = "",
+    version: str = "v1",
+) -> None:
+    """Print a pre-filled manual registration URL."""
+    meta = rcan_data.get("metadata", {}) if rcan_data else {}
+    mfr = manufacturer or meta.get("manufacturer", "opencastor")
+    mdl = model or meta.get("model", robot_name.lower().replace(" ", "-"))
+    try:
+        from urllib.parse import urlencode
+        params = urlencode({"manufacturer": mfr, "model": mdl, "version": version, "source": "wizard"})
+        url = f"https://rcan.dev/registry/register?{params}"
+    except Exception:
+        url = "https://rcan.dev/registry"
+
+    print(f"\n  Register manually (takes ~30s):")
+    print(f"  {Colors.BLUE}{url}{Colors.ENDC}")
+    print(f"  Or later: {Colors.BLUE}castor register --config <your-config>.rcan.yaml{Colors.ENDC}\n")
+
+
 def choose_hardware():
     """Select hardware kit, with optional auto-detection."""
     print(f"\n{Colors.GREEN}--- HARDWARE KIT ---{Colors.ENDC}")
@@ -2600,6 +2761,26 @@ def main():
         with contextlib.suppress(Exception):
             finalize_setup_session(setup_session_id, success=True, reason_code="READY")
 
+    # --- Register with rcan.dev ---
+    rrn = _offer_rcan_registration(rcan_data, robot_name, filename)
+    if rrn:
+        # Inject RRN into the written config
+        try:
+            with open(filename) as f:
+                saved = yaml.safe_load(f)
+            saved.setdefault("metadata", {})["rrn"] = rrn
+            saved.setdefault("metadata", {})["rcan_uri"] = (
+                f"rcan://registry.rcan.dev/"
+                f"{saved['metadata'].get('manufacturer', 'opencastor')}/"
+                f"{saved['metadata'].get('model', robot_name.lower().replace(' ', '_'))}/"
+                f"{saved['metadata'].get('version', 'v1')}/"
+                f"{saved['metadata'].get('robot_uuid', 'unit-001')}"
+            )
+            with open(filename, "w") as f:
+                yaml.dump(saved, f, sort_keys=False, default_flow_style=False)
+        except Exception:
+            pass
+
     # --- Auto-detect RCAN capabilities ---
     try:
         from castor.rcan.capabilities import CapabilityRegistry
@@ -2631,6 +2812,8 @@ def main():
         _console.print(f"\n{'=' * 50}")
         _console.print("[bold green]Setup Complete![/]\n")
         _console.print(f"  Config file:  [cyan]{filename}[/]")
+        if rrn:
+            _console.print(f"  Robot ID:     [bold green]{rrn}[/] — rcan.dev/registry/{rrn}")
         _console.print(f"  AI Provider:  {agent_config['label']}")
         _console.print(f"  Model:        {agent_config['model']}")
 
@@ -2654,7 +2837,13 @@ def main():
             f"  6. Test your hardware:   [cyan]castor test-hardware --config {filename}[/]"
         )
         _console.print(f"  7. Calibrate servos:     [cyan]castor calibrate --config {filename}[/]")
+        if not rrn:
+            _console.print(
+                "\n  Register your robot:     [cyan]castor register --config {filename}[/]"
+                " or [link=https://rcan.dev/registry]rcan.dev/registry[/]"
+            )
         _console.print("\n  Or with Docker:          [cyan]docker compose up[/]")
+        _console.print("  Check RCAN compliance:   [cyan]castor compliance --config {filename}[/]")
         _console.print("  Validate config:         https://rcan.dev/spec/")
     else:
         print(f"\n{Colors.BOLD}{'=' * 50}{Colors.ENDC}")

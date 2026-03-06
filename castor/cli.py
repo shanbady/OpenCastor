@@ -380,6 +380,124 @@ def cmd_snapshot(args) -> None:
             print()
 
 
+def cmd_register(args) -> None:
+    """Register this robot with rcan.dev and get a globally unique RRN."""
+    import os
+    import sys
+
+    # Load config
+    try:
+        import yaml
+        with open(args.config) as f:
+            config = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        print(f"❌ Config not found: {args.config}")
+        print("   Run: castor wizard  to create one first.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to load config: {e}")
+        sys.exit(1)
+
+    meta = config.get("metadata", {})
+
+    # Resolve fields (CLI args > config > prompts)
+    manufacturer = args.manufacturer or meta.get("manufacturer") or ""
+    model = args.model or meta.get("model") or ""
+    version = args.version or meta.get("version") or meta.get("firmware_version") or "v1"
+    device_id = args.device_id or meta.get("robot_uuid", "")[:8] or "unit-001"
+    api_key = args.api_key or os.environ.get("RCAN_API_KEY") or os.environ.get("OPENCASTOR_RCAN_KEY") or ""
+
+    if not manufacturer:
+        manufacturer = input("Manufacturer / org name [opencastor]: ").strip() or "opencastor"
+    if not model:
+        robot_name = meta.get("robot_name", "robot")
+        model = input(f"Model name [{robot_name}]: ").strip() or robot_name
+
+    # Check for existing RRN
+    existing_rrn = meta.get("rrn")
+    if existing_rrn:
+        print(f"\n⚠️  This robot already has an RRN: {existing_rrn}")
+        print(f"   View at: https://rcan.dev/registry/{existing_rrn}")
+        ans = input("Re-register anyway? [y/N]: ").strip().lower()
+        if ans not in ("y", "yes"):
+            sys.exit(0)
+
+    if not api_key:
+        print("\n🔑 No RCAN API key found.")
+        print("   Get a free key at: https://rcan.dev/register")
+        print("   Or set: export RCAN_API_KEY=<your-key>\n")
+        api_key = input("Paste API key (Enter to open browser instead): ").strip()
+        if not api_key:
+            try:
+                import urllib.parse
+                params = urllib.parse.urlencode({
+                    "manufacturer": manufacturer, "model": model,
+                    "version": version, "source": "castor-cli"
+                })
+                url = f"https://rcan.dev/registry/register?{params}"
+                import webbrowser
+                webbrowser.open(url)
+                print(f"\n   Opened: {url}")
+            except Exception:
+                print(f"\n   Register at: https://rcan.dev/registry")
+            sys.exit(0)
+
+    # Register
+    print(f"\n📡 Registering {manufacturer}/{model} {version} with rcan.dev...", end=" ", flush=True)
+    try:
+        import asyncio
+        from rcan.registry import RegistryClient
+
+        async def _register():
+            async with RegistryClient(api_key=api_key) as client:
+                return await client.register(
+                    manufacturer=manufacturer, model=model,
+                    version=version, device_id=device_id,
+                    metadata={
+                        "robot_name": meta.get("robot_name", model),
+                        "rcan_version": "1.2",
+                        "opencastor": True,
+                    },
+                )
+
+        result = asyncio.run(_register())
+        rrn = result.get("rrn", "")
+
+        if rrn:
+            print("✅")
+            print(f"\n🤖 Robot registered!")
+            print(f"   RRN:  {rrn}")
+            print(f"   URI:  {result.get('uri', '')}")
+            print(f"   View: https://rcan.dev/registry/{rrn}\n")
+
+            # Patch config file
+            meta["rrn"] = rrn
+            meta["rcan_uri"] = result.get("uri", "")
+            config["metadata"] = meta
+            with open(args.config, "w") as f:
+                yaml.dump(config, f, sort_keys=False, default_flow_style=False)
+            print(f"   ✓ RRN written to {args.config}")
+
+            # Save API key for future use
+            try:
+                from castor.wizard import _write_env_var
+                _write_env_var("RCAN_API_KEY", api_key)
+                print("   ✓ API key saved to ~/.opencastor/env")
+            except Exception:
+                pass
+        else:
+            print("⚠️  Unexpected response — no RRN returned")
+            sys.exit(1)
+
+    except ImportError:
+        print("❌  rcan package not installed. Run: pip install rcan")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌  Registration failed: {e}")
+        print(f"   Try manually at: https://rcan.dev/registry")
+        sys.exit(1)
+
+
 def cmd_compliance(args) -> None:
     """Check RCAN v1.2 conformance for a robot config."""
     import json as _json
@@ -2940,6 +3058,32 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # castor register
+    p_register = sub.add_parser(
+        "register",
+        help="Register your robot with rcan.dev and get a globally unique RRN",
+        epilog="Example: castor register --config bob.rcan.yaml",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_register.add_argument(
+        "--config", default="robot.rcan.yaml", help="RCAN config file"
+    )
+    p_register.add_argument(
+        "--api-key", default=None, help="rcan.dev API key (or set RCAN_API_KEY env var)"
+    )
+    p_register.add_argument(
+        "--manufacturer", default=None, help="Override manufacturer slug"
+    )
+    p_register.add_argument(
+        "--model", default=None, help="Override model slug"
+    )
+    p_register.add_argument(
+        "--version", default=None, help="Override version string"
+    )
+    p_register.add_argument(
+        "--device-id", default=None, dest="device_id", help="Override device ID"
+    )
+
     # castor fix
     p_fix = sub.add_parser(
         "fix",
@@ -3771,6 +3915,7 @@ def main() -> None:
         "dashboard-tui": cmd_dashboard_tui,
         "token": cmd_token,
         "discover": cmd_discover,
+        "register": cmd_register,
         "compliance": cmd_compliance,
         "doctor": cmd_doctor,
         "demo": cmd_demo,

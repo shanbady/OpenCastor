@@ -6,6 +6,31 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.8.0] — 2026-03-06
+
+### Added
+- **RCAN-Swarm Safety** — `castor node` CLI for multi-robot coordination
+  - `castor node resolve <rrn>` — federated peer verification
+  - `castor node ping` — registry reachability check
+  - `castor node status` — show node broadcaster manifest
+  - `castor node manifest` — print `/.well-known/rcan-node.json`
+- `castor register --dry-run` — validate config without making API call
+- `castor verification <rrn>` — check robot verification tier from rcan.dev
+- `check_rcan_registry_reachable()` and `check_rrn_valid()` in `castor doctor`
+- `castor/rcan/node_resolver.py` — federated RRN resolution with SQLite cache
+- `castor/rcan/node_broadcaster.py` — serve `/.well-known/rcan-node.json`
+- `castor/rcan/sdk_compat.py` — pre-registration SDK version check
+- `castor/rcan/verification.py` — `VerificationTier` enum + `VerificationStatus`
+
+### Fixed
+- Lint: 146 ruff errors resolved across test files
+- `test_deepseek_provider.py` — skip gracefully when `openai` not installed
+- Integration test: handle both tuple and `ValidationResult` from `validate_config()`
+- SBOM generation: heredoc syntax invalid in YAML — extracted to Python script
+
+### Testing
+- 1844+ tests passing, 11 skipped
+
 ## [2026.3.7.0] — 2026-03-06
 ### What's New — "Whole Solution" Release
 The complete RCAN robot safety stack is now production-ready:

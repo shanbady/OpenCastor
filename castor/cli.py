@@ -895,6 +895,50 @@ def cmd_compliance(args) -> None:
     sys.exit(0 if l1_pass else 1)
 
 
+def cmd_streaming(args) -> None:
+    """castor streaming — manage the continuous vision inference loop."""
+
+    sub = getattr(args, "streaming_cmd", "status")
+
+    if sub == "status":
+        # Check if a loop is recorded in the state file
+        import json
+        from pathlib import Path
+
+        state_file = Path.home() / ".opencastor" / "streaming_state.json"
+        if state_file.exists():
+            s = json.loads(state_file.read_text())
+            print(f"Streaming loop: {'running' if s.get('running') else 'stopped'}")
+            print(f"  FPS:            {s.get('fps', '?')}")
+            print(f"  Min confidence: {s.get('min_confidence', '?')}")
+            print(f"  Frames:         {s.get('frames', '?')}")
+        else:
+            print("No active streaming loop (start with: castor streaming start)")
+
+    elif sub == "start":
+        fps = getattr(args, "fps", 2.0)
+        min_conf = getattr(args, "min_confidence", 0.75)
+        dry_run = getattr(args, "dry_run", False)
+        print(f"Streaming loop: fps={fps} min_confidence={min_conf} dry_run={dry_run}")
+        print(
+            "To embed in a running castor gateway, set agent.streaming.enabled: true in your RCAN YAML."
+        )
+        print("For standalone test run: this will start a loop that requires a running provider.")
+
+    elif sub == "stop":
+        from pathlib import Path
+
+        state_file = Path.home() / ".opencastor" / "streaming_state.json"
+        if state_file.exists():
+            state_file.unlink()
+            print("Streaming state cleared. The gateway will stop the loop on next restart.")
+        else:
+            print("No active streaming loop found.")
+
+    else:
+        print(f"Unknown streaming subcommand: {sub}")
+
+
 def cmd_doctor(args) -> None:
     """castor doctor — system health check."""
     from castor.doctor import print_report, run_doctor
@@ -2460,6 +2504,7 @@ def main() -> None:
         "discover": cmd_discover,
         "memory": cmd_memory,
         "fleet": cmd_fleet,
+        "streaming": cmd_streaming,
         "doctor": cmd_doctor,
         "update": cmd_update,
         "inspect": cmd_inspect,

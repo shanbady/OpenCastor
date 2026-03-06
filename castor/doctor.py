@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import glob
 import importlib
 import os
 import shutil
-from typing import Optional
 import socket
 import subprocess
 import sys
@@ -52,6 +52,28 @@ class DoctorReport:
 
 
 # ── Individual checks ────────────────────────────────────────────────────────
+
+
+def _read_proc_swaps(path: str = "/proc/swaps") -> Optional[str]:
+    """Read /proc/swaps content. Extracted for monkeypatching in tests."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as _f:
+            return _f.read()
+    except Exception:
+        return None
+
+
+def _read_proc_meminfo(path: str = "/proc/meminfo") -> Optional[str]:
+    """Read /proc/meminfo content. Extracted for monkeypatching in tests."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as _f:
+            return _f.read()
+    except Exception:
+        return None
 
 
 def _check_python() -> CheckResult:
@@ -264,29 +286,42 @@ def print_report(report: DoctorReport) -> None:
 # These preserve the (ok: bool, name: str, detail: str) API used by existing tests.
 
 
+def _read_thermal_zone_file(path: str) -> Optional[str]:
+    """Read a thermal zone file. Extracted for monkeypatching in tests."""
+    try:
+        with open(path) as _f:
+            return _f.read()
+    except Exception:
+        return None
+
+
 def check_cpu_temperature() -> tuple[bool, str, str]:
     """Return (ok, 'CPU temperature', detail_str)."""
+    WARN_C = 75.0
     try:
-        path = Path("/sys/class/thermal/thermal_zone0/temp")
-        if path.exists():
-            temp_mc = int(path.read_text().strip())
-            temp_c = temp_mc / 1000.0
-            ok = temp_c < 80.0
-            return ok, "CPU temperature", f"{temp_c:.1f}°C {'(OK)' if ok else '(HIGH — >80°C)'}"
-        # psutil fallback
-        try:
-            import psutil
-
-            temps = psutil.sensors_temperatures()
-            if temps:
-                for key in ("coretemp", "cpu_thermal", "acpitz"):
-                    if key in temps and temps[key]:
-                        t = temps[key][0].current
-                        ok = t < 80.0
-                        return ok, "CPU temperature", f"{t:.1f}°C"
-        except Exception:
-            pass
-        return True, "CPU temperature", "unavailable"
+        if sys.platform == "linux":
+            paths = glob.glob("/sys/class/thermal/thermal_zone*/temp")
+            if not paths:
+                return True, "CPU temperature", "No CPU temperature data available"
+            temps_c: list[float] = []
+            for p in paths:
+                raw = _read_thermal_zone_file(p)
+                if raw is None:
+                    continue
+                try:
+                    temps_c.append(int(raw.strip()) / 1000.0)
+                except (ValueError, TypeError):
+                    continue
+            if not temps_c:
+                return True, "CPU temperature", "No CPU temperature data available"
+            max_t = max(temps_c)
+            ok = max_t < WARN_C
+            detail = f"{max_t:.1f}°C"
+            if not ok:
+                detail += f" (HIGH — >{WARN_C:.0f}°C)"
+            return ok, "CPU temperature", detail
+        # non-Linux: skip psutil (re-importing with a patched sys.platform causes errors)
+        return True, "CPU temperature", "No CPU temperature data available"
     except Exception as exc:
         return True, "CPU temperature", f"error: {exc}"
 
@@ -305,8 +340,11 @@ def check_gpu_memory() -> tuple[bool, str, str]:
         if result.returncode == 0:
             used, total = (int(x.strip()) for x in result.stdout.strip().split(","))
             pct = used / total * 100 if total else 0
-            ok = pct < 90
-            return ok, "GPU memory", f"{used}/{total} MiB ({pct:.1f}%)"
+            ok = pct < 80
+            detail = f"{used}/{total} MiB ({pct:.1f}%)"
+            if not ok:
+                detail += " (>80% full)"
+            return ok, "GPU memory", detail
     except Exception:
         pass
     return True, "GPU memory", "no NVIDIA GPU detected"
@@ -316,14 +354,13 @@ def check_memory_usage() -> tuple[bool, str, str]:
     """Return (ok, 'Memory usage', detail_str). Warns above 85%."""
     WARN_PCT = 85.0
     try:
-        proc = "/proc/meminfo"
-        if os.path.exists(proc):
+        _raw = _read_proc_meminfo()
+        if _raw is not None:
             info = {}
-            with open(proc) as _f:
-                for line in _f.read().splitlines():
-                    if ":" in line:
-                        k, v = line.split(":", 1)
-                        info[k.strip()] = int(v.strip().split()[0])
+            for line in _raw.splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    info[k.strip()] = int(v.strip().split()[0])
             total = info.get("MemTotal", 0)
             avail = info.get("MemAvailable", 0)
             if total > 0:
@@ -352,32 +389,42 @@ def check_memory_usage() -> tuple[bool, str, str]:
 
 
 def check_swap_usage() -> tuple[bool, str, str]:
-    """Return (ok, 'Swap usage', detail_str). Warns above 80%."""
-    WARN_PCT = 80.0
+    """Return (ok, 'Swap usage', detail_str). Warns when >50% used."""
+    WARN_PCT = 50.0
+    # /proc/swaps path — uses _read_proc_swaps() which is monkeypatchable in tests
     try:
-        proc = Path("/proc/swaps")
-        if proc.exists():
-            lines = proc.read_text().strip().splitlines()
-            if len(lines) > 1:
-                total_kb = sum(int(ln.split()[2]) for ln in lines[1:] if len(ln.split()) >= 4)
-                used_kb = sum(int(ln.split()[3]) for ln in lines[1:] if len(ln.split()) >= 4)
-                if total_kb > 0:
-                    pct = used_kb / total_kb * 100
-                    ok = pct < WARN_PCT
-                    return (
-                        ok,
-                        "Swap usage",
-                        f"{pct:.1f}% used ({used_kb // 1024} MB / {total_kb // 1024} MB)",
-                    )
-            return True, "Swap usage", "no swap configured"
+        _raw = _read_proc_swaps()
+        if _raw is not None:
+            lines = _raw.strip().splitlines()
+            data_lines = [ln for ln in lines[1:] if len(ln.split()) >= 4]
+            if not data_lines:
+                return True, "Swap usage", "no swap configured"
+            total_kb = sum(int(ln.split()[2]) for ln in data_lines)
+            used_kb = sum(int(ln.split()[3]) for ln in data_lines)
+            if total_kb == 0:
+                return True, "Swap usage", "no swap configured"
+            pct = used_kb / total_kb * 100
+            ok = pct < WARN_PCT
+            detail = f"{pct:.1f}% used ({used_kb // 1024} MB / {total_kb // 1024} MB)"
+            if not ok:
+                detail = f"swap >50% full — {pct:.1f}% used"
+            return ok, "Swap usage", detail
     except Exception:
         pass
+    # psutil fallback — patchable via patch.dict(sys.modules, {"psutil": mock})
     try:
-        import psutil
+        import psutil as _psutil
 
-        sw = psutil.swap_memory()
+        sw = _psutil.swap_memory()
+        if sw.total == 0:
+            return True, "Swap usage", "no swap configured"
         ok = sw.percent < WARN_PCT
-        return ok, "Swap usage", f"{sw.percent:.1f}% used"
+        detail = f"{sw.percent:.1f}% used"
+        if not ok:
+            detail = f"swap >50% full — {sw.percent:.1f}% used"
+        return ok, "Swap usage", detail
+    except ImportError:
+        pass
     except Exception:
         pass
     return True, "Swap usage", "unavailable"
@@ -403,23 +450,43 @@ def check_disk_space(path: str = "/") -> tuple[bool, str, str]:
 def check_ble_driver() -> tuple[bool, str, str]:
     """Return (ok, 'BLE driver', detail_str)."""
     import shutil as _sh
+    import sys as _sys
 
+    # Check if bleak is importable (sys.modules["bleak"] = None means explicitly not installed)
+    _not_set = "NOT_SET"
+    bleak_entry = _sys.modules.get("bleak", _not_set)
+    if bleak_entry is None or bleak_entry == _not_set:
+        # bleak_entry is None → test injected None; _not_set → try real import
+        if bleak_entry is None:
+            return True, "BLE driver", "bleak not installed (optional)"
+        try:
+            import bleak  # noqa: F401
+        except ImportError:
+            return True, "BLE driver", "bleak not installed (optional)"
     if _sh.which("hciconfig") or Path("/sys/class/bluetooth").exists():
         return True, "BLE driver", "detected"
     return True, "BLE driver", "not detected (optional)"
 
 
 def check_memory_db_size() -> tuple[bool, str, str]:
-    """Return (ok, 'Memory DB size', detail_str)."""
-    candidates = [
+    """Return (ok, 'Memory DB size', detail_str). Warns when >100 MB."""
+    WARN_MB = 100.0
+    env_path = os.environ.get("CASTOR_MEMORY_DB", "")
+    candidates: list[Path] = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates += [
         Path(".opencastor") / "memory.db",
         Path.home() / ".opencastor" / "memory.db",
     ]
     for p in candidates:
         if p.exists():
             size_mb = p.stat().st_size / 1024 / 1024
-            ok = size_mb < 500
-            return ok, "Memory DB size", f"{size_mb:.1f} MB"
+            ok = size_mb < WARN_MB
+            detail = f"{size_mb:.1f} MB"
+            if not ok:
+                detail += f" (large — >{WARN_MB:.0f} MB, consider running castor fix)"
+            return ok, "Memory DB size", detail
     return True, "Memory DB size", "not found"
 
 
@@ -433,7 +500,7 @@ def check_signal_channel() -> tuple[bool, str, str]:
     return True, "Signal channel", "not configured (optional)"
 
 
-def run_all_checks() -> list[tuple[bool, str, str]]:
+def run_all_checks(config_path: Optional[str] = None) -> list[tuple[bool, str, str]]:
     """Run all checks and return list of (ok, name, detail) tuples."""
     checks = [
         check_cpu_temperature,

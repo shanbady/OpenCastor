@@ -1,4 +1,5 @@
 """castor.benchmarker — measure AI provider latency and throughput."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,6 +11,7 @@ from typing import Any, Awaitable, Callable, List
 try:
     from rich.console import Console
     from rich.table import Table
+
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
@@ -85,11 +87,19 @@ def print_results(results: List[BenchmarkResult]) -> None:
         t.add_column("Success%", justify="right")
         for r in results:
             t.add_row(
-                r.provider, r.model, str(r.n),
-                f"{r.mean_ms:.0f}", f"{r.min_ms:.0f}", f"{r.max_ms:.0f}",
-                f"{r.p95_ms:.0f}", str(r.errors), f"{r.success_rate*100:.0f}%",
+                r.provider,
+                r.model,
+                str(r.n),
+                f"{r.mean_ms:.0f}",
+                f"{r.min_ms:.0f}",
+                f"{r.max_ms:.0f}",
+                f"{r.p95_ms:.0f}",
+                str(r.errors),
+                f"{r.success_rate * 100:.0f}%",
             )
         con.print(t)
     else:
         for r in results:
-            print(f"{r.provider}/{r.model}: mean={r.mean_ms:.0f}ms p95={r.p95_ms:.0f}ms errors={r.errors}")
+            print(
+                f"{r.provider}/{r.model}: mean={r.mean_ms:.0f}ms p95={r.p95_ms:.0f}ms errors={r.errors}"
+            )

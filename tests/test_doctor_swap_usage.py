@@ -89,8 +89,8 @@ def test_over_50_pct_returns_false_psutil():
 def test_proc_swaps_no_entries_returns_true():
     proc_content = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
 
-    with patch("os.path.exists", return_value=True):
-        with patch("builtins.open", mock_open(read_data=proc_content)):
+    with patch("castor.doctor._read_proc_swaps", return_value=proc_content):
+        with patch.dict("sys.modules", {}):  # ensure no psutil mock
             ok, name, detail = check_swap_usage()
 
     assert ok is True
@@ -124,9 +124,8 @@ def test_proc_swaps_high_usage_returns_false():
         "/dev/sda2                               partition\t2097148\t1572861\t-2\n"
     )
 
-    with patch("os.path.exists", return_value=True):
-        with patch("builtins.open", mock_open(read_data=proc_content)):
-            ok, name, detail = check_swap_usage()
+    with patch("castor.doctor._read_proc_swaps", return_value=proc_content):
+        ok, name, detail = check_swap_usage()
 
     assert ok is False
     assert name == "Swap usage"

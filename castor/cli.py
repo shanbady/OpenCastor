@@ -388,7 +388,10 @@ def cmd_fleet(args) -> None:
 
     fleet_cmd = getattr(args, "fleet_cmd", None)
     if fleet_cmd is None:
-        print("Usage: castor fleet <list|resolve|status>")
+        from castor.fleet import fleet_status
+
+        timeout_raw = getattr(args, "timeout", "5")
+        fleet_status(timeout=float(timeout_raw))
         return
 
     config_path = getattr(args, "config", None) or _find_default_config()
@@ -896,8 +899,16 @@ def cmd_compliance(args) -> None:
 
 
 def cmd_logs(args) -> None:
-    """castor logs — placeholder."""
-    print("castor logs: coming soon.")
+    """castor logs — stream or tail the castor runtime log."""
+    from castor.logs import view_logs
+
+    view_logs(
+        follow=getattr(args, "follow", False),
+        level=getattr(args, "level", None),
+        module=getattr(args, "module", None),
+        lines=getattr(args, "lines", 50),
+        no_color=getattr(args, "no_color", False),
+    )
 
 
 def cmd_memory(args) -> None:
@@ -906,13 +917,27 @@ def cmd_memory(args) -> None:
 
 
 def cmd_migrate(args) -> None:
-    """castor migrate — placeholder."""
-    print("castor migrate: coming soon.")
+    """castor migrate — migrate a RCAN config to the latest schema version."""
+    from castor.migrate import migrate_file
+
+    config = getattr(args, "config", "robot.rcan.yaml")
+    dry_run = getattr(args, "dry_run", False)
+    migrate_file(config, dry_run=dry_run)
 
 
 def cmd_network(args) -> None:
-    """castor network — placeholder."""
-    print("castor network: coming soon.")
+    """castor network — manage robot network exposure and status."""
+    from castor.network import expose, network_status
+
+    action = getattr(args, "action", None)
+    config_path = getattr(args, "config", None)
+
+    if action == "expose":
+        mode = getattr(args, "mode", None) or "serve"
+        port = getattr(args, "port", 8000)
+        expose(mode=mode, port=port)
+    else:
+        network_status(config_path=config_path)
 
 
 def cmd_plugin(args) -> None:
@@ -921,23 +946,91 @@ def cmd_plugin(args) -> None:
 
 
 def cmd_plugins(args) -> None:
-    """castor plugins — placeholder."""
-    print("castor plugins: coming soon.")
+    """castor plugins — list installed castor plugins."""
+    from castor.plugins import list_plugins, load_plugins, print_plugins
+
+    load_plugins()
+    plugins = list_plugins()
+    print_plugins(plugins)
 
 
 def cmd_privacy(args) -> None:
-    """castor privacy — placeholder."""
-    print("castor privacy: coming soon.")
+    """castor privacy — display the data privacy policy for this robot config."""
+    from castor.privacy import print_privacy_policy
+
+    config_path = getattr(args, "config", None)
+    config: dict = {}
+    if config_path:
+        try:
+            import yaml
+
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+    print_privacy_policy(config)
 
 
 def cmd_profile(args) -> None:
-    """castor profile — placeholder."""
-    print("castor profile: coming soon.")
+    """castor profile — manage named personality/config profiles."""
+    from castor.profiles import (
+        list_profiles,
+        print_profiles,
+        remove_profile,
+        save_profile,
+        use_profile,
+    )
+
+    action = getattr(args, "action", "list")
+    name = getattr(args, "name", None)
+    config = getattr(args, "config", None)
+
+    if action == "list":
+        profiles = list_profiles()
+        print_profiles(profiles)
+    elif action == "save":
+        if not name:
+            print("  Usage: castor profile save --name <profile-name> --config <file>")
+            return
+        save_profile(name, config)
+        print(f"  Profile '{name}' saved.")
+    elif action == "use":
+        if not name:
+            print("  Usage: castor profile use --name <profile-name>")
+            return
+        try:
+            use_profile(name)
+            print(f"  Profile '{name}' activated.")
+        except FileNotFoundError:
+            print(f"  Profile '{name}' not found.")
+    elif action == "remove":
+        if not name:
+            print("  Usage: castor profile remove --name <profile-name>")
+            return
+        ok = remove_profile(name)
+        if ok:
+            print(f"  Profile '{name}' removed.")
+        else:
+            print(f"  Profile '{name}' not found.")
+    else:
+        print("  Usage: castor profile <list|save|use|remove> [--name <name>]")
 
 
 def cmd_quickstart(args) -> None:
-    """castor quickstart — placeholder."""
-    print("castor quickstart: coming soon.")
+    """castor quickstart — guided zero-to-running setup in two steps."""
+    import subprocess
+    import sys
+
+    print("\n  🚀 OpenCastor QuickStart\n")
+    print("  Step 1: Running setup wizard...")
+    result = subprocess.run([sys.executable, "-m", "castor", "wizard"])
+    if result.returncode != 0:
+        print("\n  Wizard failed. Fix the issues above and re-run `castor quickstart`.")
+        return
+
+    print("\n  Step 2: Launching demo...")
+    subprocess.run([sys.executable, "-m", "castor", "demo"])
+    print("\n  QuickStart complete. Run `castor gateway` to start the full runtime.\n")
 
 
 def cmd_record(args) -> None:
@@ -946,18 +1039,53 @@ def cmd_record(args) -> None:
 
 
 def cmd_repl(args) -> None:
-    """castor repl — placeholder."""
-    print("castor repl: coming soon.")
+    """castor repl — interactive RCAN command REPL."""
+    import os
+
+    config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        return
+    from castor.repl import launch_repl
+
+    launch_repl(config_path=config_path)
 
 
 def cmd_replay(args) -> None:
-    """castor replay — placeholder."""
-    print("castor replay: coming soon.")
+    """castor replay — replay a recorded session from JSONL or via API."""
+    recording = getattr(args, "recording", None)
+    url = getattr(args, "url", None)
+
+    if not recording and not url:
+        print(
+            "  Error: provide a recording file or --url for API replay.",
+            file=__import__("sys").stderr,
+        )
+        print("  Usage: castor replay session.jsonl  OR  castor replay --url http://localhost:8000")
+        raise SystemExit(1)
+
+    if recording:
+        from castor.record import replay_session
+
+        execute = getattr(args, "execute", False)
+        config_path = getattr(args, "config", None)
+        replay_session(recording_path=recording, execute=execute, config_path=config_path)
+    else:
+        print(f"  API replay from {url} — use castor replay --url {url} --list to see recordings.")
 
 
 def cmd_restore(args) -> None:
-    """castor restore — placeholder."""
-    print("castor restore: coming soon.")
+    """castor restore — restore a config backup archive."""
+    from castor.backup import print_restore_summary, restore_backup
+
+    archive = getattr(args, "archive", None)
+    dry_run = getattr(args, "dry_run", False)
+    if dry_run:
+        restore_backup(archive, dry_run=True)
+    else:
+        files = restore_backup(archive)
+        if files:
+            print_restore_summary(files)
 
 
 def cmd_safety(args) -> None:
@@ -971,23 +1099,88 @@ def cmd_scan(args) -> None:
 
 
 def cmd_schedule(args) -> None:
-    """castor schedule — placeholder."""
-    print("castor schedule: coming soon.")
+    """castor schedule — manage cron-based task scheduling for castor commands."""
+    from castor.schedule import add_task, install_crontab, list_tasks, print_schedule, remove_task
+
+    action = getattr(args, "action", "list")
+    name = getattr(args, "name", None)
+    task_command = getattr(args, "task_command", None)
+    cron = getattr(args, "cron", None)
+
+    if action == "list":
+        tasks = list_tasks()
+        print_schedule(tasks)
+    elif action == "add":
+        if not name or not task_command or not cron:
+            print("  Usage: castor schedule add --name <name> --command <cmd> --cron <expr>")
+            return
+        task = add_task(name, task_command, cron)
+        print(f"  Added scheduled task '{task.get('name', name)}'.")
+    elif action == "remove":
+        if not name:
+            print("  Usage: castor schedule remove --name <name>")
+            return
+        ok = remove_task(name)
+        if not ok:
+            print(f"  Task '{name}' not found.")
+    elif action == "install":
+        install_crontab()
+    else:
+        print("  Usage: castor schedule <list|add|remove|install>")
 
 
 def cmd_search(args) -> None:
-    """castor search — placeholder."""
-    print("castor search: coming soon.")
+    """castor search — full-text search over stored robot memory logs."""
+    from castor.memory_search import print_search_results, search_logs
+
+    query = getattr(args, "query", "")
+    log_file = getattr(args, "log_file", None)
+    since = getattr(args, "since", None)
+    max_results = getattr(args, "max_results", 20)
+    results = search_logs(query=query, log_file=log_file, since=since, max_results=max_results)
+    print_search_results(results)
 
 
 def cmd_shell(args) -> None:
-    """castor shell — placeholder."""
-    print("castor shell: coming soon.")
+    """castor shell — open an interactive shell with the robot runtime loaded."""
+    import os
+
+    config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        return
+    from castor.shell import launch_shell
+
+    launch_shell(config_path=config_path)
 
 
 def cmd_status(args) -> None:
-    """castor status — placeholder."""
-    print("castor status: coming soon.")
+    """castor status — show AI provider and messaging channel readiness."""
+    from castor.auth import (
+        list_available_channels,
+        list_available_providers,
+        load_dotenv_if_available,
+    )
+
+    load_dotenv_if_available()
+    providers = list_available_providers()
+    channels = list_available_channels()
+
+    print("\n  AI Providers")
+    print(f"  {'─' * 24}")
+    for name, ready in sorted(providers.items()):
+        icon = "[+]" if ready else "[-]"
+        print(f"  {icon} {name}")
+
+    print("\n  Messaging Channels")
+    print(f"  {'─' * 24}")
+    if channels:
+        for name, ready in sorted(channels.items()):
+            icon = "[+]" if ready else "[-]"
+            print(f"  {icon} {name}")
+    else:
+        print("  (none configured)")
+    print()
 
 
 def cmd_swarm(args) -> None:
@@ -996,33 +1189,137 @@ def cmd_swarm(args) -> None:
 
 
 def cmd_test(args) -> None:
-    """castor test — placeholder."""
-    print("castor test: coming soon.")
+    """castor test — run the castor test suite via pytest."""
+    import subprocess
+    import sys
+
+    cmd = [sys.executable, "-m", "pytest"]
+    if getattr(args, "verbose", False):
+        cmd.append("-v")
+    keyword = getattr(args, "keyword", None)
+    if keyword:
+        cmd.extend(["-k", keyword])
+    result = subprocess.run(cmd)
+    raise SystemExit(result.returncode)
 
 
 def cmd_test_hardware(args) -> None:
-    """castor test hardware — placeholder."""
-    print("castor test hardware: coming soon.")
+    """castor test hardware — run hardware connectivity tests."""
+    import os
+
+    config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        return
+
+    skip_confirm = getattr(args, "yes", False)
+    from castor.test_hardware import run_test
+
+    run_test(config_path=config_path, skip_confirm=skip_confirm)
 
 
 def cmd_update_check(args) -> None:
-    """castor update check — placeholder."""
-    print("castor update check: coming soon.")
+    """castor update-check — check PyPI for a newer castor release."""
+    from castor.update_check import print_update_status
+
+    print_update_status()
 
 
 def cmd_upgrade(args) -> None:
-    """castor upgrade — placeholder."""
-    print("castor upgrade: coming soon.")
+    """castor upgrade — upgrade castor to the latest PyPI release."""
+    import subprocess
+    import sys
+
+    verbose = getattr(args, "verbose", False)
+    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "opencastor"]
+    if verbose:
+        pip_cmd.append("-v")
+    result = subprocess.run(pip_cmd)
+    if result.returncode == 0:
+        print("  Upgrade complete. Running health check...")
+        from castor.doctor import print_report, run_all_checks
+
+        print_report(run_all_checks())
+    else:
+        msg = "  Upgrade failed."
+        if not verbose:
+            msg += " Re-run with --verbose for details."
+        print(msg)
 
 
 def cmd_validate(args) -> None:
-    """castor validate — placeholder."""
-    print("castor validate: coming soon.")
+    """castor validate — run RCAN conformance checks on a config file."""
+    import json as _json
+    import os
+
+    config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        raise SystemExit(1)
+
+    try:
+        import yaml
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+    except Exception as exc:
+        print(f"  Error reading config: {exc}")
+        raise SystemExit(1)
+
+    from castor.conformance import ConformanceChecker
+
+    checker = ConformanceChecker(config, config_path=config_path)
+    category = getattr(args, "category", None)
+    json_out = getattr(args, "json", False) or getattr(args, "json_out", False)
+    strict = getattr(args, "strict", False)
+
+    if category:
+        results = checker.run_category(category)
+    else:
+        results = checker.run_all()
+
+    fails = [r for r in results if r.status == "fail"]
+    warns = [r for r in results if r.status == "warn"]
+
+    if json_out:
+        print(
+            _json.dumps(
+                {
+                    "config": config_path,
+                    "results": [
+                        {"id": r.check_id, "status": r.status, "message": r.detail}
+                        for r in results
+                    ],
+                    "ok": len(fails) == 0,
+                },
+                indent=2,
+            )
+        )
+    else:
+        cat_label = category.upper() if category else "ALL"
+        print(f"\n  RCAN Conformance: {config_path} [{cat_label}]  safety\n")
+        for r in results:
+            icon = "✅" if r.status == "pass" else ("⚠️ " if r.status == "warn" else "❌")
+            print(f"  {icon} [{r.check_id}] {r.detail}")
+        summary = checker.summary(results)
+        print(
+            f"\n  Score: {summary['score']}/100  "
+            f"pass={summary['pass']} warn={summary['warn']} fail={summary['fail']}\n"
+        )
+
+    if fails:
+        raise SystemExit(1)
+    if strict and warns:
+        raise SystemExit(1)
 
 
 def cmd_watch(args) -> None:
-    """castor watch — placeholder."""
-    print("castor watch: coming soon.")
+    """castor watch — live dashboard of robot telemetry in the terminal."""
+    from castor.watch import launch_watch
+
+    gateway_url = getattr(args, "gateway", "http://127.0.0.1:8000")
+    refresh = getattr(args, "refresh", 2.0)
+    launch_watch(gateway_url=gateway_url, refresh=refresh)
 
 
 def _cmd_monitor(args) -> None:
@@ -1046,7 +1343,7 @@ def cmd_agents(args) -> None:
             print("  No agents spawned.")
             return
         print(f"  {'Name':<20} {'Status':<12} {'Uptime (s)'}")
-        print(f"  {'-'*20} {'-'*12} {'-'*10}")
+        print(f"  {'-' * 20} {'-' * 12} {'-' * 10}")
         for a in agents:
             print(f"  {a['name']:<20} {a['status']:<12} {a['uptime_s']}")
 
@@ -1059,6 +1356,7 @@ def cmd_agents(args) -> None:
         cfg = {}
         if config_path:
             import yaml
+
             with open(config_path) as f:
                 cfg = yaml.safe_load(f) or {}
         agent = registry.spawn(name, config=cfg)
@@ -1070,6 +1368,7 @@ def cmd_agents(args) -> None:
             print("  Usage: castor agents stop --name <agent-name>")
             return
         import asyncio
+
         agent = registry.get(name)
         if not agent:
             print(f"  ❌ Agent '{name}' not found.")
@@ -1092,11 +1391,11 @@ def cmd_approvals(args) -> None:
     clear = getattr(args, "clear", False)
 
     if approve_id is not None:
-        try:
-            result = gate.approve(int(approve_id))
-            print(f"  ✅ Approved action {approve_id}: {result.get('action', {}).get('type', '?')}")
-        except Exception as exc:
-            print(f"  ❌ Approve failed: {exc}")
+        result = gate.approve(int(approve_id))
+        if result is not None:
+            print(f"  Approved action {approve_id}.")
+        else:
+            print(f"  Action {approve_id} not found.")
         return
 
     if deny_id is not None:
@@ -1146,10 +1445,12 @@ def cmd_backup(args) -> None:
 
     output = getattr(args, "output", None)
     archive = create_backup(output_path=output)
+    if not archive:
+        return
     # Read back the list of archived files for the summary
     try:
         with tarfile.open(archive, "r:gz") as tf:
-            files = tf.getnames()
+            files = [m.name for m in tf.getmembers()]
     except Exception:
         files = []
     print_backup_summary(archive, files)
@@ -1213,18 +1514,31 @@ def cmd_benchmark(args) -> None:
             print(f"  Results written to {output}")
     else:
         # Hardware perception-action loop benchmark
+        import os
+
         config_path = getattr(args, "config", "robot.rcan.yaml")
+        if not os.path.exists(config_path):
+            print(f"  Config not found: {config_path}")
+            return
         iterations = getattr(args, "iterations", 3)
         simulate = getattr(args, "simulate", False)
         from castor.benchmark import run_benchmark as hw_run
-        hw_run(config_path, iterations=iterations, simulate=simulate)
+
+        hw_run(config_path=config_path, iterations=iterations, simulate=simulate)
 
 
 def cmd_calibrate(args) -> None:
     """castor calibrate — interactive servo/motor calibration."""
+    import os
+
+    config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        return
+
     from castor.calibrate import run_calibration
 
-    run_calibration(config_path=getattr(args, "config", "robot.rcan.yaml"))
+    run_calibration(config_path=config_path)
 
 
 def cmd_configure(args) -> None:
@@ -1275,6 +1589,7 @@ def cmd_daemon(args) -> None:
 
     elif action == "restart":
         import subprocess
+
         rc = subprocess.call(["sudo", "systemctl", "restart", "castor"])
         if rc == 0:
             print("  ✅ Service restarted.")
@@ -1324,11 +1639,19 @@ def cmd_deploy(args) -> None:
         return subprocess.call(cmd)
 
     if status_only:
-        _run(["ssh"] + ssh_opts + [host, "systemctl status castor --no-pager 2>&1 || echo 'castor service not found'"])
+        _run(
+            ["ssh"]
+            + ssh_opts
+            + [host, "systemctl status castor --no-pager 2>&1 || echo 'castor service not found'"]
+        )
         return
 
     # SCP config to remote
-    rc = _run(["scp", "-P", str(port)] + (["-i", key] if key else []) + [config_path, f"{host}:~/robot.rcan.yaml"])
+    rc = _run(
+        ["scp", "-P", str(port)]
+        + (["-i", key] if key else [])
+        + [config_path, f"{host}:~/robot.rcan.yaml"]
+    )
     if rc != 0:
         print(f"  ❌ SCP failed (exit {rc})")
         return
@@ -1342,11 +1665,16 @@ def cmd_deploy(args) -> None:
 
     # Restart service
     if not no_restart:
-        rc = _run(["ssh"] + ssh_opts + [host,
-            "systemctl restart castor 2>/dev/null || "
-            "(pkill -f 'castor gateway' 2>/dev/null; "
-            "nohup castor gateway --config ~/robot.rcan.yaml &>/tmp/castor.log &)"
-        ])
+        rc = _run(
+            ["ssh"]
+            + ssh_opts
+            + [
+                host,
+                "systemctl restart castor 2>/dev/null || "
+                "(pkill -f 'castor gateway' 2>/dev/null; "
+                "nohup castor gateway --config ~/robot.rcan.yaml &>/tmp/castor.log &)",
+            ]
+        )
         if rc == 0:
             print("  ✅ Service restarted on remote.")
         else:
@@ -1355,12 +1683,20 @@ def cmd_deploy(args) -> None:
 
 def cmd_diff(args) -> None:
     """castor diff — compare two RCAN config files."""
+    import os
+
     from castor.diff import diff_configs, print_diff
 
     config_a = getattr(args, "config", "robot.rcan.yaml")
     config_b = getattr(args, "baseline", None)
     if not config_b:
         print("  Usage: castor diff --config current.rcan.yaml --baseline old.rcan.yaml")
+        return
+    if not os.path.exists(config_a):
+        print(f"  Config not found: {config_a}")
+        return
+    if not os.path.exists(config_b):
+        print(f"  Baseline not found: {config_b}")
         return
 
     diffs = diff_configs(config_a, config_b)
@@ -1369,30 +1705,38 @@ def cmd_diff(args) -> None:
 
 def cmd_doctor(args) -> None:
     """castor doctor — run system health checks."""
-    from castor.doctor import print_report, run_all_checks, run_auto_fix, run_doctor
+    from castor.doctor import print_report, run_all_checks
 
-    report = run_doctor()
-    print_report(report)
+    print("  🩺 OpenCastor Doctor\n")
+    config_path = getattr(args, "config", None)
+    results = run_all_checks(config_path=config_path)
+    print_report(results)
 
     if getattr(args, "auto_fix", False):
+        from castor.doctor import run_auto_fix
+
         print("\n  Running auto-fix...")
-        results = run_all_checks()
         run_auto_fix(results)
 
 
 def cmd_export(args) -> None:
     """castor export — export config bundle with secrets redacted."""
+    import os
+
     from castor.export import export_bundle, export_bundle_tgz, print_export_summary
 
     fmt = getattr(args, "format", "zip")
     config_path = getattr(args, "config", "robot.rcan.yaml")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
+        return
     output = getattr(args, "output", None)
     episodes = getattr(args, "episodes", 100)
 
     if fmt == "tgz":
         out = export_bundle_tgz(config_path, output_path=output, max_episodes=episodes)
     else:
-        out = export_bundle(config_path, output_path=output, fmt=fmt)
+        out = export_bundle(config_path=config_path, output_path=output, fmt=fmt)
 
     print_export_summary(out, fmt)
 
@@ -1510,6 +1854,7 @@ def cmd_hub(args) -> None:
 
     elif action == "categories":
         from castor.hub import CATEGORIES
+
         for key, label in CATEGORIES.items():
             print(f"  {key:<20} {label}")
 
@@ -1526,7 +1871,6 @@ def cmd_improve(args) -> None:
     status = getattr(args, "status", False)
     improvements = getattr(args, "improvements", False)
     rollback_id = getattr(args, "rollback", None)
-    batch = getattr(args, "batch", False)
     episodes_n = getattr(args, "episodes", 5)
     dry_run = getattr(args, "dry_run", False)
 
@@ -1565,7 +1909,7 @@ def cmd_improve(args) -> None:
         mem = EpisodeMemory()
         eps = mem.recent(n=episodes_n)
         if not eps:
-            print(f"  No episodes found. Run castor run first to collect data.")
+            print("  No episodes found. Run castor run first to collect data.")
             return
 
         print(f"  Analyzing {len(eps)} episodes...")
@@ -1582,14 +1926,41 @@ def cmd_improve(args) -> None:
 
 def cmd_install_service(args) -> None:
     """castor install-service — generate and install a systemd service unit."""
-    from castor.daemon import enable_daemon
+    import getpass
+    import os
+    import sys
 
     config_path = getattr(args, "config", "robot.rcan.yaml")
-    result = enable_daemon(config_path=config_path)
-    icon = "✅" if result.get("ok") else "❌"
-    print(f"  {icon} {result.get('message', '')}")
-    if result.get("service_path"):
-        print(f"  Service file: {result['service_path']}")
+    host = getattr(args, "host", "0.0.0.0")
+    port = getattr(args, "port", 8080)
+    abs_config = os.path.abspath(config_path)
+    if not os.path.exists(abs_config):
+        print(f"  Config not found: {config_path}")
+        return
+    user = getpass.getuser()
+    cwd = os.getcwd()
+    unit = f"""[Unit]
+Description=OpenCastor Robot Runtime
+After=network.target
+
+[Service]
+User={user}
+WorkingDirectory={cwd}
+ExecStart={sys.executable} -m castor gateway --config {abs_config} --host {host} --port {port}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"""
+    service_path = f"/tmp/opencastor-{port}.service"
+    with open(service_path, "w") as f:
+        f.write(unit)
+    print(f"  Service file written: {service_path}")
+    print(f"  User: {user}")
+    print(f"  Port: {port}")
+    print(
+        f"  To install: sudo cp {service_path} /etc/systemd/system/ && sudo systemctl enable opencastor-{port}"
+    )
 
 
 def cmd_learn(args) -> None:
@@ -1601,29 +1972,16 @@ def cmd_learn(args) -> None:
 
 def cmd_lint(args) -> None:
     """castor lint — deep semantic validation of RCAN config."""
-    from castor.lint import run_lint
+    import os
+
+    from castor.lint import print_lint_report, run_lint
 
     config_path = getattr(args, "config", "robot.rcan.yaml")
-    issues = run_lint(config_path)
-
-    if not issues:
-        print(f"  ✅ {config_path}: no issues found.")
+    if not os.path.exists(config_path):
+        print(f"  Config not found: {config_path}")
         return
-
-    errors = [(s, m) for s, m in issues if s == "error"]
-    warnings = [(s, m) for s, m in issues if s == "warning"]
-    infos = [(s, m) for s, m in issues if s == "info"]
-
-    for _, msg in errors:
-        print(f"  ❌ error:   {msg}")
-    for _, msg in warnings:
-        print(f"  ⚠️  warning: {msg}")
-    for _, msg in infos:
-        print(f"  ℹ️  info:    {msg}")
-
-    print(f"\n  {len(errors)} error(s), {len(warnings)} warning(s), {len(infos)} info(s)")
-    if errors:
-        raise SystemExit(1)
+    issues = run_lint(config_path)
+    print_lint_report(issues)
 
 
 def cmd_login(args) -> None:
@@ -1635,7 +1993,8 @@ def cmd_login(args) -> None:
 
     if service in ("huggingface", "hf"):
         try:
-            from huggingface_hub import login, list_models as hf_list_models
+            from huggingface_hub import list_models as hf_list_models
+            from huggingface_hub import login
 
             if token:
                 login(token=token)
@@ -1646,12 +2005,13 @@ def cmd_login(args) -> None:
             if list_models:
                 print(f"\n  Trending {task} models:\n")
                 for i, m in enumerate(hf_list_models(task=task, limit=10)):
-                    print(f"  {i+1:2}. {m.modelId}")
+                    print(f"  {i + 1:2}. {m.modelId}")
         except ImportError:
             print("  huggingface_hub not installed. Run: pip install huggingface_hub")
 
     elif service == "ollama":
         import subprocess
+
         rc = subprocess.call(["ollama", "list"])
         if rc != 0:
             print("  Ollama not found. Install from https://ollama.com")
@@ -1667,6 +2027,7 @@ def cmd_streaming(args) -> None:
 
     try:
         import yaml
+
         with open(config_path) as f:
             config = yaml.safe_load(f) or {}
     except FileNotFoundError:
@@ -1674,6 +2035,7 @@ def cmd_streaming(args) -> None:
 
     try:
         from castor.stream import StreamServer
+
         server = StreamServer(config=config, port=port)
         print(f"  Starting stream server on port {port} …")
         print(f"  MJPEG stream: http://0.0.0.0:{port}/stream")
@@ -1681,10 +2043,10 @@ def cmd_streaming(args) -> None:
     except ImportError:
         # aiortc / cv2 not installed — show install hint
         print(
-            f"  WebRTC stream requires additional packages:\n"
-            f"    pip install opencastor[webrtc]\n"
-            f"  or: pip install aiortc opencv-python\n"
-            f"\n  For MJPEG only: pip install opencv-python"
+            "  WebRTC stream requires additional packages:\n"
+            "    pip install opencastor[webrtc]\n"
+            "  or: pip install aiortc opencv-python\n"
+            "\n  For MJPEG only: pip install opencv-python"
         )
 
 
@@ -2114,6 +2476,9 @@ def main() -> None:
         help="Manage robot group policies",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n  castor fleet list --config bob.rcan.yaml\n  castor fleet resolve RRN-00000042 --config bob.rcan.yaml\n  castor fleet apply-all --config bob.rcan.yaml",
+    )
+    p_fleet.add_argument(
+        "--timeout", default="5", help="mDNS scan duration in seconds (default: 5)"
     )
     fleet_sub = p_fleet.add_subparsers(dest="fleet_cmd")
 

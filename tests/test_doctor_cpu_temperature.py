@@ -79,25 +79,21 @@ def test_check_cpu_temperature_fail_when_temp_above_threshold():
 
 def test_check_cpu_temperature_takes_max_across_zones():
     """When multiple thermal zones exist, the max temp is used."""
-    zone_data = {"zone0": "45000", "zone1": "80000"}
-    open_calls = [
-        mock_open(read_data=v)().read.return_value
-        for v in zone_data.values()
-    ]
-
     zones = [
         "/sys/class/thermal/thermal_zone0/temp",
         "/sys/class/thermal/thermal_zone1/temp",
     ]
-    zone_values = ["45000\n", "80000\n"]
+    zone_values = {"0": "45000\n", "1": "80000\n"}
 
-    def fake_open(path, *args, **kwargs):
-        idx = zones.index(path) if path in zones else 0
-        return mock_open(read_data=zone_values[idx])()
+    def fake_read(path):
+        for k, v in zone_values.items():
+            if k in path:
+                return v
+        return None
 
     with patch("sys.platform", "linux"):
         with patch("glob.glob", return_value=zones):
-            with patch("builtins.open", side_effect=fake_open):
+            with patch("castor.doctor._read_thermal_zone_file", side_effect=fake_read):
                 ok, name, detail = check_cpu_temperature()
 
     # 80°C > 75°C threshold → should fail

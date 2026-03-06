@@ -1,4 +1,4 @@
-rcan_version: "1.2"
+rcan_version: "1.2.0"
 
 metadata:
   robot_name: "TestBot"

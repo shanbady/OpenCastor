@@ -792,6 +792,31 @@ def cmd_compliance(args) -> None:
     config_path = args.config
     output_json = getattr(args, "output_json", False)
     check_commitments = getattr(args, "commitments", False)
+    fmt = getattr(args, "format", None)
+    output_file = getattr(args, "output", None)
+
+    # If --format is specified, use the new ComplianceReport path
+    if fmt in ("json", "text"):
+        import contextlib
+
+        from castor.compliance import generate_report, print_report_json, print_report_text
+
+        try:
+            report = generate_report(config_path=config_path)
+        except FileNotFoundError:
+            print(f"❌ Config not found: {config_path}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as exc:
+            print(f"❌ Failed to generate report: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        ctx = open(output_file, "w") if output_file else contextlib.nullcontext(sys.stdout)
+        with ctx as fh:
+            if fmt == "json":
+                print_report_json(report, file=fh)
+            else:
+                print_report_text(report, file=fh)
+        sys.exit(0 if report.compliant else 1)
 
     # Load config
     try:
@@ -1264,7 +1289,7 @@ def cmd_validate(args) -> None:
             config = yaml.safe_load(f) or {}
     except Exception as exc:
         print(f"  Error reading config: {exc}")
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
     from castor.conformance import ConformanceChecker
 
@@ -1287,8 +1312,7 @@ def cmd_validate(args) -> None:
                 {
                     "config": config_path,
                     "results": [
-                        {"id": r.check_id, "status": r.status, "message": r.detail}
-                        for r in results
+                        {"id": r.check_id, "status": r.status, "message": r.detail} for r in results
                     ],
                     "ok": len(fails) == 0,
                 },
@@ -2308,6 +2332,18 @@ def main() -> None:
         "--commitments",
         action="store_true",
         help="Also verify the on-disk commitment chain log",
+    )
+    p_compliance.add_argument(
+        "--format",
+        choices=["json", "text"],
+        default=None,
+        help="Output format: json or text (uses ComplianceReport module)",
+    )
+    p_compliance.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="Write output to FILE instead of stdout",
     )
 
     # castor demo

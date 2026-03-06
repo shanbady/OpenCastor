@@ -401,6 +401,7 @@ def cmd_fleet(args) -> None:
             print(f"⚠️  Could not load config: {exc}")
 
     from castor.fleet.group_policy import FleetManager
+
     fm = FleetManager.from_config(config)
 
     if fleet_cmd == "list":
@@ -451,6 +452,7 @@ def cmd_fleet(args) -> None:
 def _find_default_config() -> str | None:
     """Look for a .rcan.yaml in the current directory."""
     import glob
+
     candidates = glob.glob("*.rcan.yaml") + glob.glob("*.rcan.yml")
     return candidates[0] if candidates else None
 
@@ -486,6 +488,7 @@ def cmd_inspect(args) -> None:
     if config_path:
         try:
             import yaml
+
             with open(config_path) as f:
                 config_data = yaml.safe_load(f) or {}
             meta = config_data.get("metadata", {})
@@ -513,6 +516,7 @@ def cmd_inspect(args) -> None:
     try:
         import os
         import urllib.request
+
         token = os.environ.get("OPENCASTOR_API_TOKEN", "")
         req = urllib.request.Request(
             f"{gateway_url}/api/status",
@@ -535,6 +539,7 @@ def cmd_inspect(args) -> None:
     # --- Commitment chain ---
     try:
         from castor.rcan.commitment_chain import get_commitment_chain
+
         cc = get_commitment_chain()
         valid, count, errors = cc.verify_log()
         output["commitment_chain"] = {
@@ -549,6 +554,7 @@ def cmd_inspect(args) -> None:
     if config_data:
         try:
             from castor.rcan.sdk_bridge import check_compliance
+
             issues = check_compliance(config_data)
             l1_ok = not any(i.startswith("L1") for i in issues)
             l2_ok = l1_ok and not any(i.startswith("L2") for i in issues)
@@ -567,6 +573,7 @@ def cmd_inspect(args) -> None:
     # --- Human-readable output ---
     try:
         from rich.console import Console
+
         con = Console()
         HAS_RICH = True
     except ImportError:
@@ -578,6 +585,7 @@ def cmd_inspect(args) -> None:
             con.print(text, **kw)
         else:
             import re
+
             print(re.sub(r"\[/?[a-z_ ]+\]", "", text))
 
     _pr("\n🤖 [bold]castor inspect[/bold]" + (f" {rrn}" if rrn else "") + "\n")
@@ -600,7 +608,9 @@ def cmd_inspect(args) -> None:
             _pr(f"  ⚠️  {cfg['error']}", style="yellow")
         else:
             _pr(f"  File:     {cfg.get('file', '')}")
-            _pr(f"  Robot:    {cfg.get('robot_name', '')} ({cfg.get('manufacturer', '')}/{cfg.get('model', '')} {cfg.get('version', '')})")
+            _pr(
+                f"  Robot:    {cfg.get('robot_name', '')} ({cfg.get('manufacturer', '')}/{cfg.get('model', '')} {cfg.get('version', '')})"
+            )
             _pr(f"  Provider: {cfg.get('provider', '')} / {cfg.get('ai_model', '')}")
             if cfg.get("rrn"):
                 _pr(f"  RRN:      {cfg['rrn']}")
@@ -643,6 +653,7 @@ def cmd_register(args) -> None:
     # Load config
     try:
         import yaml
+
         with open(args.config) as f:
             config = yaml.safe_load(f) or {}
     except FileNotFoundError:
@@ -660,7 +671,12 @@ def cmd_register(args) -> None:
     model = args.model or meta.get("model") or ""
     version = args.version or meta.get("version") or meta.get("firmware_version") or "v1"
     device_id = args.device_id or meta.get("robot_uuid", "")[:8] or "unit-001"
-    api_key = args.api_key or os.environ.get("RCAN_API_KEY") or os.environ.get("OPENCASTOR_RCAN_KEY") or ""
+    api_key = (
+        args.api_key
+        or os.environ.get("RCAN_API_KEY")
+        or os.environ.get("OPENCASTOR_RCAN_KEY")
+        or ""
+    )
 
     if not manufacturer:
         manufacturer = input("Manufacturer / org name [opencastor]: ").strip() or "opencastor"
@@ -685,12 +701,18 @@ def cmd_register(args) -> None:
         if not api_key:
             try:
                 import urllib.parse
-                params = urllib.parse.urlencode({
-                    "manufacturer": manufacturer, "model": model,
-                    "version": version, "source": "castor-cli"
-                })
+
+                params = urllib.parse.urlencode(
+                    {
+                        "manufacturer": manufacturer,
+                        "model": model,
+                        "version": version,
+                        "source": "castor-cli",
+                    }
+                )
                 url = f"https://rcan.dev/registry/register?{params}"
                 import webbrowser
+
                 webbrowser.open(url)
                 print(f"\n   Opened: {url}")
             except Exception:
@@ -698,7 +720,9 @@ def cmd_register(args) -> None:
             sys.exit(0)
 
     # Register
-    print(f"\n📡 Registering {manufacturer}/{model} {version} with rcan.dev...", end=" ", flush=True)
+    print(
+        f"\n📡 Registering {manufacturer}/{model} {version} with rcan.dev...", end=" ", flush=True
+    )
     try:
         import asyncio
 
@@ -707,8 +731,10 @@ def cmd_register(args) -> None:
         async def _register():
             async with RegistryClient(api_key=api_key) as client:
                 return await client.register(
-                    manufacturer=manufacturer, model=model,
-                    version=version, device_id=device_id,
+                    manufacturer=manufacturer,
+                    model=model,
+                    version=version,
+                    device_id=device_id,
                     metadata={
                         "robot_name": meta.get("robot_name", model),
                         "rcan_version": "1.2",
@@ -737,6 +763,7 @@ def cmd_register(args) -> None:
             # Save API key for future use
             try:
                 from castor.wizard import _write_env_var
+
                 _write_env_var("RCAN_API_KEY", api_key)
                 print("   ✓ API key saved to ~/.opencastor/env")
             except Exception:
@@ -766,6 +793,7 @@ def cmd_compliance(args) -> None:
     # Load config
     try:
         import yaml
+
         with open(config_path) as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
@@ -794,8 +822,8 @@ def cmd_compliance(args) -> None:
     chain_errors: list[str] = []
     if check_commitments:
         try:
-
             from castor.rcan.commitment_chain import get_commitment_chain
+
             cc = get_commitment_chain()
             chain_ok, chain_count, chain_errors = cc.verify_log()
         except Exception as e:
@@ -823,13 +851,16 @@ def cmd_compliance(args) -> None:
     # Human-readable output
     try:
         from rich.console import Console
+
         con = Console()
         HAS_RICH = True
     except ImportError:
         con = None
         HAS_RICH = False
 
-    def _tick(ok): return "✅" if ok else "❌"
+    def _tick(ok):
+        return "✅" if ok else "❌"
+
     def _pr(text, style=None):
         if HAS_RICH and con:
             con.print(text, style=style)
@@ -852,7 +883,9 @@ def cmd_compliance(args) -> None:
             _pr(f"   All {level} checks passed", style="green")
 
     if check_commitments:
-        _pr(f"\n{_tick(chain_ok)} Commitment chain: {chain_count} records", )
+        _pr(
+            f"\n{_tick(chain_ok)} Commitment chain: {chain_count} records",
+        )
         for err in chain_errors:
             _pr(f"   ⚠️  {err}", style="yellow")
 
@@ -865,20 +898,24 @@ def cmd_compliance(args) -> None:
 def cmd_doctor(args) -> None:
     """castor doctor — system health check."""
     from castor.doctor import print_report, run_doctor
+
     full = getattr(args, "full", False)
     report = run_doctor(full=full)
     print_report(report)
     import sys
+
     if not report.all_ok and not full:
         # Exit non-zero if failures (not warnings) — useful for CI
         if report.fail_count > 0:
             sys.exit(1)
+
 
 def cmd_agents(args) -> None:
     """castor agents — list registered agent configs."""
     cfg = _find_default_config()
     if cfg:
         import yaml as _yaml
+
         with open(cfg) as f:
             data = _yaml.safe_load(f)
         agents = data.get("agents", {})
@@ -890,11 +927,14 @@ def cmd_agents(args) -> None:
     else:
         print("No RCAN config found.")
 
+
 def cmd_update(args: argparse.Namespace) -> None:
     """castor update — check for and apply updates from PyPI."""
     from castor.updater import do_upgrade, get_version_info
+
     try:
         from rich.console import Console
+
         con = Console()
         HAS_RICH = True
     except ImportError:
@@ -904,7 +944,11 @@ def cmd_update(args: argparse.Namespace) -> None:
     info = get_version_info()
 
     if HAS_RICH:
-        status = "[green]✅ up to date[/green]" if info.up_to_date else f"[yellow]⚠ update available → {info.latest}[/yellow]"
+        status = (
+            "[green]✅ up to date[/green]"
+            if info.up_to_date
+            else f"[yellow]⚠ update available → {info.latest}[/yellow]"
+        )
         con.print(f"\nOpenCastor [bold]{info.current}[/bold]  {status}")
         if not info.up_to_date:
             con.print(f"  Release notes: {info.release_url}", style="dim")
@@ -933,181 +977,226 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 # ── Placeholder subcommands (not yet fully implemented) ──────────────────────
 
+
 def cmd_approvals(args) -> None:
     """castor approvals — placeholder."""
     print("castor approvals: coming soon.")
+
 
 def cmd_audit(args) -> None:
     """castor audit — placeholder."""
     print("castor audit: coming soon.")
 
+
 def cmd_backup(args) -> None:
     """castor backup — placeholder."""
     print("castor backup: coming soon.")
+
 
 def cmd_benchmark(args) -> None:
     """castor benchmark — placeholder."""
     print("castor benchmark: coming soon.")
 
+
 def cmd_calibrate(args) -> None:
     """castor calibrate — placeholder."""
     print("castor calibrate: coming soon.")
+
 
 def cmd_configure(args) -> None:
     """castor configure — placeholder."""
     print("castor configure: coming soon.")
 
+
 def cmd_daemon(args) -> None:
     """castor daemon — placeholder."""
     print("castor daemon: coming soon.")
+
 
 def cmd_demo(args) -> None:
     """castor demo — placeholder."""
     print("castor demo: coming soon.")
 
+
 def cmd_deploy(args) -> None:
     """castor deploy — placeholder."""
     print("castor deploy: coming soon.")
+
 
 def cmd_diff(args) -> None:
     """castor diff — placeholder."""
     print("castor diff: coming soon.")
 
+
 def cmd_export(args) -> None:
     """castor export — placeholder."""
     print("castor export: coming soon.")
+
 
 def cmd_export_finetune(args) -> None:
     """castor export finetune — placeholder."""
     print("castor export finetune: coming soon.")
 
+
 def cmd_fix(args) -> None:
     """castor fix — placeholder."""
     print("castor fix: coming soon.")
+
 
 def cmd_hub(args) -> None:
     """castor hub — placeholder."""
     print("castor hub: coming soon.")
 
+
 def cmd_improve(args) -> None:
     """castor improve — placeholder."""
     print("castor improve: coming soon.")
+
 
 def cmd_install_service(args) -> None:
     """castor install service — placeholder."""
     print("castor install service: coming soon.")
 
+
 def cmd_learn(args) -> None:
     """castor learn — placeholder."""
     print("castor learn: coming soon.")
+
 
 def cmd_lint(args) -> None:
     """castor lint — placeholder."""
     print("castor lint: coming soon.")
 
+
 def cmd_login(args) -> None:
     """castor login — placeholder."""
     print("castor login: coming soon.")
+
 
 def cmd_logs(args) -> None:
     """castor logs — placeholder."""
     print("castor logs: coming soon.")
 
+
 def cmd_memory(args) -> None:
     """castor memory — placeholder."""
     print("castor memory: coming soon.")
+
 
 def cmd_migrate(args) -> None:
     """castor migrate — placeholder."""
     print("castor migrate: coming soon.")
 
+
 def cmd_network(args) -> None:
     """castor network — placeholder."""
     print("castor network: coming soon.")
+
 
 def cmd_plugin(args) -> None:
     """castor plugin — placeholder."""
     print("castor plugin: coming soon.")
 
+
 def cmd_plugins(args) -> None:
     """castor plugins — placeholder."""
     print("castor plugins: coming soon.")
+
 
 def cmd_privacy(args) -> None:
     """castor privacy — placeholder."""
     print("castor privacy: coming soon.")
 
+
 def cmd_profile(args) -> None:
     """castor profile — placeholder."""
     print("castor profile: coming soon.")
+
 
 def cmd_quickstart(args) -> None:
     """castor quickstart — placeholder."""
     print("castor quickstart: coming soon.")
 
+
 def cmd_record(args) -> None:
     """castor record — placeholder."""
     print("castor record: coming soon.")
+
 
 def cmd_repl(args) -> None:
     """castor repl — placeholder."""
     print("castor repl: coming soon.")
 
+
 def cmd_replay(args) -> None:
     """castor replay — placeholder."""
     print("castor replay: coming soon.")
+
 
 def cmd_restore(args) -> None:
     """castor restore — placeholder."""
     print("castor restore: coming soon.")
 
+
 def cmd_safety(args) -> None:
     """castor safety — placeholder."""
     print("castor safety: coming soon.")
+
 
 def cmd_scan(args) -> None:
     """castor scan — placeholder."""
     print("castor scan: coming soon.")
 
+
 def cmd_schedule(args) -> None:
     """castor schedule — placeholder."""
     print("castor schedule: coming soon.")
+
 
 def cmd_search(args) -> None:
     """castor search — placeholder."""
     print("castor search: coming soon.")
 
+
 def cmd_shell(args) -> None:
     """castor shell — placeholder."""
     print("castor shell: coming soon.")
+
 
 def cmd_status(args) -> None:
     """castor status — placeholder."""
     print("castor status: coming soon.")
 
+
 def cmd_swarm(args) -> None:
     """castor swarm — placeholder."""
     print("castor swarm: coming soon.")
+
 
 def cmd_test(args) -> None:
     """castor test — placeholder."""
     print("castor test: coming soon.")
 
+
 def cmd_test_hardware(args) -> None:
     """castor test hardware — placeholder."""
     print("castor test hardware: coming soon.")
+
 
 def cmd_update_check(args) -> None:
     """castor update check — placeholder."""
     print("castor update check: coming soon.")
 
+
 def cmd_upgrade(args) -> None:
     """castor upgrade — placeholder."""
     print("castor upgrade: coming soon.")
 
+
 def cmd_validate(args) -> None:
     """castor validate — placeholder."""
     print("castor validate: coming soon.")
+
 
 def cmd_watch(args) -> None:
     """castor watch — placeholder."""
@@ -1117,6 +1206,7 @@ def cmd_watch(args) -> None:
 def _cmd_monitor(args) -> None:
     """Internal monitor placeholder."""
     pass
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -1463,12 +1553,25 @@ def main() -> None:
         epilog="Examples:\n  castor memory replay --since 2026-01-01 --dry-run",
     )
     memory_sub = p_memory.add_subparsers(dest="memory_cmd")
-    p_mem_replay = memory_sub.add_parser("replay", help="Replay historical episodes through updated consolidation pipeline")
-    p_mem_replay.add_argument("--since", default=None, metavar="DATE", help="Only replay episodes on/after this date (YYYY-MM-DD)")
+    p_mem_replay = memory_sub.add_parser(
+        "replay", help="Replay historical episodes through updated consolidation pipeline"
+    )
+    p_mem_replay.add_argument(
+        "--since",
+        default=None,
+        metavar="DATE",
+        help="Only replay episodes on/after this date (YYYY-MM-DD)",
+    )
     p_mem_replay.add_argument("--episode-id", default=None, help="Replay a specific episode by ID")
-    p_mem_replay.add_argument("--episodes-dir", default=None, help="Path to L0-episodic/episodes/ directory")
-    p_mem_replay.add_argument("--dry-run", action="store_true", help="Simulate without writing changes")
-    p_mem_replay.add_argument("--verbose", "-v", action="store_true", help="Show each episode being replayed")
+    p_mem_replay.add_argument(
+        "--episodes-dir", default=None, help="Path to L0-episodic/episodes/ directory"
+    )
+    p_mem_replay.add_argument(
+        "--dry-run", action="store_true", help="Simulate without writing changes"
+    )
+    p_mem_replay.add_argument(
+        "--verbose", "-v", action="store_true", help="Show each episode being replayed"
+    )
 
     # castor fleet
     p_fleet = sub.add_parser(
@@ -1501,7 +1604,9 @@ def main() -> None:
         "rrn", nargs="?", default=None, help="Robot Registry Number (e.g. RRN-00000042)"
     )
     p_inspect.add_argument("--config", default=None, help="Local RCAN config file to inspect")
-    p_inspect.add_argument("--gateway", default=None, help="Gateway URL (e.g. http://localhost:8080)")
+    p_inspect.add_argument(
+        "--gateway", default=None, help="Gateway URL (e.g. http://localhost:8080)"
+    )
     p_inspect.add_argument("--json", action="store_true", dest="output_json", help="JSON output")
 
     # castor register
@@ -1511,21 +1616,13 @@ def main() -> None:
         epilog="Example: castor register --config bob.rcan.yaml",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_register.add_argument(
-        "--config", default="robot.rcan.yaml", help="RCAN config file"
-    )
+    p_register.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
     p_register.add_argument(
         "--api-key", default=None, help="rcan.dev API key (or set RCAN_API_KEY env var)"
     )
-    p_register.add_argument(
-        "--manufacturer", default=None, help="Override manufacturer slug"
-    )
-    p_register.add_argument(
-        "--model", default=None, help="Override model slug"
-    )
-    p_register.add_argument(
-        "--version", default=None, help="Override version string"
-    )
+    p_register.add_argument("--manufacturer", default=None, help="Override manufacturer slug")
+    p_register.add_argument("--model", default=None, help="Override model slug")
+    p_register.add_argument("--version", default=None, help="Override version string")
     p_register.add_argument(
         "--device-id", default=None, dest="device_id", help="Override device ID"
     )
@@ -2389,7 +2486,7 @@ def main() -> None:
         "lint": cmd_lint,
         "validate": cmd_validate,
         "swarm": cmd_swarm,
-                "learn": cmd_learn,
+        "learn": cmd_learn,
         "improve": cmd_improve,
         "agents": cmd_agents,
         "export": cmd_export,
@@ -2420,7 +2517,9 @@ def main() -> None:
         # Issue #348
         "snapshot": cmd_snapshot,
         # llmfit model fit analysis
-        "fit": lambda _args: __import__("castor.llmfit_helper", fromlist=["run_fit_command"]).run_fit_command(),
+        "fit": lambda _args: __import__(
+            "castor.llmfit_helper", fromlist=["run_fit_command"]
+        ).run_fit_command(),
     }
 
     # Load plugins and merge any plugin-provided commands

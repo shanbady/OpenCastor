@@ -66,6 +66,7 @@ class MessageSigner:
             if not self._key_id:
                 # Derive key_id from first 8 hex chars of SHA-256 of public PEM
                 import hashlib
+
                 pub_bytes = self._key_pair.public_pem.encode()
                 self._key_id = hashlib.sha256(pub_bytes).hexdigest()[:8]
 
@@ -101,7 +102,6 @@ class MessageSigner:
             return message
 
         try:
-            from rcan.signing import sign_message as _sign
             import json
 
             msg_copy = dict(message)

@@ -1,4 +1,5 @@
 """castor.updater — self-update from PyPI or git."""
+
 from __future__ import annotations
 
 import subprocess
@@ -8,12 +9,14 @@ from typing import Optional
 
 try:
     from packaging.version import Version
+
     HAS_PACKAGING = True
 except ImportError:
     HAS_PACKAGING = False
 
 try:
     import httpx as _httpx
+
     HAS_HTTPX = True
 except ImportError:
     HAS_HTTPX = False
@@ -30,10 +33,12 @@ class VersionInfo:
 def _current_version() -> str:
     try:
         from importlib.metadata import version
+
         return version("opencastor")
     except Exception:
         try:
             import castor
+
             return getattr(castor, "__version__", "unknown")
         except Exception:
             return "unknown"
@@ -52,7 +57,10 @@ def check_latest_pypi(package: str = "opencastor", timeout: int = 8) -> Optional
     try:
         import json as _json
         import urllib.request  # noqa: E401
-        with urllib.request.urlopen(f"https://pypi.org/pypi/{package}/json", timeout=timeout) as resp:
+
+        with urllib.request.urlopen(
+            f"https://pypi.org/pypi/{package}/json", timeout=timeout
+        ) as resp:
             return _json.loads(resp.read())["info"]["version"]
     except Exception:
         return None

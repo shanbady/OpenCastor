@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("OpenCastor.ProviderFailover")
@@ -37,7 +37,7 @@ logger = logging.getLogger("OpenCastor.ProviderFailover")
 _FALLBACK_TRIGGERS = {
     "timeout": (asyncio.TimeoutError, TimeoutError),
     "connection_error": (ConnectionError, OSError),
-    "rate_limit": (),   # matched by string in exception message
+    "rate_limit": (),  # matched by string in exception message
 }
 
 _RATE_LIMIT_PHRASES = ("rate limit", "429", "too many requests", "quota")
@@ -46,6 +46,7 @@ _RATE_LIMIT_PHRASES = ("rate limit", "429", "too many requests", "quota")
 @dataclass
 class FallbackSpec:
     """Configuration for a single fallback provider."""
+
     provider: str
     model: str
     label: str = ""
@@ -55,6 +56,7 @@ class FallbackSpec:
 @dataclass
 class FailoverResult:
     """Result from a failover chain think() call."""
+
     thought: Any
     provider_used: str
     model_used: str
@@ -117,8 +119,7 @@ class ProviderFailoverChain:
             Exception: Only if ALL providers fail.
         """
         providers = [(self._primary_spec, self._primary)] + [
-            ((spec.provider, spec.model), inst)
-            for spec, inst in self._fallbacks
+            ((spec.provider, spec.model), inst) for spec, inst in self._fallbacks
         ]
 
         last_exc: Exception | None = None
@@ -142,7 +143,9 @@ class ProviderFailoverChain:
                 if i > 0:
                     logger.info(
                         "Failover succeeded: primary=%s fallback=%s attempt=%d",
-                        self._primary_spec[0], pname, i,
+                        self._primary_spec[0],
+                        pname,
+                        i,
                     )
 
                 return FailoverResult(
@@ -161,7 +164,10 @@ class ProviderFailoverChain:
                 if i < len(providers) - 1:
                     logger.warning(
                         "Provider %s failed (%s), trying fallback %d/%d",
-                        pname, type(exc).__name__, i + 1, len(providers) - 1,
+                        pname,
+                        type(exc).__name__,
+                        i + 1,
+                        len(providers) - 1,
                     )
                 continue
 
@@ -181,7 +187,7 @@ class ProviderFailoverChain:
         cls,
         config: dict,
         provider_factory: Any,
-    ) -> "ProviderFailoverChain | None":
+    ) -> ProviderFailoverChain | None:
         """
         Build a ProviderFailoverChain from an RCAN YAML config dict.
 

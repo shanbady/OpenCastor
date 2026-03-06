@@ -454,6 +454,7 @@ render();
 
 # ── API handler ───────────────────────────────────────────────────────────────
 
+
 def _generate_config(state: dict) -> str:
     """Generate RCAN YAML config from wizard state."""
     robot_name = state.get("robotName") or "MyRobot"
@@ -476,7 +477,7 @@ def _generate_config(state: dict) -> str:
 channels:
   {ch_type}:
     enabled: true
-    token: "{ch_token[:4]}...{ch_token[-4:] if len(ch_token) > 8 else ''}"
+    token: "{ch_token[:4]}...{ch_token[-4:] if len(ch_token) > 8 else ""}"
 """
 
     return f"""# OpenCastor RCAN Configuration
@@ -486,10 +487,10 @@ rcan_version: "1.2"
 
 metadata:
   robot_name: "{robot_name}"
-  manufacturer: "{manufacturer or 'myorg'}"
-  model: "{model_name or 'myrobot'}"
+  manufacturer: "{manufacturer or "myorg"}"
+  model: "{model_name or "myrobot"}"
   version: "{version}"
-  device_id: "{device_id or 'unit-001'}"
+  device_id: "{device_id or "unit-001"}"
 
 agent:
   provider: {provider}
@@ -506,7 +507,7 @@ driver:
   type: {driver_type}
 {channel_section}
 # Run your robot:
-#   castor run --config {model_name or 'myrobot'}.rcan.yaml
+#   castor run --config {model_name or "myrobot"}.rcan.yaml
 """
 
 
@@ -534,8 +535,13 @@ class WizardHandler(BaseHTTPRequestHandler):
             hw: dict[str, Any] = {}
             try:
                 import platform
+
                 hw["platform"] = platform.machine()
-                hw["model_file"] = open("/proc/device-tree/model").read().strip() if os.path.exists("/proc/device-tree/model") else ""
+                hw["model_file"] = (
+                    open("/proc/device-tree/model").read().strip()
+                    if os.path.exists("/proc/device-tree/model")
+                    else ""
+                )
                 hw["hailo"] = os.path.exists("/dev/hailo0")
                 hw["oakd"] = any(os.path.exists(f"/dev/video{i}") for i in range(4))
             except Exception:
@@ -570,6 +576,7 @@ class WizardHandler(BaseHTTPRequestHandler):
         elif self.path == "/api/wizard/register":
             try:
                 from castor.wizard import _offer_rcan_registration  # type: ignore
+
                 rrn = _offer_rcan_registration(state, silent=True)
                 if rrn:
                     self._json({"rrn": rrn})
@@ -579,9 +586,13 @@ class WizardHandler(BaseHTTPRequestHandler):
                     mod = state.get("modelName", "")
                     v = state.get("version", "v1")
                     d = state.get("deviceId", "")
-                    url = (f"https://rcan.dev/registry/register"
-                           f"?manufacturer={m}&model={mod}&version={v}&device_id={d}&source=wizard-web")
-                    self._json({"browser_url": url, "error": "Open the link to complete registration"})
+                    url = (
+                        f"https://rcan.dev/registry/register"
+                        f"?manufacturer={m}&model={mod}&version={v}&device_id={d}&source=wizard-web"
+                    )
+                    self._json(
+                        {"browser_url": url, "error": "Open the link to complete registration"}
+                    )
             except Exception as e:
                 logger.warning("Registration failed: %s", e)
                 self._json({"error": str(e)})

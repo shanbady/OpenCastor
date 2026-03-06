@@ -67,6 +67,7 @@ def ruri_to_robot_uri(ruri: Any, config: dict | None = None) -> Any:
             pass
         # Fall back to parsing as legacy RURI
         from castor.rcan.ruri import RURI as LegacyRURI
+
         ruri = LegacyRURI.parse(ruri)
 
     meta = (config or {}).get("metadata", {})
@@ -94,6 +95,7 @@ def robot_uri_to_ruri(robot_uri: Any) -> Any:
         OpenCastor ``RURI`` instance.
     """
     from rcan import RobotURI
+
     from castor.rcan.ruri import RURI as LegacyRURI
 
     if isinstance(robot_uri, str):
@@ -126,7 +128,8 @@ def spec_message_to_opencastor(spec_msg: Any) -> Any:
     Returns:
         OpenCastor ``RCANMessage`` with COMMAND type.
     """
-    from castor.rcan.message import MessageType, Priority, RCANMessage as OCMessage
+    from castor.rcan.message import MessageType, Priority
+    from castor.rcan.message import RCANMessage as OCMessage
 
     return OCMessage(
         type=MessageType.COMMAND,
@@ -165,6 +168,7 @@ def parse_inbound(body: dict) -> Any:
     if "rcan" in body and "cmd" in body and "target" in body:
         try:
             from rcan import RCANMessage as SpecMsg
+
             spec = SpecMsg.from_dict(body)
             logger.debug("Parsed inbound message as RCAN v1.2 spec format: cmd=%s", spec.cmd)
             return spec
@@ -173,6 +177,7 @@ def parse_inbound(body: dict) -> Any:
 
     # Fall back to OpenCastor internal format
     from castor.rcan.message import RCANMessage as OCMessage
+
     return OCMessage.from_dict(body)
 
 
@@ -241,8 +246,9 @@ def audit_entry_to_commitment_record(entry: dict) -> Any:
         action=entry.get("event", "unknown"),
         params=payload,
         robot_uri=entry.get("source", ""),
-        timestamp=entry.get("ts", time.time()) if isinstance(entry.get("ts"), float)
-                  else time.time(),
+        timestamp=entry.get("ts", time.time())
+        if isinstance(entry.get("ts"), float)
+        else time.time(),
         safety_approved=entry.get("safety_approved", True),
         safety_reason=entry.get("safety_reason", ""),
     )

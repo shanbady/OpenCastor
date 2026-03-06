@@ -58,6 +58,7 @@ class CommitmentChain:
 
         try:
             from rcan.audit import AuditChain
+
             self._chain: AuditChain | None = AuditChain(self._secret)
         except ImportError:
             logger.warning("rcan package not installed — commitment chain disabled")
@@ -92,6 +93,7 @@ class CommitmentChain:
 
         try:
             from rcan import CommitmentRecord
+
             with self._lock:
                 record = CommitmentRecord(
                     action=action_type,
@@ -109,7 +111,8 @@ class CommitmentChain:
                 self._persist(sealed)
                 logger.debug(
                     "CommitmentRecord sealed: action=%s hash=%s",
-                    action_type, sealed.content_hash[:12]
+                    action_type,
+                    sealed.content_hash[:12],
                 )
                 return sealed
         except Exception as exc:
@@ -137,6 +140,7 @@ class CommitmentChain:
 
         try:
             from rcan import CommitmentRecord
+
             errors: list[str] = []
             prev_hash: str | None = None
             count = 0
@@ -146,13 +150,18 @@ class CommitmentChain:
                     if not line:
                         continue
                     import json
+
                     data = json.loads(line)
                     record = CommitmentRecord.from_dict(data)
 
                     if not record.verify(self._secret):
-                        errors.append(f"Line {i+1}: HMAC invalid (record_id={record.record_id[:8]})")
+                        errors.append(
+                            f"Line {i + 1}: HMAC invalid (record_id={record.record_id[:8]})"
+                        )
                     if prev_hash is not None and record.previous_hash != prev_hash:
-                        errors.append(f"Line {i+1}: chain broken (expected prev_hash={prev_hash[:12]})")
+                        errors.append(
+                            f"Line {i + 1}: chain broken (expected prev_hash={prev_hash[:12]})"
+                        )
                     prev_hash = record.content_hash
                     count += 1
             return len(errors) == 0, count, errors
@@ -165,6 +174,7 @@ class CommitmentChain:
             return []
         try:
             import json
+
             lines = self._log_path.read_text().strip().splitlines()
             return [json.loads(line) for line in lines[-n:] if line.strip()]
         except Exception:
@@ -188,6 +198,7 @@ class CommitmentChain:
             return None
         try:
             import json
+
             with open(self._log_path, "rb") as f:
                 # Read last non-empty line efficiently
                 f.seek(0, 2)
@@ -203,6 +214,7 @@ class CommitmentChain:
                         data = json.loads(line)
                         # Recompute content hash from canonical payload
                         from rcan import CommitmentRecord
+
                         record = CommitmentRecord.from_dict(data)
                         return record.content_hash
         except Exception:

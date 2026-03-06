@@ -29,7 +29,6 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
-from typing import Any
 
 
 class PrometheusRegistry:
@@ -60,13 +59,25 @@ class PrometheusRegistry:
 
     def _register_metrics(self) -> None:
         metrics = [
-            ("opencastor_action_total", "counter", "Total robot actions by type and approval status"),
-            ("opencastor_safety_blocks_total", "counter", "Safety-blocked actions by type and reason"),
+            (
+                "opencastor_action_total",
+                "counter",
+                "Total robot actions by type and approval status",
+            ),
+            (
+                "opencastor_safety_blocks_total",
+                "counter",
+                "Safety-blocked actions by type and reason",
+            ),
             ("opencastor_provider_latency_ms_sum", "gauge", "Provider inference latency sum (ms)"),
             ("opencastor_provider_latency_ms_count", "gauge", "Provider inference call count"),
             ("opencastor_action_duration_ms_sum", "gauge", "Action execution duration sum (ms)"),
             ("opencastor_action_duration_ms_count", "gauge", "Action execution duration count"),
-            ("opencastor_confidence_gate_value", "gauge", "Last confidence gate value per action type"),
+            (
+                "opencastor_confidence_gate_value",
+                "gauge",
+                "Last confidence gate value per action type",
+            ),
             ("opencastor_sensor_distance_mm", "gauge", "Current sensor distance reading (mm)"),
             ("opencastor_battery_percent", "gauge", "Battery charge percentage"),
             ("opencastor_uptime_seconds", "gauge", "Robot uptime in seconds"),
@@ -106,38 +117,40 @@ class PrometheusRegistry:
     # ------------------------------------------------------------------
 
     def record_action(self, action_type: str, approved: bool, duration_ms: float) -> None:
-        self.inc_counter("opencastor_action_total", {
-            "action_type": action_type, "approved": str(approved).lower()
-        })
-        self.observe_histogram("opencastor_action_duration_ms", duration_ms, {
-            "action_type": action_type
-        })
+        self.inc_counter(
+            "opencastor_action_total",
+            {"action_type": action_type, "approved": str(approved).lower()},
+        )
+        self.observe_histogram(
+            "opencastor_action_duration_ms", duration_ms, {"action_type": action_type}
+        )
 
     def record_safety_block(self, action_type: str, reason: str) -> None:
         short_reason = reason[:40].replace("\n", " ") if reason else "unknown"
-        self.inc_counter("opencastor_safety_blocks_total", {
-            "action_type": action_type, "reason": short_reason
-        })
+        self.inc_counter(
+            "opencastor_safety_blocks_total", {"action_type": action_type, "reason": short_reason}
+        )
 
     def record_provider_latency(self, provider: str, latency_ms: float, model: str = "") -> None:
-        self.observe_histogram("opencastor_provider_latency_ms", latency_ms, {
-            "provider": provider, "model": model
-        })
+        self.observe_histogram(
+            "opencastor_provider_latency_ms", latency_ms, {"provider": provider, "model": model}
+        )
 
     def record_confidence(self, action_type: str, confidence: float) -> None:
-        self.set_gauge("opencastor_confidence_gate_value", confidence, {
-            "action_type": action_type
-        })
+        self.set_gauge("opencastor_confidence_gate_value", confidence, {"action_type": action_type})
 
     def record_commitment(self) -> None:
         self.inc_counter("opencastor_commitment_records_total")
 
     def record_failover(self, from_provider: str, to_provider: str) -> None:
-        self.inc_counter("opencastor_failover_total", {
-            "from_provider": from_provider, "to_provider": to_provider
-        })
+        self.inc_counter(
+            "opencastor_failover_total",
+            {"from_provider": from_provider, "to_provider": to_provider},
+        )
 
-    def update_sensor(self, distance_mm: float | None = None, battery_pct: float | None = None) -> None:
+    def update_sensor(
+        self, distance_mm: float | None = None, battery_pct: float | None = None
+    ) -> None:
         if distance_mm is not None:
             self.set_gauge("opencastor_sensor_distance_mm", distance_mm)
         if battery_pct is not None:

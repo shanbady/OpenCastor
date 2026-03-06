@@ -1238,6 +1238,7 @@ async def rcan_message_endpoint(request: Request):
         # Spec format → bridge to OpenCastor message
         try:
             from rcan import RCANMessage as SpecMsg
+
             if isinstance(parsed, SpecMsg):
                 msg = spec_message_to_opencastor(parsed)
             else:
@@ -3825,6 +3826,7 @@ def _execute_action(action: dict):
     # Sign action payload if Ed25519 signing is configured (RCAN §16, issue #441)
     try:
         from castor.rcan.message_signing import sign_action_payload
+
         action = sign_action_payload(action, state.config)
     except Exception as _se:
         logger.debug("Action signing skipped (non-fatal): %s", _se)
@@ -3832,6 +3834,7 @@ def _execute_action(action: dict):
     # Seal a CommitmentRecord for every action (RCAN §16 audit trail)
     try:
         from castor.rcan.commitment_chain import get_commitment_chain
+
         _cc = get_commitment_chain()
         if _cc.enabled:
             _robot_uri = str(state.ruri) if state.ruri else ""
@@ -3843,6 +3846,7 @@ def _execute_action(action: dict):
                 model_identity=action.get("model_identity"),
             )
             from castor.metrics import get_registry as _get_metrics
+
             _get_metrics().record_commitment()
     except Exception as _ce:
         logger.debug("CommitmentRecord skipped (non-fatal): %s", _ce)
@@ -4210,6 +4214,7 @@ async def on_startup():
             # Initialize message signing (RCAN §16, issue #441)
             try:
                 from castor.rcan.message_signing import get_signer as _get_signer
+
                 _sig = _get_signer(state.config)
                 if _sig and _sig.available:
                     logger.info("RCAN message signing ready (kid=%s)", _sig.key_id)
@@ -4222,8 +4227,8 @@ async def on_startup():
             _agent_cfg = state.config.get("agent", {})
             if _agent_cfg.get("fallbacks"):
                 try:
-                    from castor.providers.failover import ProviderFailoverChain
                     from castor.brain import build_provider  # provider factory
+                    from castor.providers.failover import ProviderFailoverChain
 
                     def _provider_factory(pkey: str, pmodel: str):
                         cfg_copy = dict(state.config)

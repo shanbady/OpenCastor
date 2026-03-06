@@ -34,7 +34,6 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import dataclass, field
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -83,21 +82,23 @@ class FleetManager:
         self._groups: list[GroupPolicy] = groups or []
 
     @classmethod
-    def from_config(cls, config: dict) -> "FleetManager":
+    def from_config(cls, config: dict) -> FleetManager:
         """Build a FleetManager from a robot.rcan.yaml config dict."""
         fleet_cfg = config.get("fleet", {})
         groups_cfg = fleet_cfg.get("groups", {})
         groups = []
         for name, group_data in (groups_cfg or {}).items():
             if isinstance(group_data, dict):
-                groups.append(GroupPolicy(
-                    name=name,
-                    robots=group_data.get("robots", []),
-                    policy=group_data.get("policy", {}),
-                    description=group_data.get("description", ""),
-                    tags=group_data.get("tags", []),
-                    enabled=group_data.get("enabled", True),
-                ))
+                groups.append(
+                    GroupPolicy(
+                        name=name,
+                        robots=group_data.get("robots", []),
+                        policy=group_data.get("policy", {}),
+                        description=group_data.get("description", ""),
+                        tags=group_data.get("tags", []),
+                        enabled=group_data.get("enabled", True),
+                    )
+                )
         return cls(groups=groups)
 
     def get_robot_groups(self, rrn: str) -> list[GroupPolicy]:

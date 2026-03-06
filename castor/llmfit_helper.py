@@ -198,9 +198,9 @@ def print_recommendations(recs: list[dict[str, Any]], console: Any | None = None
         print("  " + "-" * 78)
         for rec in recs:
             print(
-                f"  {rec.get('fit','?'):<9} {rec.get('name','?'):<40} "
-                f"{rec.get('provider','?'):<12} {str(rec.get('estimated_tps','?')):>6} "
-                f"{str(rec.get('mem_usage_mb','?')):>7}"
+                f"  {rec.get('fit', '?'):<9} {rec.get('name', '?'):<40} "
+                f"{rec.get('provider', '?'):<12} {str(rec.get('estimated_tps', '?')):>6} "
+                f"{str(rec.get('mem_usage_mb', '?')):>7}"
             )
         print()
 
@@ -264,9 +264,11 @@ def run_wizard_step(console: Any | None = None) -> dict[str, Any] | None:
         return None
 
     try:
-        ans = input(
-            f"  Use top recommendation ({top.get('name')}) as fast brain default? [Y/n] "
-        ).strip().lower()
+        ans = (
+            input(f"  Use top recommendation ({top.get('name')}) as fast brain default? [Y/n] ")
+            .strip()
+            .lower()
+        )
     except (EOFError, KeyboardInterrupt):
         return None
 
@@ -305,7 +307,12 @@ def run_fit_command() -> None:
     else:
         _print(console, "  (hardware info unavailable)", style="yellow")
 
-    _print(console, "\n[bold]Top Model Recommendations[/bold]\n" if HAS_RICH else "\nTop Model Recommendations\n")
+    _print(
+        console,
+        "\n[bold]Top Model Recommendations[/bold]\n"
+        if HAS_RICH
+        else "\nTop Model Recommendations\n",
+    )
     recs = get_recommendations(use_case="chat", limit=10)
     if recs:
         print_recommendations(recs, console)
@@ -332,6 +339,7 @@ def _print(console: Any | None, text: str, style: str | None = None) -> None:
     else:
         # Strip basic Rich markup for plain output
         import re
+
         plain = re.sub(r"\[/?[a-z_ ]+\]", "", text)
         print(plain)
 

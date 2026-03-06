@@ -1978,8 +1978,7 @@ def _offer_rcan_registration(rcan_data: dict, robot_name: str, config_filename: 
     # Extract metadata from rcan_data
     meta = rcan_data.get("metadata", {})
     manufacturer = (
-        meta.get("manufacturer")
-        or input_default("  Manufacturer / org name", "opencastor").strip()
+        meta.get("manufacturer") or input_default("  Manufacturer / org name", "opencastor").strip()
     )
     model = (
         meta.get("model")
@@ -1987,17 +1986,11 @@ def _offer_rcan_registration(rcan_data: dict, robot_name: str, config_filename: 
     )
     version = meta.get("version") or meta.get("firmware_version") or "v1"
     device_id = (
-        meta.get("robot_uuid", "")[:8]
-        or meta.get("device_id")
-        or f"unit-{robot_name.lower()[:6]}"
+        meta.get("robot_uuid", "")[:8] or meta.get("device_id") or f"unit-{robot_name.lower()[:6]}"
     )
 
     # Check for existing API key
-    api_key = (
-        os.environ.get("RCAN_API_KEY")
-        or os.environ.get("OPENCASTOR_RCAN_KEY")
-        or ""
-    )
+    api_key = os.environ.get("RCAN_API_KEY") or os.environ.get("OPENCASTOR_RCAN_KEY") or ""
 
     if not api_key:
         print(
@@ -2045,6 +2038,7 @@ def _programmatic_register(
     print(f"  {Colors.BLUE}[rcan.dev]{Colors.ENDC} Registering robot...", end=" ", flush=True)
     try:
         import asyncio
+
         from rcan.registry import RegistryClient
 
         async def _do_register():
@@ -2086,7 +2080,9 @@ def _programmatic_register(
     except Exception as exc:
         print(f"{Colors.FAIL}failed{Colors.ENDC}")
         print(f"  Error: {exc}")
-        print(f"  You can register manually at: {Colors.BLUE}https://rcan.dev/registry{Colors.ENDC}\n")
+        print(
+            f"  You can register manually at: {Colors.BLUE}https://rcan.dev/registry{Colors.ENDC}\n"
+        )
         return None
 
 
@@ -2103,14 +2099,19 @@ def _print_manual_registration_url(
     mdl = model or meta.get("model", robot_name.lower().replace(" ", "-"))
     try:
         from urllib.parse import urlencode
-        params = urlencode({"manufacturer": mfr, "model": mdl, "version": version, "source": "wizard"})
+
+        params = urlencode(
+            {"manufacturer": mfr, "model": mdl, "version": version, "source": "wizard"}
+        )
         url = f"https://rcan.dev/registry/register?{params}"
     except Exception:
         url = "https://rcan.dev/registry"
 
-    print(f"\n  Register manually (takes ~30s):")
+    print("\n  Register manually (takes ~30s):")
     print(f"  {Colors.BLUE}{url}{Colors.ENDC}")
-    print(f"  Or later: {Colors.BLUE}castor register --config <your-config>.rcan.yaml{Colors.ENDC}\n")
+    print(
+        f"  Or later: {Colors.BLUE}castor register --config <your-config>.rcan.yaml{Colors.ENDC}\n"
+    )
 
 
 def choose_hardware():
@@ -2667,6 +2668,7 @@ def main():
         # Step 12b: Model Fit Analysis (optional, via llmfit)
         try:
             from castor.llmfit_helper import run_wizard_step as _llmfit_step
+
             llmfit_rec = _llmfit_step(_console if HAS_RICH else None)
             if llmfit_rec and llmfit_rec.get("provider") == provider_key:
                 # Pre-fill model if provider matches what user selected

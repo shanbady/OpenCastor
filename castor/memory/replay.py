@@ -71,9 +71,14 @@ def _parse_episode_timestamp(ep: dict, path: Path) -> datetime | None:
                 if isinstance(val, (int, float)):
                     return datetime.fromtimestamp(val, tz=timezone.utc)
                 ts = str(val)
-                for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                for fmt in (
+                    "%Y-%m-%dT%H:%M:%S%z",
+                    "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d",
+                ):
                     try:
-                        return datetime.strptime(ts[:19], fmt[:len(fmt)])
+                        return datetime.strptime(ts[:19], fmt[: len(fmt)])
                     except ValueError:
                         pass
             except Exception:
@@ -208,12 +213,15 @@ async def replay_episodes(
     if consolidation_fn is None and not dry_run:
         try:
             from brain_a.memory.consolidation import consolidate_episode  # type: ignore
+
             consolidation_fn = consolidate_episode
         except ImportError:
             try:
+
                 def consolidation_fn(ep):
                     return {"promoted": 0, "merged": 0}
             except Exception:
+
                 def consolidation_fn(ep):
                     return {"promoted": 0, "merged": 0}
 
@@ -263,6 +271,7 @@ def run_replay_cli(args: Any) -> None:
     """Entry point from castor memory replay subcommand."""
     try:
         from rich.console import Console
+
         con = Console()
         HAS_RICH = True
     except ImportError:
@@ -274,6 +283,7 @@ def run_replay_cli(args: Any) -> None:
             con.print(text, **kw)
         else:
             import re
+
             print(re.sub(r"\[/?[a-z_ ]+\]", "", text))
 
     dry_run = getattr(args, "dry_run", False)
@@ -285,18 +295,22 @@ def run_replay_cli(args: Any) -> None:
     if dry_run:
         pr("\n[yellow]DRY RUN — no changes will be written[/yellow]")
 
-    pr("\n🔄 [bold]castor memory replay[/bold]"
-       + (f"  since {since}" if since else "")
-       + (f"  episode {ep_id}" if ep_id else "")
-       + ("\n"))
+    pr(
+        "\n🔄 [bold]castor memory replay[/bold]"
+        + (f"  since {since}" if since else "")
+        + (f"  episode {ep_id}" if ep_id else "")
+        + ("\n")
+    )
 
-    stats = asyncio.run(replay_episodes(
-        episodes_dir=episodes_dir,
-        since=since,
-        episode_id=ep_id,
-        dry_run=dry_run,
-        verbose=verbose,
-    ))
+    stats = asyncio.run(
+        replay_episodes(
+            episodes_dir=episodes_dir,
+            since=since,
+            episode_id=ep_id,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
+    )
 
     pr("\n[bold]Results:[/bold]")
     for line in stats.summary().splitlines():

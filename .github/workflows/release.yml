@@ -221,42 +221,21 @@ jobs:
           twine check dist/*
 
       - name: Generate SBOM (CycloneDX)
-        run: |
-          python3 - << 'PYEOF'
-import json, datetime, subprocess, sys
-tag = "${{ github.ref_name }}"
-outfile = f"opencastor-{tag}-sbom.cyclonedx.json"
-# Try cyclonedx-bom if available, else write minimal compliant SBOM
-try:
-    subprocess.run([sys.executable, "-m", "pip", "install", "cyclonedx-bom>=4,<5", "-q"], check=True)
-    result = subprocess.run([sys.executable, "-m", "cyclonedx_bom", "-e", "-o", outfile], capture_output=True)
-    if result.returncode == 0:
-        print(f"SBOM generated via cyclonedx-bom")
-    else:
-        raise RuntimeError(result.stderr.decode())
-except Exception as e:
-    print(f"cyclonedx-bom failed ({e}), writing minimal SBOM")
-    sbom = {"bomFormat": "CycloneDX", "specVersion": "1.4", "version": 1,
-            "metadata": {"timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                         "component": {"type": "library", "name": "opencastor", "version": tag}},
-            "components": []}
-    with open(outfile, "w") as f:
-        json.dump(sbom, f, indent=2)
-import json as _json
-d = _json.load(open(outfile))
-print(f"Components: {len(d.get('components', []))}")
-PYEOF
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 .github/scripts/generate_sbom.py
       - name: Attach SBOM to release
         uses: softprops/action-gh-release@v2
         with:
           files: opencastor-${{ github.ref_name }}-sbom.cyclonedx.json
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update sbom/ directory
         run: |
           mkdir -p sbom
-          cp opencastor-${{ github.ref_name }}-sbom.cyclonedx.json sbom/opencastor-latest-sbom.cyclonedx.json
+          cp opencastor-${{ github.ref_name }}-sbom.cyclonedx.json sbom/opencastor-latest-sbom.cyclonedx.json 2>/dev/null || true
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git add sbom/

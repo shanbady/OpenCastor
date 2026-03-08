@@ -4602,6 +4602,212 @@ async def setup_wizard():
         )
 
 
+@app.get("/gamepad")
+async def gamepad_page(token: str = ""):
+    """Standalone gamepad controller page — runs outside any iframe so the
+    Gamepad API is always available.  Open in any browser tab, pass the API
+    token as ?token=<value> or leave blank for open-auth gateways."""
+    from fastapi.responses import HTMLResponse
+
+    _html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gamepad — OpenCastor</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:14px;padding:16px}}
+  h2{{font-size:1rem;color:#58a6ff;margin-bottom:12px}}
+  #gp-name{{color:#8b949e;margin-bottom:10px;font-size:0.85rem}}
+  .row{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}}
+  .badge{{display:inline-block;padding:3px 9px;border-radius:4px;font-size:0.75rem;
+    background:#21262d;border:1px solid #30363d;transition:background 0.08s}}
+  .badge.on {{background:#1f6feb;border-color:#58a6ff;color:#fff}}
+  .badge.stp{{background:#da3633;border-color:#f85149;color:#fff}}
+  .badge.wrn{{background:#d29922;border-color:#e3b341;color:#0d1117}}
+  #gp-dir{{font-size:2rem;min-width:2.5rem;text-align:center}}
+  .vals{{margin:0 10px;line-height:1.7}}
+  #gp-linear {{color:#3fb950}}
+  #gp-angular{{color:#58a6ff}}
+  button{{padding:6px 14px;border:none;border-radius:5px;cursor:pointer;
+    font-family:monospace;font-size:0.82rem;transition:opacity 0.1s}}
+  button:active{{opacity:0.7}}
+  #gp-confirm{{display:none;background:#161b22;border:1px solid #d29922;
+    border-radius:6px;padding:8px 12px;margin-top:8px}}
+  #fb{{color:#8b949e;font-size:0.75rem;margin-left:6px}}
+  label{{color:#8b949e;font-size:0.75rem}}
+  input[type=range]{{width:130px;accent-color:#58a6ff}}
+  .map{{margin-top:10px;font-size:0.68rem;color:#6e7681;line-height:1.8}}
+</style>
+</head>
+<body>
+<h2>🎮 OpenCastor Gamepad Drive</h2>
+<div id="gp-name">Not connected — press any button on the controller to activate</div>
+<div class="row">
+  <div>
+    <div id="gp-dir">⬜</div>
+    <div style="font-size:0.62rem;color:#6e7681;text-align:center">D-PAD</div>
+  </div>
+  <div class="vals">
+    <div id="gp-linear">↕ 0.00</div>
+    <div id="gp-angular">↔ 0.00</div>
+  </div>
+  <div class="row" style="gap:3px">
+    <span class="badge" id="btn-a">A·Stop</span>
+    <span class="badge" id="btn-b">B·Stop</span>
+    <span class="badge" id="btn-x">X·Status</span>
+    <span class="badge" id="btn-y">Y·Snap</span>
+    <span class="badge" id="btn-l">L·Reboot</span>
+    <span class="badge" id="btn-r">R·Shutdown</span>
+    <span class="badge" id="btn-st">Start·ESTOP</span>
+    <span class="badge" id="btn-sl">Sel·Clear</span>
+  </div>
+</div>
+<div class="row" style="gap:6px;margin-top:8px">
+  <button onclick="send('/api/stop')"
+    style="background:#da3633;color:#fff">⏹ E-STOP</button>
+  <button onclick="send('/api/estop/clear')"
+    style="background:#238636;color:#fff">▶ Clear</button>
+  <button onclick="confirmAct('Reboot the robot host?',()=>send('/api/system/reboot'))"
+    style="background:#d29922;color:#0d1117">↺ Reboot…</button>
+  <button onclick="confirmAct('Shut down the robot host?',()=>send('/api/system/shutdown'))"
+    style="background:#6e40c9;color:#fff">⏻ Shutdown…</button>
+  <span id="fb"></span>
+</div>
+<div id="gp-confirm">
+  <span id="confirm-msg"></span>&nbsp;
+  <button onclick="confirmYes()" style="background:#da3633;color:#fff;padding:3px 10px">Yes</button>
+  <button onclick="confirmNo()"  style="background:#21262d;color:#e6edf3;padding:3px 10px">No</button>
+</div>
+<div class="row" style="margin-top:10px;gap:16px">
+  <div><label>Drive speed<br>
+    <input type="range" id="sl-speed" min="0.1" max="1" step="0.05" value="0.7"
+      oninput="document.getElementById('sp-v').textContent=this.value">
+    <span id="sp-v">0.7</span></label></div>
+  <div><label>Turn speed<br>
+    <input type="range" id="sl-turn" min="0.1" max="1" step="0.05" value="0.6"
+      oninput="document.getElementById('tu-v').textContent=this.value">
+    <span id="tu-v">0.6</span></label></div>
+</div>
+<div class="map">
+  D-pad / left-stick = move &nbsp;·&nbsp; A/B = stop &nbsp;·&nbsp;
+  X = status &nbsp;·&nbsp; Y = snapshot &nbsp;·&nbsp;
+  L = reboot &nbsp;·&nbsp; R = shutdown &nbsp;·&nbsp;
+  Start = E-STOP &nbsp;·&nbsp; Sel = clear stop
+</div>
+<script>
+(function(){{
+  const GW    = window.location.origin;
+  const TOKEN = "{token}" || new URLSearchParams(location.search).get("token") || "";
+  const authH = TOKEN ? {{"Authorization":"Bearer "+TOKEN}} : {{}};
+  const jsonH = Object.assign({{"Content-Type":"application/json"}}, authH);
+
+  let gpIdx=null, raf=null, prev={{}}, lastT=0, pendingFn=null;
+
+  function fb(msg,c){{
+    const el=document.getElementById("fb");
+    el.textContent=msg; el.style.color=c||"#8b949e";
+  }}
+  function send(path,body){{
+    return fetch(GW+path,{{method:"POST",
+      headers:body!==undefined?jsonH:authH,
+      body:body!==undefined?JSON.stringify(body):undefined
+    }}).then(r=>fb(path.split("/").pop()+" "+r.status,r.ok?"#3fb950":"#f85149"))
+      .catch(e=>fb(""+e,"#f85149"));
+  }}
+  function badge(id,on,cls){{
+    const el=document.getElementById(id);
+    if(el) el.className="badge"+(on?" "+(cls||"on"):"");
+  }}
+  function confirmAct(msg,fn){{
+    pendingFn=fn;
+    document.getElementById("confirm-msg").textContent=msg;
+    document.getElementById("gp-confirm").style.display="block";
+  }}
+  window.confirmYes=function(){{
+    document.getElementById("gp-confirm").style.display="none";
+    if(pendingFn){{pendingFn();pendingFn=null;}}
+  }};
+  window.confirmNo=function(){{
+    document.getElementById("gp-confirm").style.display="none";
+    pendingFn=null; fb("Cancelled","#8b949e");
+  }};
+
+  window.addEventListener("gamepadconnected",function(e){{
+    gpIdx=e.gamepad.index;
+    document.getElementById("gp-name").textContent=e.gamepad.id;
+    document.getElementById("gp-name").style.color="#3fb950";
+    fb("Connected","#3fb950");
+    if(!raf) raf=requestAnimationFrame(loop);
+  }});
+  window.addEventListener("gamepaddisconnected",function(e){{
+    if(e.gamepad.index===gpIdx){{
+      gpIdx=null;
+      if(raf){{cancelAnimationFrame(raf);raf=null;}}
+      document.getElementById("gp-name").textContent="Disconnected — press a button to reconnect";
+      document.getElementById("gp-name").style.color="#8b949e";
+      document.getElementById("gp-dir").textContent="⬜";
+    }}
+  }});
+
+  function dz(v){{return Math.abs(v)<0.12?0:v;}}
+  function pressed(gp,i){{const b=gp.buttons[i];return b?(typeof b==="object"?b.pressed:b>0.5):false;}}
+  function justPressed(gp,i){{const n=pressed(gp,i),w=prev[i]||false;prev[i]=n;return n&&!w;}}
+
+  function loop(){{
+    raf=requestAnimationFrame(loop);
+    if(gpIdx===null)return;
+    const gps=navigator.getGamepads();
+    const gp=gps[gpIdx];
+    if(!gp)return;
+
+    const spd=parseFloat(document.getElementById("sl-speed").value);
+    const trn=parseFloat(document.getElementById("sl-turn").value);
+
+    const dU=pressed(gp,12),dD=pressed(gp,13),dL=pressed(gp,14),dR=pressed(gp,15);
+    let lin=0,ang=0;
+    if(dU||dD||dL||dR){{
+      if(dU)lin= spd; if(dD)lin=-spd;
+      if(dL)ang= trn; if(dR)ang=-trn;
+      document.getElementById("gp-dir").textContent=
+        (dU?"↑":"")+(dD?"↓":"")+(dL?"←":"")+(dR?"→":"");
+    }}else{{
+      lin=-dz(gp.axes[1]||0)*spd;
+      ang=-dz(gp.axes[0]||0)*trn;
+      document.getElementById("gp-dir").textContent=
+        (Math.abs(lin)>0.01||Math.abs(ang)>0.01)?"🕹":"⬜";
+    }}
+    document.getElementById("gp-linear").textContent ="↕ "+lin.toFixed(2);
+    document.getElementById("gp-angular").textContent="↔ "+ang.toFixed(2);
+
+    const t=Date.now();
+    if((Math.abs(lin)>0.01||Math.abs(ang)>0.01)&&t-lastT>80){{
+      lastT=t; send("/api/action",{{linear:lin,angular:ang}});
+    }}
+
+    badge("btn-a", pressed(gp,0));  badge("btn-b", pressed(gp,1));
+    badge("btn-x", pressed(gp,2));  badge("btn-y", pressed(gp,3));
+    badge("btn-l", pressed(gp,4),"wrn"); badge("btn-r",pressed(gp,5),"wrn");
+    badge("btn-st",pressed(gp,9),"stp"); badge("btn-sl",pressed(gp,8));
+
+    if(justPressed(gp,0)||justPressed(gp,1)) send("/api/stop");
+    if(justPressed(gp,2)) send("/api/command",{{instruction:"what is your current status?"}});
+    if(justPressed(gp,3)) fetch(GW+"/api/camera/snapshot",{{headers:authH}})
+      .then(()=>fb("Snapshot taken","#3fb950")).catch(()=>fb("Snapshot unavailable","#f85149"));
+    if(justPressed(gp,4)) confirmAct("Reboot the robot host?",()=>send("/api/system/reboot"));
+    if(justPressed(gp,5)) confirmAct("Shut down the robot host?",()=>send("/api/system/shutdown"));
+    if(justPressed(gp,9)) send("/api/stop");
+    if(justPressed(gp,8)) send("/api/estop/clear");
+  }}
+}})();
+</script>
+</body>
+</html>"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=_html)
+
+
 class _SetupTestProviderRequest(BaseModel):
     provider: str
     api_key: str

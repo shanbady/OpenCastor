@@ -116,7 +116,7 @@ st.markdown(
   .dot-y { display:inline-block;width:9px;height:9px;border-radius:50%;
             background:#b35a00;box-shadow:0 0 4px #b35a00;margin-right:3px;}
   .dot-x { display:inline-block;width:9px;height:9px;border-radius:50%;
-            background:#9aa3af;margin-right:3px;}
+            background:#6b7280;margin-right:3px;}
 
   /* ── sensor badges ── */
   .bw { display:inline-block;background:#e6f4ec;color:#007a2f;border:1px solid #007a2f;
@@ -287,7 +287,7 @@ with st.sidebar:
         )
 
 # ── back-to-face link ────────────────────────────────────────────────────────
-_host = GW.split("://")[-1].split(":")[0]
+_host = GW.split("://")[-1].split(":")[0].split("/")[0]
 st.markdown(
     f'<a class="face-back" href="http://{_host}:8000/face">← Robot Face</a>',
     unsafe_allow_html=True,
@@ -297,7 +297,7 @@ st.markdown(
 _ch_html = (
     " · ".join(f'<span style="color:#0057ff">{c}</span>' for c in channels_active)
     if channels_active
-    else '<span style="color:#9aa3af">no channels</span>'
+    else '<span style="color:#6b7280">no channels</span>'
 )
 st.markdown(
     f"""<div class="status-bar">
@@ -305,7 +305,7 @@ st.markdown(
   {_dot(brain_ok)} brain <strong>{"on" if brain_ok else "off"}</strong> &nbsp;
   {_dot(driver_ok, "#007a2f", "#b35a00")} driver <strong>{"hw" if driver_ok else "mock"}</strong>
   &nbsp; 📡 {_ch_html} &nbsp;
-  <span style="color:#9aa3af">⏱ {_fmt_uptime(uptime)}</span> &nbsp;
+  <span style="color:#6b7280">⏱ {_fmt_uptime(uptime)}</span> &nbsp;
   {_dot(cam_ok)} cam <strong>{"live" if cam_ok else "off"}</strong>
 </div>""",
     unsafe_allow_html=True,
@@ -365,6 +365,7 @@ with _tab_ctrl:
         st.components.v1.html(
             f"""
 <style>
+/* NOTE: mirrors the global cam-pulse keyframe in the main CSS block above — keep in sync */
 @keyframes cam-pulse {{
   0%,100% {{ border-color:#c00000; box-shadow:0 0 0px #c00000; }}
   50%      {{ border-color:#ef4444; box-shadow:0 0 8px #c00000; }}
@@ -489,7 +490,7 @@ with _tab_ctrl:
             f'<a href="{_gp_url}" target="_blank" style="display:inline-block;padding:6px 14px;'
             f'background:#ffffff;color:#0057ff;border-radius:6px;text-decoration:none;'
             f'font-size:0.8rem;border:1px solid #d0d5dd;">Open controller page →</a>'
-            f'<div style="color:#9aa3af;font-size:0.68rem;margin-top:4px;">'
+            f'<div style="color:#6b7280;font-size:0.68rem;margin-top:4px;">'
             f'D-pad/stick=move · A/B=stop · L=reboot · R=shutdown · Start=ESTOP</div>',
             unsafe_allow_html=True,
         )

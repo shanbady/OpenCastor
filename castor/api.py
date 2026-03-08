@@ -4867,37 +4867,39 @@ async def robot_face_page(token: str = ""):
   <!-- face group (e-stop glow target) -->
   <g id="face-group">
 
-    <!-- left eyebrow -->
-    <path id="brow-l" d="M 128 142 Q 158 130 182 140"
-          fill="none" stroke="#0d0d0d" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- left eyebrow: thick high arch = friendly/happy -->
+    <path id="brow-l" d="M 122 136 Q 156 112 186 128"
+          fill="none" stroke="#0d0d0d" stroke-width="6.5" stroke-linecap="round"/>
 
     <!-- right eyebrow -->
-    <path id="brow-r" d="M 218 140 Q 242 130 272 142"
-          fill="none" stroke="#0d0d0d" stroke-width="4.5" stroke-linecap="round"/>
+    <path id="brow-r" d="M 214 128 Q 244 112 278 136"
+          fill="none" stroke="#0d0d0d" stroke-width="6.5" stroke-linecap="round"/>
 
-    <!-- left eye: sclera + blue iris + black pupil + white highlight -->
+    <!-- cheek blush (behind eyes so eyes render on top) -->
+    <ellipse id="cheek-l" cx="120" cy="212" rx="28" ry="19" fill="#fca5a5" opacity="0.45"/>
+    <ellipse id="cheek-r" cx="280" cy="212" rx="28" ry="19" fill="#fca5a5" opacity="0.45"/>
+
+    <!-- left eye: sclera + blue iris + black pupil + two highlights -->
     <g id="eye-l">
-      <circle cx="158" cy="175" r="28" fill="#ffffff" stroke="#0d0d0d" stroke-width="3"/>
-      <circle cx="158" cy="175" r="17" fill="#0057ff"/>
-      <circle cx="158" cy="175" r="9"  fill="#0d0d0d"/>
-      <circle cx="150" cy="167" r="5"  fill="#ffffff"/>
+      <circle cx="158" cy="175" r="30" fill="#ffffff" stroke="#0d0d0d" stroke-width="3"/>
+      <circle cx="158" cy="175" r="19" fill="#0057ff"/>
+      <circle cx="157" cy="173" r="10" fill="#0d0d0d"/>
+      <circle cx="147" cy="163" r="6"  fill="#ffffff"/>
+      <circle cx="162" cy="168" r="3"  fill="#ffffff" opacity="0.75"/>
     </g>
 
-    <!-- right eye: sclera + blue iris + black pupil + white highlight -->
+    <!-- right eye: sclera + blue iris + black pupil + two highlights -->
     <g id="eye-r">
-      <circle cx="242" cy="175" r="28" fill="#ffffff" stroke="#0d0d0d" stroke-width="3"/>
-      <circle cx="242" cy="175" r="17" fill="#0057ff"/>
-      <circle cx="242" cy="175" r="9"  fill="#0d0d0d"/>
-      <circle cx="234" cy="167" r="5"  fill="#ffffff"/>
+      <circle cx="242" cy="175" r="30" fill="#ffffff" stroke="#0d0d0d" stroke-width="3"/>
+      <circle cx="242" cy="175" r="19" fill="#0057ff"/>
+      <circle cx="241" cy="173" r="10" fill="#0d0d0d"/>
+      <circle cx="231" cy="163" r="6"  fill="#ffffff"/>
+      <circle cx="246" cy="168" r="3"  fill="#ffffff" opacity="0.75"/>
     </g>
-
-    <!-- nose: two small nostril dots -->
-    <circle cx="192" cy="228" r="5" fill="#6b7280"/>
-    <circle cx="208" cy="228" r="5" fill="#6b7280"/>
 
     <!-- mouth — d attribute and fill driven entirely by JS -->
-    <path id="mouth" d="M 145 252 Q 200 285 255 252"
-          fill="none" stroke="#0d0d0d" stroke-width="5" stroke-linecap="round"/>
+    <path id="mouth" d="M 138 260 Q 200 304 262 260"
+          fill="none" stroke="#0d0d0d" stroke-width="5.5" stroke-linecap="round"/>
 
     <!-- estop X eyes (hidden by default) -->
     <g id="x-eyes" style="display:none">
@@ -4923,6 +4925,8 @@ const eyeL      = document.getElementById("eye-l");
 const eyeR      = document.getElementById("eye-r");
 const browL     = document.getElementById("brow-l");
 const browR     = document.getElementById("brow-r");
+const cheekL    = document.getElementById("cheek-l");
+const cheekR    = document.getElementById("cheek-r");
 const xEyes     = document.getElementById("x-eyes");
 const mouth     = document.getElementById("mouth");
 const lpRing    = document.getElementById("lp-ring");
@@ -4941,15 +4945,15 @@ let _speakT   = 0;
 function _speakTick() {{
   _speakT += 1 / 60;
   // absolute-value envelope → only upward openings (no negative jaw movement)
-  const amp = 28 * Math.abs(
+  const amp = 30 * Math.abs(
     0.65 * Math.sin(_speakT * 3.0 * Math.PI) +
     0.35 * Math.sin(_speakT * 6.5 * Math.PI + 0.8)
   );
-  const uy = 250;                     // upper-lip Y stays fixed
-  const ly = uy + Math.max(2, amp);  // lower-lip Y, min 2px so never fully closed mid-oscillation
+  const uy = 258;                     // upper-lip Y (matches M_SMILE baseline)
+  const ly = uy + Math.max(2, amp);  // lower-lip Y
   // D-shaped open-mouth path: upper arc + lower arc joined into a filled oval
   mouth.setAttribute("d",
-    `M 148 ${{uy}} Q 200 ${{uy - 10}} 252 ${{uy}} Q 200 ${{ly + 8}} 148 ${{uy}} Z`
+    `M 140 ${{uy}} Q 200 ${{uy - 12}} 260 ${{uy}} Q 200 ${{ly + 10}} 140 ${{uy}} Z`
   );
   mouth.setAttribute("fill", "#0d0d0d");
   _speakRaf = requestAnimationFrame(_speakTick);
@@ -4961,10 +4965,10 @@ function _stopSpeak()  {{
 }}
 
 // ── Mouth path presets ────────────────────────────────────────────────────────
-const M_SMILE = "M 145 252 Q 200 285 255 252";   // wide friendly smile
-const M_FLAT  = "M 155 258 Q 200 263 245 258";   // neutral / focused
-const M_SMISH = "M 150 256 Q 200 272 250 256";   // slight smile (listening)
-const M_FROWN = "M 148 270 Q 200 250 252 270";   // frown (estop)
+const M_SMILE = "M 138 260 Q 200 304 262 260";   // wide warm smile
+const M_FLAT  = "M 152 266 Q 200 272 248 266";   // neutral / focused
+const M_SMISH = "M 144 264 Q 200 288 256 264";   // slight smile (listening)
+const M_FROWN = "M 140 280 Q 200 258 260 280";   // frown (estop)
 
 // ── State machine ─────────────────────────────────────────────────────────────
 let state = "idle";
@@ -4979,6 +4983,8 @@ function _resetFace() {{
   irisR.setAttribute("fill", "#0057ff");
   eyeL.style.transform = ""; eyeR.style.transform = "";
   mouth.setAttribute("stroke", "#0d0d0d");
+  cheekL.setAttribute("opacity", "0.45");
+  cheekR.setAttribute("opacity", "0.45");
 }}
 
 function applyState(s) {{
@@ -4987,42 +4993,48 @@ function applyState(s) {{
   _resetFace();
 
   if (s === "idle") {{
-    browL.setAttribute("d", "M 128 142 Q 158 130 182 140");
-    browR.setAttribute("d", "M 218 140 Q 242 130 272 142");
+    browL.setAttribute("d", "M 122 136 Q 156 112 186 128"); // high friendly arch
+    browR.setAttribute("d", "M 214 128 Q 244 112 278 136");
     mouth.setAttribute("d", M_SMILE);
 
   }} else if (s === "moving") {{
-    browL.setAttribute("d", "M 128 148 Q 158 140 182 150"); // lower inner corners: focused
-    browR.setAttribute("d", "M 218 150 Q 242 140 272 148");
+    browL.setAttribute("d", "M 122 144 Q 156 128 186 138"); // slightly lowered: focused
+    browR.setAttribute("d", "M 214 138 Q 244 128 278 144");
     mouth.setAttribute("d", M_FLAT);
 
   }} else if (s === "speaking") {{
-    browL.setAttribute("d", "M 128 136 Q 158 124 182 134"); // raised: engaged
-    browR.setAttribute("d", "M 218 134 Q 242 124 272 136");
+    browL.setAttribute("d", "M 120 126 Q 156 102 186 118"); // raised high: engaged
+    browR.setAttribute("d", "M 214 118 Q 244 102 280 126");
     _startSpeak();  // rAF oscillator takes over mouth path
 
   }} else if (s === "listening") {{
     lsRing.style.display = "block";
-    eyeL.style.transform = "scale(1.12)"; eyeL.style.transformOrigin = "158px 175px";
-    eyeR.style.transform = "scale(1.12)"; eyeR.style.transformOrigin = "242px 175px";
-    browL.setAttribute("d", "M 128 134 Q 158 120 182 132"); // high: attentive/surprised
-    browR.setAttribute("d", "M 218 132 Q 242 120 272 134");
+    eyeL.style.transform = "scale(1.10)"; eyeL.style.transformOrigin = "158px 175px";
+    eyeR.style.transform = "scale(1.10)"; eyeR.style.transformOrigin = "242px 175px";
+    browL.setAttribute("d", "M 120 122 Q 156 98 186 114");  // highest: attentive
+    browR.setAttribute("d", "M 214 114 Q 244 98 280 122");
+    cheekL.setAttribute("opacity", "0.65");  // blushing with attention
+    cheekR.setAttribute("opacity", "0.65");
     mouth.setAttribute("d", M_SMISH);
 
   }} else if (s === "estop") {{
     faceGroup.classList.add("estop-face");
     eyeL.style.display = "none"; eyeR.style.display = "none";
     xEyes.style.display = "block";
-    browL.setAttribute("d", "M 128 158 Q 158 148 182 160"); // V-angry
-    browR.setAttribute("d", "M 218 160 Q 242 148 272 158");
+    browL.setAttribute("d", "M 122 150 Q 156 142 186 152"); // V-angry
+    browR.setAttribute("d", "M 214 152 Q 244 142 278 150");
+    cheekL.setAttribute("opacity", "0");     // no happy cheeks during estop
+    cheekR.setAttribute("opacity", "0");
     mouth.setAttribute("stroke", "#c00000");
     mouth.setAttribute("d", M_FROWN);
 
   }} else if (s === "offline") {{
-    irisL.setAttribute("fill", "#9aa3af");  // grey iris
+    irisL.setAttribute("fill", "#9aa3af");   // grey iris
     irisR.setAttribute("fill", "#9aa3af");
-    browL.setAttribute("d", "M 128 148 Q 158 144 182 150"); // drooped
-    browR.setAttribute("d", "M 218 150 Q 242 144 272 148");
+    browL.setAttribute("d", "M 122 146 Q 156 140 186 148"); // drooped / sad
+    browR.setAttribute("d", "M 214 148 Q 244 140 278 146");
+    cheekL.setAttribute("opacity", "0.2");   // faded cheeks
+    cheekR.setAttribute("opacity", "0.2");
     mouth.setAttribute("d", M_FLAT);
   }}
 }}

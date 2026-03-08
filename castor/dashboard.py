@@ -1259,13 +1259,23 @@ with _tab_settings:
 
     st.divider()
 
+    # ── Closed Captions ────────────────────────────────────────────────────────
+    st.markdown("#### 💬 Closed Captions")
+    st.caption("Show what the robot is saying as a subtitle bar on the face screen.")
+    _cc_on = st.toggle("Enable closed captions on face", value=st.session_state.get("cc_enabled", True), key="cc_toggle")
+    if _cc_on != st.session_state.get("cc_enabled", True):
+        st.session_state.cc_enabled = _cc_on
+
+    st.divider()
+
     # ── Quick-open face preview ────────────────────────────────────────────────
     st.markdown("#### 👀 Preview Face")
     import socket as _sock_s
     _gw_port_s = GW.split(":")[-1].split("/")[0] if GW.count(":") >= 2 else "8000"
     _hn_s = _sock_s.gethostname()
     _fh_s = _hn_s if "." in _hn_s else f"{_hn_s}.local"
-    _face_url = f"http://{_fh_s}:{_gw_port_s}/face?style={st.session_state.face_style}"
+    _cc_param = "&captions=1" if st.session_state.get("cc_enabled", True) else ""
+    _face_url = f"http://{_fh_s}:{_gw_port_s}/face?style={st.session_state.face_style}{_cc_param}"
     st.markdown(
         f'<a href="{_face_url}" target="_blank" style="font-size:1rem;">'
         f'🔗 Open face in new tab ({st.session_state.face_style})</a>',

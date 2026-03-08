@@ -485,6 +485,8 @@ class Speaker:
         self._lock = threading.Lock()
         self._mixer_ready = False
         self._local_tts = None  # LocalTTS instance (issue #138)
+        self.is_speaking: bool = False
+        self.current_caption: str = ""
 
         if not self.enabled:
             return
@@ -551,42 +553,50 @@ class Speaker:
         return chunks or [text[:max_chunk]]
 
     def _speak(self, text: str):
-        with self._lock:
-            # Use LocalTTS if available (issue #138)
-            if self._local_tts is not None:
-                try:
-                    for chunk in self._split_sentences(text):
-                        self._local_tts.say(chunk)
-                        time.sleep(0.15)
-                except Exception as exc:
-                    logger.debug(f"LocalTTS error: {exc}")
-                return
-
-            try:
-                import pygame
-                from gtts import gTTS
-
-                if not self._mixer_ready:
+        self.is_speaking = True
+        self.current_caption = text
+        try:
+            with self._lock:
+                # Use LocalTTS if available (issue #138)
+                if self._local_tts is not None:
                     try:
-                        pygame.mixer.init()
-                        self._mixer_ready = True
+                        for chunk in self._split_sentences(text):
+                            self.current_caption = chunk
+                            self._local_tts.say(chunk)
+                            time.sleep(0.15)
                     except Exception as exc:
-                        logger.warning(f"TTS disabled -- audio init failed during playback: {exc}")
-                        self.enabled = False
-                        return
+                        logger.debug(f"LocalTTS error: {exc}")
+                    return
 
-                for chunk in self._split_sentences(text):
-                    buf = io.BytesIO()
-                    tts = gTTS(text=chunk, lang=self.language)
-                    tts.write_to_fp(buf)
-                    buf.seek(0)
-                    pygame.mixer.music.load(buf, "mp3")
-                    pygame.mixer.music.play()
-                    while pygame.mixer.music.get_busy():
-                        time.sleep(0.1)
-                    time.sleep(0.15)  # brief pause between sentences
-            except Exception as exc:
-                logger.debug(f"TTS error: {exc}")
+                try:
+                    import pygame
+                    from gtts import gTTS
+
+                    if not self._mixer_ready:
+                        try:
+                            pygame.mixer.init()
+                            self._mixer_ready = True
+                        except Exception as exc:
+                            logger.warning(f"TTS disabled -- audio init failed during playback: {exc}")
+                            self.enabled = False
+                            return
+
+                    for chunk in self._split_sentences(text):
+                        self.current_caption = chunk
+                        buf = io.BytesIO()
+                        tts = gTTS(text=chunk, lang=self.language)
+                        tts.write_to_fp(buf)
+                        buf.seek(0)
+                        pygame.mixer.music.load(buf, "mp3")
+                        pygame.mixer.music.play()
+                        while pygame.mixer.music.get_busy():
+                            time.sleep(0.1)
+                        time.sleep(0.15)  # brief pause between sentences
+                except Exception as exc:
+                    logger.debug(f"TTS error: {exc}")
+        finally:
+            self.is_speaking = False
+            self.current_caption = ""
 
     def close(self):
         """Stop playback and release the audio mixer."""

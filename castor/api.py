@@ -476,6 +476,8 @@ async def get_status(request: Request):
         "brain_primary": _brain_primary,
         "brain_secondary": _brain_secondary,
         "brain_active_model": _brain_active_model,
+        "speaking": getattr(getattr(state, "speaker", None), "is_speaking", False),
+        "caption": getattr(getattr(state, "speaker", None), "current_caption", ""),
     }
 
     if state.fs:
@@ -4884,7 +4886,7 @@ input[type=range]{{width:110px;accent-color:#58a6ff;}}
 
 
 @app.get("/face")
-async def robot_face_page(token: str = "", style: str = "friendly"):
+async def robot_face_page(token: str = "", style: str = "friendly", captions: int = 0):
     """Animated robot face kiosk home screen.
 
     Polls /api/status every 500ms to drive reactive SVG animations.
@@ -5070,6 +5072,7 @@ const RB_IDLE=114, RB_MOVE=120, RB_SPEAK=106, RB_LISTEN=102, RB_ESTOP=128, RB_OF
     _bg = _s["bg"]
     _css_extra = _s["css_extra"]
     _is_retro = "true" if _style == "retro" else "false"
+    _captions_enabled = "true" if captions else "false"
 
     _html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -5093,6 +5096,17 @@ const RB_IDLE=114, RB_MOVE=120, RB_SPEAK=106, RB_LISTEN=102, RB_ESTOP=128, RB_OF
                           50%{{filter:drop-shadow(0 0 32px #c00000);}}}}
   .estop-face{{animation:estop-glow 0.55s ease-in-out infinite;}}
   {_css_extra}
+  /* ── Closed captions ─────────────────────────────────────────── */
+  #cc-bar{{
+    display:none;position:fixed;bottom:0;left:0;right:0;
+    padding:14px 24px 18px;text-align:center;
+    background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);
+    color:#fff;font-size:clamp(1rem,3.5vw,1.6rem);
+    font-weight:500;line-height:1.4;letter-spacing:0.01em;
+    border-top:2px solid rgba(255,255,255,0.12);
+    transition:opacity 0.3s ease;
+  }}
+  #cc-bar.cc-visible{{display:block;}}
 </style>
 </head>
 <body>
@@ -5114,6 +5128,8 @@ const RB_IDLE=114, RB_MOVE=120, RB_SPEAK=106, RB_LISTEN=102, RB_ESTOP=128, RB_OF
   </g>
 </svg>
 
+<div id="cc-bar"></div>
+
 <script>
 const TOKEN    = "{_tok}";
 const API      = window.location.origin;
@@ -5121,6 +5137,7 @@ const DASH     = "http://" + window.location.hostname + ":8501";
 const LP_MS    = 2000;
 const LP_CIRC  = 2 * Math.PI * 155;
 const IS_RETRO = {_is_retro};
+const CC_ON    = {_captions_enabled};
 
 // Per-style presets (injected by server)
 {_js_presets}
@@ -5238,6 +5255,18 @@ function applyState(s) {{
   }}
 }}
 
+// ── Caption bar ───────────────────────────────────────────────────────────────
+const ccBar = document.getElementById("cc-bar");
+function _updateCaption(speaking, caption) {{
+  if (!CC_ON) return;
+  if (speaking && caption) {{
+    ccBar.textContent = caption;
+    ccBar.classList.add("cc-visible");
+  }} else {{
+    ccBar.classList.remove("cc-visible");
+  }}
+}}
+
 // ── Poll /api/status every 500ms ──────────────────────────────────────────────
 async function poll() {{
   const headers = TOKEN ? {{"Authorization": "Bearer " + TOKEN}} : {{}};
@@ -5245,6 +5274,7 @@ async function poll() {{
     const r = await fetch(API + "/api/status", {{headers, signal: AbortSignal.timeout(1000)}});
     if (!r.ok) {{ applyState("offline"); return; }}
     const d = await r.json();
+    _updateCaption(d.speaking, d.caption || "");
     if      (d.estop)                                                  applyState("estop");
     else if (d.listening)                                              applyState("listening");
     else if (d.speaking)                                               applyState("speaking");

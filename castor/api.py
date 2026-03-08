@@ -450,6 +450,18 @@ async def get_status(request: Request):
     """Return current runtime status, provider health, and available integrations."""
     from castor.safety.authorization import DEFAULT_AUDIT_LOG_PATH
 
+    _agent_cfg = (state.config or {}).get("agent", {})
+    _brain_primary = {
+        "provider": _agent_cfg.get("provider", "unknown"),
+        "model": _agent_cfg.get("model", "unknown"),
+    } if state.config else None
+    _brain_secondary = [
+        {"provider": s.get("provider"), "model": s.get("model"), "tags": s.get("tags", [])}
+        for s in _agent_cfg.get("secondary_models", [])
+    ] if state.config else []
+    _active_brain_obj = _get_active_brain()
+    _brain_active_model = getattr(_active_brain_obj, "model_name", None) if _active_brain_obj else None
+
     payload = {
         "config_loaded": state.config is not None,
         "robot_name": (
@@ -461,6 +473,9 @@ async def get_status(request: Request):
         "channels_active": list(state.channels.keys()),
         "last_thought": state.last_thought,
         "audit_log_path": str(DEFAULT_AUDIT_LOG_PATH.expanduser()),
+        "brain_primary": _brain_primary,
+        "brain_secondary": _brain_secondary,
+        "brain_active_model": _brain_active_model,
     }
 
     if state.fs:
@@ -549,6 +564,7 @@ async def send_command(cmd: CommandRequest, request: Request):
 
         _get_reg().record_provider_latency(_provider_name, _think_ms)
 
+    logger.info("Brain replied via %s in %.0f ms", _provider_name, _think_ms)
     _record_thought(cmd.instruction, thought.raw_text, thought.action)
 
     # Execute action on hardware if available
@@ -558,6 +574,7 @@ async def send_command(cmd: CommandRequest, request: Request):
     return {
         "raw_text": thought.raw_text,
         "action": thought.action,
+        "model_used": _provider_name,
     }
 
 

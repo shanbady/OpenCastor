@@ -587,30 +587,43 @@ with _tab_status:
 
     st.divider()
 
+    # ── Brain ──────────────────────────────────────────────────────────────────
+    st.markdown('<p class="sh">🧠 Brain</p>', unsafe_allow_html=True)
+    _bp = status.get("brain_primary") or {}
+    _bs = status.get("brain_secondary") or []
+    _bam = status.get("brain_active_model")
+    if _bp:
+        _bp_label = f"{_bp.get('provider', '?')} / {_bp.get('model', '?')}"
+        _active_tag = " ← active" if (_bam and _bp.get("model") and _bam.endswith(_bp["model"])) else ""
+        st.markdown(f"**Primary:** `{_bp_label}`{_active_tag}")
+    if _bs:
+        for _s in _bs:
+            _s_label = f"{_s.get('provider', '?')} / {_s.get('model', '?')}"
+            _s_tags = ", ".join(_s.get("tags") or [])
+            _active_tag2 = " ← active" if (_bam and _s.get("model") and _bam.endswith(_s["model"])) else ""
+            st.markdown(f"**Secondary:** `{_s_label}`{_active_tag2}" + (f" — _{_s_tags}_" if _s_tags else ""))
+    elif not _bp:
+        st.caption("No brain config")
+
+    st.divider()
+
     # ── Channels ──────────────────────────────────────────────────────────────
     st.markdown('<p class="sh">📡 Channels</p>', unsafe_allow_html=True)
-    _ch_avail = status.get("channels_available", {})
     _ch_active = set(channels_active)
     _CH_NAMES = {
         "whatsapp": "WhatsApp", "whatsapp_twilio": "WhatsApp (Twilio)",
         "telegram": "Telegram", "discord": "Discord", "slack": "Slack",
         "mqtt": "MQTT", "homeassistant": "Home Assistant",
     }
-    if _ch_avail:
-        import pandas as _pd
-        _ch_rows = []
-        for _cn, _av in sorted(_ch_avail.items()):
-            _is_act = _cn in _ch_active
-            _ch_rows.append({
-                "Channel": _CH_NAMES.get(_cn, _cn.replace("_", " ").title()),
-                "": "🟢" if _is_act else ("🟡" if _av else "⚫"),
-                "Status": "active" if _is_act else ("ready" if _av else "unavail"),
-            })
-        _ch_rows.sort(key=lambda r: (0 if r["Status"] == "active" else 1 if r["Status"] == "ready" else 2, r["Channel"]))
-        st.dataframe(_pd.DataFrame(_ch_rows), hide_index=True, use_container_width=True,
-                     height=min(220, 36 + 36 * len(_ch_rows)))
+    if _ch_active:
+        _badges = " ".join(
+            f'<span style="background:#1a6e3c;color:#fff;padding:2px 10px;border-radius:12px;font-size:0.85rem;">'
+            f'🟢 {_CH_NAMES.get(_cn, _cn.replace("_", " ").title())}</span>'
+            for _cn in sorted(_ch_active)
+        )
+        st.markdown(_badges, unsafe_allow_html=True)
     else:
-        st.caption("No channel data")
+        st.caption("No active channels")
 
     st.divider()
 
@@ -715,6 +728,8 @@ with _tab_chat:
         for _m in st.session_state.messages[-20:]:
             with st.chat_message(_m["role"]):
                 st.markdown(_m["content"])
+                if _m["role"] == "assistant" and _m.get("model_used"):
+                    st.caption(f"via {_m['model_used']}")
 
     # Chat input
     _prompt = st.chat_input("Type a command or question…")
@@ -727,10 +742,13 @@ with _tab_chat:
                     f"{GW}/api/command", json={"instruction": _user_text},
                     headers=_hdr(), timeout=30,
                 )
-                _reply = _cr.json().get("raw_text", str(_cr.json())) if _cr.ok else f"[{_cr.status_code}]"
+                _cr_json = _cr.json() if _cr.ok else {}
+                _reply = _cr_json.get("raw_text", str(_cr.json())) if _cr.ok else f"[{_cr.status_code}]"
+                _model_used = _cr_json.get("model_used")
             except Exception as _ce:
                 _reply = f"[error] {_ce}"
-        st.session_state.messages.append({"role": "assistant", "content": _reply})
+                _model_used = None
+        st.session_state.messages.append({"role": "assistant", "content": _reply, "model_used": _model_used})
         if st.session_state.voice_mode and st.session_state.voice_speak_replies:
             _safe = _reply.replace("\\", "\\\\").replace("`", "\\`").replace('"', '\\"')
             st.components.v1.html(
@@ -1204,6 +1222,18 @@ with _tab_settings:
         st.session_state.api_token   = _new_tok.strip()
         st.success("Connection settings saved.")
         st.rerun()
+
+    st.divider()
+
+    # ── OpenCastor Setup Wizard ─────────────────────────────────────────────────
+    st.markdown("#### 🧙 OpenCastor Setup")
+    st.caption("Launch the interactive setup wizard to configure your robot, API keys, hardware, and channels.")
+    _setup_url = f"{GW}/setup"
+    st.markdown(
+        f'<a href="{_setup_url}" target="_blank" style="font-size:1rem;">'
+        f'🔗 Open Setup Wizard</a>',
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 

@@ -4636,7 +4636,7 @@ async def gamepad_page(token: str = ""):
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>🎮 {{_robot}} — Remote</title>
+<title>🎮 {_robot} — Remote</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <style>
 :root{{--btn:min(96px,22vw);--gap:10px;--radius:14px;}}

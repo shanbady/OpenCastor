@@ -153,7 +153,12 @@ class JWTSecretProvider:
             ]
         )
         for path in search_paths:
-            if path.exists():
+            try:
+                exists = path.exists()
+            except PermissionError:
+                logger.debug("No permission to check credential path %s — skipping", path)
+                continue
+            if exists:
                 secret = path.read_text(encoding="utf-8").strip()
                 if secret:
                     return JWTSecretBundle(

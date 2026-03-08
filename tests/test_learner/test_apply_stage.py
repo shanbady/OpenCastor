@@ -86,3 +86,70 @@ class TestApplyStage:
         stage.apply(patch, _approved())
         success = stage.rollback(patch.id)
         assert success is True
+
+
+class TestApplyStageHistoryCap:
+    def test_history_capped_at_max(self, tmp_path):
+        """improvement_history.json is capped at MAX_HISTORY_ENTRIES entries."""
+        from castor.learner.apply_stage import MAX_HISTORY_ENTRIES
+
+        stage = ApplyStage(config_dir=tmp_path)
+        # Pre-populate history with MAX + 5 entries
+        n = MAX_HISTORY_ENTRIES + 5
+        history = [{"patch_id": f"p{i}", "patch": {}, "success": True, "error": None,
+                    "timestamp": float(i)} for i in range(n)]
+        stage._save_history(history)
+
+        # Applying one more patch should trigger the cap
+        patch = ConfigPatch(key="k", new_value=1)
+        stage.apply(patch, _approved())
+        saved = json.loads(stage.history_file.read_text())
+        assert len(saved) <= MAX_HISTORY_ENTRIES
+
+    def test_history_keeps_most_recent(self, tmp_path):
+        """After capping, the newest entries are retained."""
+        from castor.learner.apply_stage import MAX_HISTORY_ENTRIES
+
+        stage = ApplyStage(config_dir=tmp_path)
+        # Fill to just over the cap
+        history = [{"patch_id": f"p{i}", "patch": {}, "success": True, "error": None,
+                    "timestamp": float(i)} for i in range(MAX_HISTORY_ENTRIES)]
+        stage._save_history(history)
+
+        patch = ConfigPatch(key="new_key", new_value=99)
+        stage.apply(patch, _approved())
+        saved = json.loads(stage.history_file.read_text())
+        # The most recent apply (new_key) should be present
+        patch_ids = [e["patch_id"] for e in saved]
+        assert patch.id in patch_ids
+
+
+class TestApplyBehaviorDeduplication:
+    def test_duplicate_rule_name_is_replaced_not_appended(self, tmp_path):
+        """Applying the same rule_name twice updates the rule, not duplicates it."""
+        stage = ApplyStage(config_dir=tmp_path)
+        patch1 = BehaviorPatch(rule_name="my_rule", conditions={"v": 1}, action={"a": 1})
+        patch2 = BehaviorPatch(rule_name="my_rule", conditions={"v": 2}, action={"a": 2})
+        stage.apply(patch1, _approved())
+        stage.apply(patch2, _approved())
+
+        import yaml
+        behaviors = yaml.safe_load(stage.behaviors_file.read_text())
+        rules = behaviors.get("rules", [])
+        names = [r["rule_name"] for r in rules]
+        assert names.count("my_rule") == 1
+        # Second patch's values should be current
+        rule = next(r for r in rules if r["rule_name"] == "my_rule")
+        assert rule["conditions"] == {"v": 2}
+
+    def test_different_rule_names_both_kept(self, tmp_path):
+        """Rules with different names are both retained."""
+        stage = ApplyStage(config_dir=tmp_path)
+        stage.apply(BehaviorPatch(rule_name="rule_a", conditions={}, action={}), _approved())
+        stage.apply(BehaviorPatch(rule_name="rule_b", conditions={}, action={}), _approved())
+
+        import yaml
+        behaviors = yaml.safe_load(stage.behaviors_file.read_text())
+        names = [r["rule_name"] for r in behaviors.get("rules", [])]
+        assert "rule_a" in names
+        assert "rule_b" in names

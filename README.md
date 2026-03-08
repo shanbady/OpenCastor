@@ -15,490 +15,23 @@
 </p>
 
 <p align="center">
-  <b>91,969 lines of Python · 6,404 tests · Python 3.10–3.13</b><br/>
+  <b>167,186 lines of Python · 6,392 tests · Python 3.10–3.13</b><br/>
   <i>Connect any AI model to any robot hardware through a single YAML config.</i>
 </p>
 
 ---
 
-## RCAN-Swarm Safety 🤖🤝🤖
+OpenCastor is a universal runtime for embodied AI. Point it at any LLM (Gemini, GPT-4.1, Claude, Ollama, and 13 more) and any robot body (Raspberry Pi, Jetson, Arduino, ESP32, LEGO) via a single YAML config. The robot answers to WhatsApp, Telegram, Discord, Slack, and Home Assistant — and learns from its own experience.
 
-OpenCastor implements **RCAN-Swarm Safe** — the ability to operate alongside other networked robots with cryptographic identity verification and full audit trails.
-
-### What this means in practice
-
-- **Peer verification**: Before accepting any command from another robot, verify their RRN and certification tier via `castor node resolve <rrn>`
-- **No spoofing**: Every robot's identity is anchored to a globally unique RRN registered at rcan.dev
-- **Offline resilience**: Local cache means the swarm keeps working even if the central registry is temporarily unreachable
-- **Full audit**: Every action in a swarm interaction is logged to the commitment chain — who did what, when, with what confidence
-- **Human-in-the-loop**: Configure HITL gates to require human approval for safety-critical swarm commands
-
-### Quick example
-
-```python
-from rcan import NodeClient
-
-# Verify a peer robot before accepting its commands
-client = NodeClient()
-peer = client.resolve("RRN-000000000042")
-tier = peer['record'].get('verification_tier', 'community')
-
-if tier in ('certified', 'accredited'):
-    print(f"✅ Peer verified: {tier}")
-    # Safe to accept commands
-else:
-    print(f"⚠️  Peer not certified: {tier}")
-    # Require additional verification
-```
-
-### RCAN-Swarm Safe requirements
-- ✅ Valid RCAN config with RRN
-- ✅ Commitment chain enabled
-- ✅ HITL gate for swarm commands
-- ✅ Confidence gate ≥ 0.7
-- ✅ Verification tier ≥ `verified`
-
-> See the full [RCAN Swarm Safety guide](https://rcan.dev/use-cases/swarm/) for architecture details and a complete code walkthrough.
-
----
-
-## 🚀 Install in 10 Seconds
+## Quick Install
 
 ```bash
 curl -sL opencastor.com/install | bash
+castor wizard          # guided setup: API keys, hardware, channels
+castor gateway         # start the API gateway + messaging
 ```
 
-<details>
-<summary>Other platforms</summary>
-
-**Windows 11 (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/craigm26/OpenCastor/main/scripts/install.ps1 | iex
-```
-
-**Docker:**
-```bash
-docker compose up
-```
-
-**Manual:**
-```bash
-git clone https://github.com/craigm26/OpenCastor.git
-cd OpenCastor
-python3 -m venv venv && source venv/bin/activate
-pip install -e ".[dev]"
-```
-
-Supports **Linux, macOS (Apple Silicon & Intel), Windows 11, Raspberry Pi, Docker**.
-Installer flags: `--dry-run`, `--no-rpi`, `--skip-wizard`
-</details>
-
-## ✨ What's New in v2026.3.8.2
-
-- **Animated robot face kiosk** (`GET /face`) — reactive SVG face with 3 styles (friendly/kawaii/retro); speaking mouth oscillation; listening ring; e-stop X-eyes; long-press → dashboard; served at `http://robot.local:8000/face`
-- **Closed captions on face** — TTS sentence text overlaid as frosted-glass subtitle bar when `?captions=1`; toggle in dashboard Settings tab
-- **Full-screen touch gamepad** (`GET /gamepad`) — press-and-hold D-pad, speed/turn sliders, physical Bluetooth gamepad polling, soft stop (no e-stop trigger), robot hostname auto-resolved
-- **Brain model visibility** — `/api/status` exposes `brain_primary`, `brain_secondary`, `brain_active_model`; `/api/command` returns `model_used`; logs `Brain replied via <model> in <N> ms`
-- **Dashboard UX upgrades** — Status tab shows 🧠 Brain section + active-only channel pills; Chat tab shows `via <model>` per reply; Settings tab adds Terminal Access (SSH/tmux/logs), Setup Wizard link, Closed Captions toggle
-- **Wake-up greeting** — gateway speaks `"Hello. I am <robot>. I am online and ready."` on boot
-- **Fix: camera/speaker/loop always offline** — `snapshot()` returns nested `proc.hw.camera` but dashboard read flat `proc.camera`; all 5 broken proc key paths corrected
-
-## ✨ What's New in v2026.3.8.1
-
-- **AI Accountability Layer (RCAN §16)** — `castor/confidence_gate.py`, `castor/hitl_gate.py`, `castor/thought_log.py`; every AI-produced command carries model identity (provider, model, version, latency), confidence gate, and Human-in-the-Loop gate; `GET /api/thoughts/<id>` and `POST /api/hitl/authorize` endpoints; AI block written to tamper-evident audit logs and quantum commitment payload
-- **RCAN v1.2 compliance** — AUTHORIZE (type 9) and PENDING_AUTH (type 10) message types; `rcan_version: "1.2.0"` in all generated manifests; v1.2 conformance checks in `castor/conformance.py`; mDNS version TXT updated to "1.2.0"
-- **Security patches** — GitHub Actions: actions/checkout 4.3.1→6.0.2, actions/github-script 7→8
-- **6,404 tests passing** across all test files.
-
-## ✨ What's New in v2026.3.8.1
-
-- **Metrics p50/p95/p99 percentiles (#347)** — `ProviderLatencyTracker` now stores exact sorted samples and exposes `opencastor_provider_latency_p50/p95/p99_ms` Prometheus gauge per provider
-- **BehaviorRunner event_wait step (#346)** — new `event_wait` step type polls a sensor until a threshold condition is met or timeout expires
-- **BehaviorRunner foreach_file step (#341)** — new `foreach_file` step type iterates JSONL rows substituting `$item` placeholders into nested steps
-- **EpisodeMemory k-means clustering (#342)** — `cluster_episodes()` groups episodes by action-type frequency using stdlib-only k-means (no sklearn)
-- **IMUDriver Madgwick filter (#343)** — `MadgwickFilter` class fuses accel+gyro with configurable beta gain; enabled via `imu_filter: madgwick` config key
-- **LidarDriver map persistence (#344)** — `save_map()` and `load_map()` persist occupancy grids to SQLite (JSON-encoded BLOB)
-- **ProviderPool cost tracking (#345)** — per-provider token usage and USD cost accounting via `cost_summary()`; per-1k-token rate configurable
-- **ProviderPool shadow mode (#340)** — parallel shadow provider fires in background thread, logs primary vs shadow action comparison to JSONL
-- **ESP32 BLE driver (#287)** — `ESP32BLEDriver` sends JSON commands over BLE GATT characteristic via bleak (HAS_BLEAK guard)
-- **Signal Messenger channel (#285)** — `SignalChannel` polls signal-cli REST API for messages; supports send and receive
-- **castor snapshot CLI (#348)** — `castor snapshot take/latest/history` captures and displays system diagnostic snapshots
-- **Dashboard memory timeline (#349)** — `MemoryTimeline` class buckets episodes by time for trend charts; p50/p95/p99 latency per window
-- **Dashboard Mission Control panel (#283)** — new expandable Mission Control panel in CastorDash with launch/stop mission, outcome metrics, and latency KPIs
-- **WhatsApp mission trigger (#282)** — `!mission <name>` keyword in any channel triggers named behavior launch; handled in `BaseChannel`
-- **castor doctor improvements (#280)** — new checks: memory DB size, BLE (bleak) availability, Signal channel import status
-
-## ✨ What's New in v2026.3.8.1
-
-- **DeepSeek provider** — `provider: deepseek` unlocks `deepseek-chat`, `deepseek-reasoner` (R1), and `deepseek-coder` via the OpenAI-compatible API. Set `DEEPSEEK_API_KEY`. Vision input supported for `deepseek-vl2` models.
-- **xAI Grok provider** — `provider: grok` adds `grok-2`, `grok-2-vision`, and `grok-2-mini` from xAI. Set `XAI_API_KEY`. Multi-modal vision supported for `grok-2-vision`.
-- **Mistral AI provider** — `provider: mistral` adds `mistral-large-latest`, `mistral-small-latest`, `codestral-latest`, and `mistral-nemo`. Set `MISTRAL_API_KEY`. Vision supported for Pixtral models.
-- **Dashboard channel display names** — Channels table now shows friendly names (e.g. "Microsoft Teams", "Matrix", "Home Assistant") instead of raw internal keys.
-- **6,404 tests passing** across 128 test files.
-
-## ✨ What's New in v2026.3.8.1
-
-- **Quantum Commitment Audit Trail** — every RCAN action is now optionally sealed into a cryptographic commitment chain via [QuantumLink-Sim](https://github.com/craigm26/Quantum-link-Sim). Three key modes: `classical` (HKDF-SHA256), `quantum` (BB84 QKD-derived), and `hybrid` (XOR of both — requires breaking both channels). Configurable under `security.commitment` in RCAN YAML.
-- **ESC reverse-arming** — PCA9685 driver now detects forward→reverse transitions and sends a configurable neutral pulse (`esc_arm_neutral_ms`, default 200ms) before engaging reverse, preventing ESC lockout on RC motor controllers. Configurable: `esc_reverse_arming`, `esc_arm_neutral_ms`, `esc_double_tap_reverse`.
-- **QKDKeyPool** — background BB84 key-generation thread keeps a pre-warmed pool of quantum-derived keys so audit commit latency stays below 0.2ms on the hot path (vs ~10ms for live BB84).
-- **HMAC chain integrity** — audit chain now uses HMAC-SHA256 keyed with a session-bound chain secret instead of raw SHA-256, preventing offline chain forgery even with full log file access.
-- **`castor commit` CLI** — new subcommand: `verify`, `stats`, `export`, `proof <id>` for inspecting and verifying the quantum commitment chain.
-- **6,404 tests passing** (29 skipped due to optional provider deps: `openai`, `groq` — not installed on Pi).
-
-## ✨ What's New in v2026.3.8.1
-
-- **Google setup reliability hardening (2026-02-26)** — setup preflight now reports Google model fallback usage accurately, model availability probing only runs when `GOOGLE_API_KEY` is present, and Google auth guidance now clearly distinguishes optional ADC setup from required Gemini API-key model calls
-
-- **Stability pass (2026-02-25)** — full-suite hardening complete: 6,404 tests passing; fixed cross-platform daemon path rendering, JWT fallback edge cases, plugin SHA newline normalization, and async warning cleanup in Teams/WhatsApp channels
-- **Messaging channels now drive hardware** — fixed a silent VFS ACL bug where the `channel` principal was denied write access to `/dev/motor`, causing every WhatsApp/Telegram/Discord motor command to reply but never move the wheels
-- **Clean channel replies** — AI replies sent to messaging channels and TTS no longer include the raw JSON action block (`{"type": ...}`) the runtime uses internally
-- **WaypointNav ESC floor** — added `min_drive_s = 0.4 s` so RC ESCs have time to spool up on short-distance commands (configurable via `physics.min_drive_s`)
-- **neonize 0.3.14 audio** — voice messages on WhatsApp work again; uses `download_any()` API introduced in neonize 0.3.14
-- **OpenRouter provider** — one API key unlocks 100+ models (GPT-4.1, Claude, Gemini, Mistral, DeepSeek, LLaMA 3.3…)
-- **IMU driver** — MPU6050 / BNO055 / ICM-42688 accelerometer + gyroscope via smbus2, auto-detected
-- **2D LiDAR driver** — RPLidar A1/A2/C1/S2, 4-sector obstacle mapping, REST API
-- **Reactive obstacle avoidance** — fuses LiDAR + OAK-D depth; e-stop zone, slow zone, configurable via REST
-- **LLM response cache** — SQLite cache keyed by SHA-256(instruction + image); dramatically cuts API cost on repeated scenes
-- **JS/TS SDK** (`sdk/js/`) — zero-dependency TypeScript client: `command()`, `stream()`, `status()`, `stop()`
-- **Fine-tune export** — `castor export-finetune` / `GET /api/finetune/export` — JSONL in OpenAI/Anthropic format from episode memory
-- **Sentence Transformers provider** — dense embeddings for semantic search and RAG pipelines
-- **VLA provider** — Vision-Language-Action model support (OpenVLA / Octo / pi0)
-- **3D point cloud** (`castor/pointcloud.py`) — PLY export from OAK-D depth frames
-- **Object detection** (`castor/detection.py`) — YOLOv8/DETR real-time detection with REST overlays
-- **Simulation bridge** (`castor/sim_bridge.py`) — generate MuJoCo MJCF / Gazebo SDF from RCAN spec
-- **Personality profiles** — inject tone characters (friendly, military, scientist…) into every brain prompt
-- **Wake-word voice loop** (`castor/voice_loop.py`) — Porcupine → STT → brain pipeline
-- **Groq provider preset** — `groq_rover.rcan.yaml` for LPU-accelerated inference
-- **OAK-4 Pro preset** — `oak4_pro.rcan.yaml` with 4K + depth + IMU auto-detection
-
-> Previous highlights (v2026.2.22.x): ROS2 driver · swarm CLI · dead-reckoning nav · YAML behavior runner · multi-user JWT · WebRTC streaming · MediaPipe gestures · video recording · outbound webhooks · BM25 episode search
-
-## 🔄 Self-Improving Loop (Sisyphus Pattern)
-
-Your robot learns from its mistakes. After each task, the **Sisyphus Loop** analyzes what happened, identifies failures, generates fixes, verifies them, and applies improvements automatically.
-
-```
-Episode → PM (Analyze) → Dev (Patch) → QA (Verify) → Apply
-```
-
-- **Disabled by default** — opt-in via `castor wizard` or YAML config
-- **4 cost tiers** — from $0 (local Ollama) to ~$5-15/mo (Claude)
-- **Auto-apply preferences** — config tuning only, behavior rules, or manual review
-- **Rollback** — undo any improvement with `castor improve --rollback <id>`
-- **ALMA consolidation** — cross-episode pattern analysis for deeper learning
-
-```bash
-castor improve --episodes 10    # Analyze last 10 episodes
-castor improve --status         # View improvement history
-```
-
-## 🧠 Tiered Brain Architecture
-
-OpenCastor doesn't send every decision to a $0.015/request cloud API. Instead, it routes through three layers — only escalating when needed:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    MESSAGING LAYER                       │
-│         WhatsApp · Telegram · Discord · Slack            │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                   API GATEWAY                            │
-│            FastAPI · REST · Webhooks · JWT               │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│               TIERED BRAIN STACK                         │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  Layer 3: PLANNER         Claude Opus · ~12s       │  │
-│  │  Complex reasoning, multi-step plans, novel tasks  │  │
-│  ├────────────────────────────────────────────────────┤  │
-│  │  Layer 2: FAST BRAIN      HF / Gemini · ~500ms    │  │
-│  │  Classification, simple Q&A, routine decisions     │  │
-│  ├────────────────────────────────────────────────────┤  │
-│  │  Layer 1: REACTIVE        Rule engine · <1ms       │  │
-│  │  Obstacle stop, boundary enforce, emergency halt   │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  PERCEPTION                              │
-│  Hailo-8 NPU (YOLOv8) · OAK-D Depth · Camera · IMU    │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│               RCAN SAFETY KERNEL                         │
-│    Physical bounds · Anti-subversion · Audit chain       │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                  DRIVER LAYER                            │
-│       PCA9685 · Dynamixel · GPIO · Serial · I2C         │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                  [ YOUR ROBOT ]
-```
-
-**Cost-effective by default.** The reactive layer handles 80% of decisions at zero cost. The fast brain handles another 15%. The planner only fires for genuinely complex tasks.
-
-## 🤖 Supported AI Providers
-
-| Provider | Models | Latency | Best For |
-|---|---|---|---|
-| **Anthropic** | `claude-opus-4-6`, `claude-sonnet-4-6` | ~12s | Complex planning, safety-critical reasoning |
-| **Google** | `gemini-2.5-flash`, `gemini-2.5-pro` | ~500ms | Multimodal, video, speed |
-| **OpenAI** | `gpt-4.1`, `gpt-4.1-mini` | ~2s | Instruction following, 1M context |
-| **OpenRouter** | 100+ models (Mistral, DeepSeek, LLaMA…) | Varies | Multi-model fallback, cost optimization |
-| **HuggingFace** | Transformers, any hosted model | ~500ms | Fast brain layer, classification |
-| **Ollama** | `llava:13b`, any local model | Varies | Privacy, offline, zero cost |
-| **llama.cpp** | GGUF models | ~200ms | Edge inference, Raspberry Pi |
-| **MLX** | Apple Silicon native (mlx-lm, vLLM-MLX) | ~50ms | Mac M1–M4, 400+ tok/s |
-| **Apple Foundation Models** | `apple-balanced`, `apple-creative`, `apple-tagging` | ~50-300ms | Apple Intelligence on eligible Macs |
-| **Groq** | `llama-3.3-70b`, `mixtral-8x7b` | ~100ms | LPU-accelerated, fastest API |
-| **VLA** | OpenVLA, Octo, pi0 | Varies | End-to-end robot action models |
-| **Sentence Transformers** | `all-MiniLM-L6-v2`, others | ~10ms | Semantic search, RAG, embeddings |
-| **ONNX Runtime** | Any `.onnx` model | ~50ms | Quantized on-device inference |
-| **Kimi / MiniMax / Qwen** | Chinese LLMs | Varies | Chinese language, local Qwen3 |
-| **Claude OAuth** | Proxy-authenticated Claude | ~12s | Team/org deployments |
-
-Swap providers with one YAML change:
-
-```yaml
-agent:
-  provider: "anthropic"
-  model: "claude-opus-4-6"
-```
-
-## 👁️ Vision & Perception
-
-### Hailo-8 NPU — On-Device Object Detection
-
-No cloud API calls needed. The Hailo-8 neural processing unit runs YOLOv8 locally:
-
-- **80 COCO object classes** — people, vehicles, animals, furniture, and more
-- **~250ms inference** — fast enough for real-time obstacle avoidance
-- **Zero API cost** — all processing happens on the edge
-
-### OAK-D Stereo Depth Camera
-
-RGB + depth streaming via DepthAI v3. Get 3D spatial awareness for navigation, manipulation, and mapping.
-
-```yaml
-perception:
-  camera:
-    type: "oakd"
-    depth: true
-    resolution: "1080p"
-  npu:
-    type: "hailo8"
-    model: "yolov8n"
-    confidence: 0.5
-```
-
-## 🛡️ Safety First
-
-OpenCastor implements defense-in-depth safety, inspired by [ContinuonAI](https://github.com/craigm26) principles and fully [RCAN spec](https://rcan.dev/spec/) compliant:
-
-| Layer | What It Does |
-|---|---|
-| **Physical Bounds** | Workspace limits, joint constraints, force capping |
-| **Anti-Subversion** | Prompt injection defense, input sanitization |
-| **Work Authorization** | Dangerous commands require explicit approval |
-| **Tamper-Evident Audit** | Hash-chained logs at `/proc/safety` — any tampering is detectable |
-| **Emergency Stop** | Hardware and software e-stop, reactive layer < 1ms |
-
-```bash
-castor audit --verify        # Verify audit chain integrity
-castor approvals             # View/approve dangerous commands
-castor privacy --config r.yaml  # Show sensor access policy
-```
-
-## 🔐 Quantum Commitment Audit Trail
-
-OpenCastor integrates with [QuantumLink-Sim](https://github.com/craigm26/Quantum-link-Sim) to provide **cryptographically verifiable audit trails** for every robot action. Every RCAN event can be sealed into a QKD-keyed commitment chain — making tampering detectable even if the log file itself is modified.
-
-### Why This Matters
-
-Standard audit logs are hash-chained (SHA-256 of previous entry). That's tamper-*evident* — you can detect changes — but not tamper-*proof*: anyone with write access to the log file can recompute valid SHA-256 hashes and forge the chain without a trace.
-
-OpenCastor's quantum commitment layer adds a **keyed HMAC chain** backed by cryptographic keys derived from BB84 Quantum Key Distribution simulation. Without the session-bound chain secret, forging the chain is computationally infeasible — and in hybrid mode, requires simultaneously breaking both a classical HKDF key and eavesdropping on the BB84 channel.
-
-This matters in the context of autonomous robots operating in safety-critical environments: the audit trail is your forensic record. It needs to be trustworthy.
-
-### Key Modes
-
-| Mode | Key Source | Security Model | Commit Latency |
-|---|---|---|---|
-| `classical` | `HKDF(os.urandom(32), SHA-256)` | Computational — breaks only if HKDF/AES is broken | < 0.05 ms |
-| `quantum` | BB84 QKD simulation → HKDF expand | Information-theoretic — eavesdropping detectable via QBER | < 0.15 ms (warm pool) |
-| `hybrid` *(recommended)* | `XOR(classical_key, quantum_key)` | Adversary must break **both** simultaneously | < 0.20 ms (warm pool) |
-
-**Hybrid is the default.** An attacker needs to compromise the classical HKDF key **and** eavesdrop the quantum channel simultaneously — a significantly harder problem than either alone.
-
-### How It Works
-
-```
-RCAN Action (motor_command, nav, etc.)
-         │
-         ▼
-  AuditLog.log()          ← SHA-256 hash chain (tamper-evident)
-         │
-         ▼
-  CommitmentEngine.commit()
-    │
-    ├── Serialize payload → JSON (sorted keys)
-    ├── SHA3-256 hash (quantum-resistant content address)
-    ├── Derive key:
-    │    ├── CLASSICAL: HKDF(os.urandom(32))
-    │    ├── QUANTUM:   BB84 key from QKDKeyPool → HKDF expand to 32 bytes
-    │    └── HYBRID:    XOR(classical_key, quantum_key)
-    ├── AES-256-GCM encrypt (AAD = payload_hash)
-    ├── HMAC-SHA256(chain_secret, prev_hash || payload_hash) → chain_hash
-    └── CommitmentRecord → appended to in-memory chain + JSONL file
-```
-
-Each audit log entry gains three fields:
-```json
-{
-  "ts": "2026-02-27T19:35:46",
-  "event": "motor_command",
-  "source": "brain",
-  "action_type": "move",
-  "commitment_id": "a1b2c3d4-...",
-  "commitment_mode": "hybrid",
-  "commitment_qber": 0.0021,
-  "commitment_secure": true,
-  "prev_hash": "sha256-of-previous-entry"
-}
-```
-
-### Configuration
-
-```yaml
-# In your RCAN config (e.g. bob.rcan.yaml)
-security:
-  commitment:
-    enabled: true
-    mode: hybrid                              # classical | quantum | hybrid
-    pool_size: 32                             # pre-generated QKD keys in memory
-    n_qkd_bits: 512                           # raw BB84 qubits per key generation run
-    qber_threshold: 0.11                      # max QBER (>11% = likely eavesdropping)
-    use_qiskit: false                         # Qiskit circuit backend (set true for max fidelity)
-    storage_path: .opencastor-commitments.jsonl
-    export_secret_path: .opencastor-chain-secret.hex
-```
-
-### QKD Key Pool
-
-BB84 key generation takes ~8–15ms per key on a Raspberry Pi 5. To prevent this from blocking the audit hot path, OpenCastor maintains a **QKDKeyPool** — a background thread that pre-generates and buffers up to N quantum-derived keys:
-
-```
-Background thread (10ms poll interval)
-  └── BB84Protocol(n_bits=512).run()
-        └── sift → error correct → privacy amplify → HKDF expand → 32 bytes
-              └── enqueue to pool (bounded, ~32 slots)
-
-Audit hot path (< 0.2ms with warm pool):
-  └── pool.get()  →  AES-256-GCM encrypt  →  HMAC chain step  →  append
-```
-
-If the pool runs dry (e.g., high-frequency audit events exhaust it), it falls back to live BB84 (~10ms) or classical HKDF (< 0.05ms) depending on configuration.
-
-### BB84 Quantum Bit Error Rate (QBER)
-
-The QBER measures the error rate on the quantum channel. In an ideal BB84 run with no noise or eavesdropping, QBER = 0. OpenCastor rejects keys with QBER > 11% — the theoretical threshold above which Eve's interception is detectable:
-
-```
-QBER = 0.0%      Ideal — no noise, no eavesdropper
-QBER < 11%       Acceptable — minor channel noise, key used
-QBER 11–25%      Suspect — possible eavesdropper, key rejected
-QBER > 25%       Definite — Eve present (theoretical maximum for BB84 intercept-resend)
-```
-
-The QBER of every quantum key used is recorded in the commitment record (`commitment_qber` field), giving you a per-action eavesdropping signal in the audit log.
-
-### Qiskit Backend
-
-For maximum fidelity, enable the Qiskit quantum circuit backend:
-
-```bash
-pip install "quantumlink-sim[quantum]"  # adds qiskit + qiskit-aer
-```
-
-```yaml
-security:
-  commitment:
-    use_qiskit: true   # real quantum circuit simulation (StatevectorSampler)
-```
-
-The Qiskit backend uses actual quantum gate operations (`H`, `X`, measurement) rather than numpy random arrays. Key generation takes ~50–200ms per key but provides the highest-fidelity simulation of real QKD hardware. Falls back to numpy BB84 automatically if Qiskit is unavailable.
-
-### CLI: Verify, Inspect, Export
-
-```bash
-# Verify the HMAC commitment chain (separate from SHA-256 audit hash chain)
-castor commit verify
-# → ✅ Chain intact — 1,247 records verified. Head: a3f9b21c...
-
-# Pool and chain statistics
-castor commit stats
-# → {"mode": "hybrid", "chain_length": 1247, "pool": {"pool_size_current": 28, ...}}
-
-# Export all commitment records as JSONL
-castor commit export > audit-chain-2026-02-27.jsonl
-
-# Prove a specific action was committed (shareable without the encryption key)
-castor commit proof a1b2c3d4-e5f6-7890-abcd-ef1234567890
-# → {"record": {...}, "chain_position": 42, "preceding_hash": "..."}
-```
-
-The proof bundle contains everything needed to verify a commitment record's existence and chain position without revealing the encryption key — suitable for sharing with auditors, regulators, or legal proceedings.
-
-### Cross-Session Verification
-
-The chain secret is saved to `.opencastor-chain-secret.hex` on first run. Store this separately from the JSONL commitment file. Together, they enable offline chain verification on any machine:
-
-```python
-from quantumlink_sim.commitment import CommitmentEngine
-
-secret = bytes.fromhex(open(".opencastor-chain-secret.hex").read())
-engine = CommitmentEngine(chain_secret=secret, storage_path="commitments.jsonl")
-ok, broken = engine.verify_chain()
-```
-
-### Installation
-
-```bash
-pip install quantumlink-sim          # core (numpy BB84 + commitment engine)
-pip install "quantumlink-sim[quantum]"  # + Qiskit circuit backend
-```
-
-QuantumLink-Sim is an optional dependency — OpenCastor's audit log works without it (falls back to SHA-256 hash chain only). With it, every audit entry gains the full cryptographic commitment layer.
-
----
-
-## 📦 Quick Start
-
-## 🧩 Agent Skills
-
-External agents can load production-ready runbooks from `skills/`:
-
-- `skills/opencastor-operator/SKILL.md` — robot operations, diagnostics, config checks, safety guardrails, and failure recovery.
-- `skills/opencastor-developer/SKILL.md` — API checks, RCAN validate/lint/migrate workflow, and dashboard/watch debugging flow.
-
-If you are integrating with coding agents (Codex, Claude, etc.), point them to these skill files first so they follow OpenCastor-safe command sequences.
-
-### 1. Install & Configure
-
-```bash
-curl -sL opencastor.com/install | bash
-castor wizard
-```
-
-The wizard now uses a shared CLI/web setup-v2 flow: device probe, stack selection, model profiles, provider preflight, guided fallback, hardware preset, and optional messaging setup (WhatsApp/Telegram). It remembers your previous choices.
-
-Setup now includes device-aware stack profiles:
+The wizard selects a device-aware stack profile:
 
 <!-- SETUP_CATALOG:BEGIN -->
 - `apple_native` — Apple Native (Recommended on eligible Mac)
@@ -512,203 +45,273 @@ Setup now includes device-aware stack profiles:
 | `apple-tagging` | Apple Tagging |
 <!-- SETUP_CATALOG:END -->
 
-If Apple Foundation Models are unavailable, setup shows guided fallback choices automatically.
-
-### Apple Foundation Models Troubleshooting
-
-- Apple Intelligence disabled: enable it in macOS System Settings and wait for model assets.
-- Device not eligible: use MLX or Ollama fallback stack.
-- Model not ready: keep device online and retry setup later.
-- Xcode requirement: install Xcode 26+ and ensure `xcodebuild` is available.
-
-### 2. Run
-
+Or with Docker:
 ```bash
-castor run --config my_robot.rcan.yaml
+cp .env.example .env && nano .env
+docker compose up
 ```
 
-### 3. Open the Dashboard
+## Minimal Config
+
+```yaml
+rcan_version: "1.1.0"
+metadata:
+  robot_name: my-robot
+agent:
+  provider: google
+  model: gemini-2.5-flash
+drivers:
+- id: wheels
+  protocol: pca9685
+```
+
+That's it. `castor gateway --config my-robot.rcan.yaml` starts the REST API, messaging channels, and the self-improving loop.
+
+## Architecture
 
 ```
-http://localhost:8501
+[ WhatsApp / Telegram / Discord / Slack / Home Assistant ]
+                    │
+            [ API Gateway ]                   FastAPI (castor/api.py)
+                    │
+        ┌───────────────────────┐
+        │   Safety Layer        │            Anti-subversion, BoundsChecker
+        └───────────────────────┘
+                    │
+    [ Tiered Brain: Gemini / GPT-4.1 / Claude / Ollama … ]
+                    │
+     ┌──────────────────────────────────┐
+     │  Offline Fallback / ALMA Learner │   Episode memory, self-improvement
+     └──────────────────────────────────┘
+                    │
+              [ RCAN Config ]               rcan.dev/spec validation
+                    │
+    ┌──────────────────────────────────────────────┐
+    │  VFS  │  Agents  │  Sisyphus  │  Fleet/Swarm │
+    └──────────────────────────────────────────────┘
+                    │
+    [ PCA9685 / Dynamixel / ROS2 / ESP32 / mock ]
+                    │
+              [ Your Robot ]
 ```
 
-### 4. Diagnose Issues
+### Key Components
 
-```bash
-castor doctor
-```
+| Component | File | Role |
+|---|---|---|
+| API Gateway | `castor/api.py` | FastAPI entry point — REST, webhooks, SSE |
+| BaseProvider | `castor/providers/base.py` | LLM adapter: `think(image, instruction)→Thought` |
+| DriverBase | `castor/drivers/base.py` | Hardware driver: `move()`, `stop()`, `health_check()` |
+| SisyphusLoop | `castor/learner/sisyphus.py` | PM→Dev→QA→Apply self-improvement cycle |
+| ALMAConsolidation | `castor/learner/alma.py` | Cross-episode pattern analysis |
+| EpisodeStore | `castor/learner/episode_store.py` | JSON-file episode storage (10k cap, FIFO eviction) |
+| EpisodeMemory | `castor/memory.py` | SQLite episode store (10k cap, FIFO) |
+| BehaviorRunner | `castor/behaviors.py` | YAML step sequences: waypoint/think/speak/stop |
+| CastorFS | `castor/fs/__init__.py` | Unix-style VFS with capability permissions + e-stop |
+| BaseChannel | `castor/channels/base.py` | Messaging integration: `start()`, `stop()`, `send_message()` |
 
-### Minimal Python Example
+## Memory & Learning
+
+OpenCastor robots learn from experience through two interconnected systems.
+
+### Episode Store
+
+Every task execution is recorded as an `Episode`:
 
 ```python
-from castor.providers import get_provider
-from castor.drivers.pca9685 import PCA9685Driver
-
-brain = get_provider({"provider": "anthropic", "model": "claude-opus-4-6"})
-driver = PCA9685Driver(config["drivers"][0])
-
-while True:
-    frame = camera.capture()
-    thought = brain.think(frame, "Navigate to the kitchen, avoid obstacles.")
-    if thought.action:
-        driver.move(thought.action["linear"], thought.action["angular"])
+@dataclass
+class Episode:
+    goal: str
+    actions: list[dict]       # what the robot did
+    sensor_readings: list[dict]
+    success: bool
+    duration_s: float
+    metadata: dict
 ```
 
-## 🏪 Community Hub
+Episodes are stored as JSON files in `~/.opencastor/episodes/` (via `EpisodeStore`) and also in a SQLite database (via `EpisodeMemory`). Both are capped at **10,000 episodes with FIFO eviction** to prevent unbounded disk growth.
 
-Browse, install, and share robot recipes:
+### The Sisyphus Loop
+
+After each task, the self-improving PM→Dev→QA→Apply pipeline runs:
+
+```
+Episode
+  │
+  ▼ PM Stage    — analyze failure/inefficiency, score root cause
+  │
+  ▼ Dev Stage   — generate a config or behavior patch
+  │
+  ▼ QA Stage    — verify safety bounds, type correctness, semantic sense
+  │
+  ▼ Apply Stage — write patch to config or learned_behaviors.yaml
+```
+
+- **Disabled by default** — opt in via `castor wizard` or `improve.enabled: true` in RCAN
+- **4 cost tiers** — free (local Ollama) to ~$5–15/mo (Claude/Gemini)
+- **Rollback** — undo any change: `castor improve --rollback <id>`
+- **Patch types**: `ConfigPatch` (YAML key/value), `BehaviorPatch` (named rule), `PromptPatch`
+- **Applied patches** are deduplicated by `rule_name` — no duplicate accumulation
+
+### ALMA Consolidation
+
+After batches of episodes, the ALMA consolidator runs cross-episode pattern analysis:
+
+```python
+# Groups episodes by goal type, finds recurring failure patterns,
+# scores by frequency × failure rate, returns top-5 patches.
+patches = ALMAConsolidation().consolidate(episodes)
+```
+
+Pattern types detected: high failure rate for goal class, common failure action, sensor reading divergence between success/failure, long failure duration vs fast success.
 
 ```bash
-castor hub search "delivery bot"
-castor hub install @alice/warehouse-picker
-castor hub publish my_robot.rcan.yaml
+castor improve --episodes 10    # analyze last 10 episodes
+castor improve --status         # view improvement history
 ```
 
-Recipes are shareable RCAN configs — complete robot personalities with perception, planning, and safety settings bundled together.
+## Tiered Brain
 
-## 🔧 CLI Reference
-
-<details>
-<summary><b>Setup & Config</b></summary>
-
-```bash
-castor wizard                          # Interactive setup wizard
-castor quickstart                      # Wizard + demo in one command
-castor configure --config robot.yaml   # Interactive config editor
-castor install-service --config r.yaml # Generate systemd unit file
-castor learn                           # Step-by-step tutorial
-castor doctor                          # Full system health check
-castor fix                             # Auto-fix common issues
 ```
-</details>
-
-<details>
-<summary><b>Run & Monitor</b></summary>
-
-```bash
-castor run --config robot.yaml         # Perception-action loop
-castor run --config robot.yaml --simulate  # No hardware needed
-castor gateway --config robot.yaml     # API gateway + messaging
-castor dashboard                       # Streamlit web UI
-castor demo                            # Simulated demo
-castor shell --config robot.yaml       # Interactive command shell
-castor repl --config robot.yaml        # Python REPL with robot objects
-castor status                          # Provider/channel readiness
-castor logs -f                         # Structured colored logs
-castor benchmark --config robot.yaml   # Performance profiling
+Layer 3: Planner     Claude Opus / Gemini Pro    ~12s     complex multi-step
+Layer 2: Fast Brain  HuggingFace / Gemini Flash  ~500ms   Q&A, classification
+Layer 1: Reactive    Rule engine                 <1ms     e-stop, bounds
 ```
-</details>
 
-<details>
-<summary><b>Hardware & Recording</b></summary>
+80% of decisions are handled free at the reactive layer. Only genuinely complex tasks escalate to the planner.
 
-```bash
-castor test-hardware --config robot.yaml  # Test motors individually
-castor calibrate --config robot.yaml      # Interactive calibration
-castor record --config robot.yaml         # Record a session
-castor replay session.jsonl               # Replay a recorded session
-castor watch --gateway http://127.0.0.1:8000  # Live telemetry
+## Supported AI Providers
+
+| Provider | Models | Best For |
+|---|---|---|
+| **Google** | `gemini-2.5-flash`, `gemini-2.5-pro` | Multimodal, speed, recommended default |
+| **Anthropic** | `claude-opus-4-6`, `claude-sonnet-4-6` | Complex reasoning, safety-critical |
+| **OpenAI** | `gpt-4.1`, `gpt-4.1-mini` | Instruction following, 1M context |
+| **OpenRouter** | 100+ models | Multi-model fallback, cost optimization |
+| **Ollama** | Any local model | Privacy, offline, zero cost |
+| **llama.cpp** | GGUF models | Edge inference, Raspberry Pi |
+| **MLX** | Apple Silicon native | Mac M1–M4, 400+ tok/s |
+| **Groq** | `llama-3.3-70b`, `mixtral-8x7b` | LPU-accelerated, fastest API |
+| **HuggingFace** | Any hosted model | Fast brain layer, classification |
+| **VLA** | OpenVLA, Octo, pi0 | End-to-end action models |
+| **DeepSeek** | `deepseek-chat`, `deepseek-reasoner` | Chinese/multilingual, R1 reasoning |
+| **Groq / xAI / Mistral / Kimi / Qwen** | Various | Regional / specialized |
+
+Swap with one YAML change:
+
+```yaml
+agent:
+  provider: google
+  model: gemini-2.5-flash
 ```
-</details>
 
-<details>
-<summary><b>Hub & Fleet</b></summary>
+Provider pool with fallback:
 
-```bash
-castor hub search "patrol bot"         # Browse community recipes
-castor hub install @user/recipe        # Install a recipe
-castor hub publish config.yaml         # Share your recipe
-castor discover                        # Find RCAN peers on LAN
-castor fleet                           # Multi-robot status (mDNS)
+```yaml
+provider_fallback:
+  enabled: true
+  provider: ollama
+  model: llama3.2:3b
+  quota_cooldown_s: 3600
 ```
-</details>
 
-<details>
-<summary><b>Safety & Admin</b></summary>
-
-```bash
-castor approvals                       # View/approve dangerous commands
-castor audit --since 24h               # View audit log
-castor audit --verify                  # Verify chain integrity
-castor privacy --config robot.yaml     # Sensor access policy
-castor token --role operator           # Issue JWT
-castor upgrade                         # Self-update + health check
-```
-</details>
-
-## 🏗️ Supported Hardware
-
-Pre-made RCAN presets for popular kits, or generate your own:
+## Supported Hardware
 
 | Kit | Price | Preset |
 |---|---|---|
-| Waveshare AlphaBot / JetBot | ~$45 | `config/presets/waveshare_alpha.rcan.yaml` |
-| Adeept RaspTank / DarkPaw | ~$55 | `config/presets/adeept_generic.rcan.yaml` |
-| SunFounder PiCar-X | ~$60 | `config/presets/sunfounder_picar.rcan.yaml` |
-| Robotis Dynamixel (X-Series) | Varies | `config/presets/dynamixel_arm.rcan.yaml` |
-| OAK-4 Pro + Depth + IMU | ~$150 | `config/presets/oak4_pro.rcan.yaml` |
-| DIY (ESP32, Arduino, custom) | Any | Generate with `castor wizard` |
+| Waveshare AlphaBot / JetBot | ~$45 | `waveshare_alpha.rcan.yaml` |
+| Adeept RaspTank / DarkPaw | ~$55 | `adeept_generic.rcan.yaml` |
+| SunFounder PiCar-X | ~$60 | `sunfounder_picar.rcan.yaml` |
+| Robotis Dynamixel (X-Series) | Varies | `dynamixel_arm.rcan.yaml` |
+| LEGO Mindstorms EV3 / SPIKE Prime | $30–150 used | `lego_mindstorms_ev3.rcan.yaml` |
+| Arduino + L298N (DIY) | ~$8–15 | `arduino_l298n.rcan.yaml` |
+| ESP32 + Motor Driver (DIY) | ~$6–12 | `esp32_generic.rcan.yaml` |
+| OAK-4 Pro + Depth + IMU | ~$150 | `oak4_pro.rcan.yaml` |
+| DIY (any) | Any | `castor wizard` |
 
-## 🏫 STEM & Second-Hand Hardware
+18 presets total in `config/presets/`. OpenCastor explicitly supports second-hand hardware — donated school kits, eBay finds, makerspace bins. If you found it at Goodwill, there's probably a preset for it.
 
-OpenCastor explicitly supports the parts that students, educators, and hobbyists
-**actually have** — donated kits, school surplus, eBay finds, and sub-$50 Amazon
-staples. If you found it at Goodwill, a school auction, or a makerspace scrap bin,
-there's probably a preset for it.
+## Messaging Channels
 
-| Kit | Typical New Price | Where to Find Used | Preset |
-|---|---|---|---|
-| LEGO Mindstorms EV3 | ~$300 new | School surplus, eBay $30-80 | `config/presets/lego_mindstorms_ev3.rcan.yaml` |
-| LEGO SPIKE Prime | ~$320 new | STEM program donations, eBay $80-150 | `config/presets/lego_spike_prime.rcan.yaml` |
-| VEX IQ System | ~$250 new | Robotics team surplus, school auctions $50-120 | `config/presets/vex_iq.rcan.yaml` |
-| Makeblock mBot | ~$50 new | eBay $10-25, Amazon Warehouse | `config/presets/makeblock_mbot.rcan.yaml` |
-| Arduino + L298N (DIY) | ~$8-15 total | Makerspace bins, AliExpress | `config/presets/arduino_l298n.rcan.yaml` |
-| ESP32 + Motor Driver (DIY) | ~$6-12 total | AliExpress, hackerspaces | `config/presets/esp32_generic.rcan.yaml` |
-| Yahboom ROSMASTER X3 | ~$150-200 | Amazon Warehouse, eBay | `config/presets/yahboom_rosmaster.rcan.yaml` |
-| Elegoo Tumbller / Smart Car | ~$35-40 new | Amazon Warehouse $15-25, eBay | `config/presets/elegoo_tumbller.rcan.yaml` |
-| Freenove 4WD Car (Pi-based) | ~$40 new | eBay $15-25 (Pi not included) | `config/presets/freenove_4wd.rcan.yaml` |
-| Cytron Maker Pi RP2040 | ~$10 new | Hackerspaces, STEM lab surplus | `config/presets/cytron_maker_pi.rcan.yaml` |
+| Channel | Auth | Notes |
+|---|---|---|
+| WhatsApp | neonize QR or Twilio | group JID routing per robot |
+| Telegram | Bot token | |
+| Discord | Bot token | |
+| Slack | App token | |
+| Home Assistant | HA webhook | |
+| MQTT | Broker URL | |
 
-> **🔍 Not sure what you have?** See the [Hardware Identification Guide](docs/hardware-guide.md)
-> for a decision tree: *"I found this at a thrift store, now what?"*
+## Safety
 
-### Tips for Second-Hand Hardware
+Defense-in-depth, RCAN spec compliant:
 
-- **Test first, code later.** Run `castor test-hardware --config config/presets/<preset>.rcan.yaml -y`
-  to verify motion and stop behavior before writing autonomy code.
-- **Cables are the most common failure point.** LEGO connector cables, USB-B ports,
-  and servo leads are all cheap to replace.
-- **Clone boards are fine.** Arduino Uno clones with CH340 USB chips work perfectly.
-  You may need to install the CH341SER driver on Windows.
-- **Battery health matters.** Test battery packs under load — many donated robots have
-  degraded cells that drop voltage and confuse motor drivers.
-- **Firmware toolchains vary by kit.** Use each preset's `notes` section for the
-  expected firmware/runtime path and connection mode.
+| Layer | What It Does |
+|---|---|
+| **Prompt injection guard** | `_check_instruction_safety()` on every `think()` call |
+| **Physical bounds** | Dynamixel 0–4095, PCA9685 duty-cycle clamping, `BoundsChecker` |
+| **Rate limiting** | 5 req/s/IP on `/api/command`, 10 req/min/sender on webhooks |
+| **E-stop** | `POST /api/stop`, `fs.estop()`, or any messaging channel |
+| **GuardianAgent** | Veto authority over unsafe actions |
+| **Audit chain** | Hash-chained tamper-evident log; optional quantum commitment layer |
 
-## 🔒 Security
+```bash
+castor audit --verify        # verify chain integrity
+castor approvals             # view/approve pending dangerous commands
+```
 
-- **Vulnerability reporting**: See [SECURITY.md](SECURITY.md)
-- **Software Bill of Materials (SBOM)**: [`sbom/`](./sbom/) — CycloneDX 1.6 JSON, updated on every release
-- **EO 14028 compliance**: OpenCastor generates a machine-readable SBOM for every release per US Executive Order 14028 (May 2021) and the CISA recommended minimum elements. This enables federal procurement and satisfies EU Cyber Resilience Act requirements.
+## CLI Reference
 
-## 🤝 Contributing
+```bash
+# Setup
+castor wizard                       # interactive setup
+castor doctor                       # system health check
+castor fix                          # auto-fix common issues
 
-OpenCastor is fully open source (Apache 2.0) and community-driven.
+# Run
+castor run --config robot.rcan.yaml          # perception-action loop
+castor gateway --config robot.rcan.yaml      # API + channels
+castor dashboard                             # Streamlit web UI
+castor status                                # provider/channel readiness
+
+# Fleet
+castor fleet [--watch]              # discover + monitor robots
+castor swarm status/command/sync    # multi-node ops
+castor deploy pi@192.168.1.10 --config robot.rcan.yaml
+
+# Learning
+castor improve --episodes 10        # analyze + apply improvements
+castor improve --rollback <id>      # undo a patch
+
+# Safety
+castor audit --verify               # verify audit chain
+castor approvals                    # review pending commands
+castor token --role operator        # issue JWT
+```
+
+Full reference: [`docs/claude/cli-reference.md`](docs/claude/cli-reference.md)
+
+## What's New in v2026.3.8.3
+
+- **EpisodeStore FIFO cap** — memory store now enforces 10k episode limit with automatic FIFO eviction; prevents unbounded SQLite growth
+- **ApplyStage dedup** — `improvement_history.json` capped at 1k entries; behavior rules deduplicated by name for a leaner learning pipeline
+- **Timezone-aware datetimes** — deprecated `datetime.utcfromtimestamp()` replaced throughout with timezone-aware equivalents
+- **README refresh** — architecture diagram, Memory & Learning section, and overall structure tightened
+
+_Previous: [v2026.3.8.2](#) — animated robot face, gamepad, closed captions, brain model visibility, dashboard UX_
+
+## Contributing
+
+OpenCastor is Apache 2.0, community-driven.
 
 - **Discord**: [discord.gg/jMjA8B26Bq](https://discord.gg/jMjA8B26Bq)
 - **Issues**: [GitHub Issues](https://github.com/craigm26/OpenCastor/issues)
 - **PRs**: See [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Twitter/X**: [@opencastor](https://twitter.com/opencastor)
 
-**Areas we need help with:** driver adapters (ODrive, VESC, ROS2), new AI providers (Mistral, Grok, Cohere), messaging channels (Matrix, Signal), sim-to-real (Gazebo / MuJoCo), and tests.
-
-## 📄 License
-
-Apache 2.0 — built for the community, ready for the enterprise.
+Reference docs: [`docs/claude/structure.md`](docs/claude/structure.md) · [`docs/claude/api-reference.md`](docs/claude/api-reference.md) · [`docs/claude/env-vars.md`](docs/claude/env-vars.md)
 
 ---
 
 <p align="center">
-  Built on the <a href="https://rcan.dev/spec/">RCAN Spec</a> by <a href="https://github.com/craigm26">Craig Merry</a>
+  Built on the <a href="https://rcan.dev/spec/">RCAN Spec</a> by <a href="https://github.com/craigm26">Craig Merry</a> · Apache 2.0
 </p>

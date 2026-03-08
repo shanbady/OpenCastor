@@ -6,6 +6,22 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.8.3] — 2026-03-08
+
+### Fixed
+- **EpisodeStore FIFO eviction** — `EpisodeStore` now enforces `max_episodes` (default 10k) cap with FIFO eviction; prevents unbounded SQLite growth (#commit 02cd0f3)
+- **ApplyStage efficiency** — `improvement_history.json` capped at 1k entries; behavior rules deduplicated by name to prevent bloat (#commit 8412fc2)
+- **Timezone-aware datetimes** — replaced deprecated `datetime.utcfromtimestamp()` with `datetime.fromtimestamp(..., tz=timezone.utc)` throughout codebase (#commit c005ce1)
+
+### Changed
+- **README refresh** — architecture diagram updated, Memory & Learning section added, structure tightened (#commit 96aaf18)
+- **README SETUP_CATALOG markers** — restored accidentally removed markers from README rewrite (#commit a6643b5)
+
+### Statistics
+- 167,356 lines of Python · 6,401 tests
+
+---
+
 ## [2026.3.8.2] — 2026-03-08
 
 ### Added

@@ -13,6 +13,7 @@ from .qa_stage import QAResult
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+MAX_HISTORY_ENTRIES = 1_000  # cap improvement_history.json to prevent unbounded growth
 
 DEFAULT_CONFIG_DIR = Path.home() / ".opencastor"
 HISTORY_FILE = DEFAULT_CONFIG_DIR / "improvement_history.json"
@@ -177,15 +178,21 @@ class ApplyStage:
         behaviors = _load_yaml(self.behaviors_file)
         if "rules" not in behaviors:
             behaviors["rules"] = []
-        behaviors["rules"].append(
-            {
-                "rule_name": patch.rule_name,
-                "conditions": patch.conditions,
-                "action": patch.action,
-                "priority": patch.priority,
-                "patch_id": patch.id,
-            }
-        )
+        new_rule = {
+            "rule_name": patch.rule_name,
+            "conditions": patch.conditions,
+            "action": patch.action,
+            "priority": patch.priority,
+            "patch_id": patch.id,
+        }
+        # Replace existing rule with the same name to prevent duplicate accumulation
+        rules = behaviors["rules"]
+        for i, rule in enumerate(rules):
+            if rule.get("rule_name") == patch.rule_name:
+                rules[i] = new_rule
+                break
+        else:
+            rules.append(new_rule)
         _save_yaml(self.behaviors_file, behaviors)
 
     def _log_history(self, patch: Patch, success: bool, error: Optional[str] = None) -> None:
@@ -201,6 +208,9 @@ class ApplyStage:
                 "timestamp": time.time(),
             }
         )
+        # Cap to prevent unbounded file growth on long-running robots
+        if len(history) > MAX_HISTORY_ENTRIES:
+            history = history[-MAX_HISTORY_ENTRIES:]
         self._save_history(history)
 
     def _load_history(self) -> list[dict[str, Any]]:

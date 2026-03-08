@@ -4808,6 +4808,213 @@ async def gamepad_page(token: str = ""):
     return HTMLResponse(content=_html)
 
 
+@app.get("/face")
+async def robot_face_page(token: str = ""):
+    """Animated minimal geometric robot face — kiosk home screen.
+
+    Polls /api/status every 500ms to drive reactive SVG animations.
+    Long-press (2 s) anywhere navigates to the Streamlit dashboard (port 8501).
+    No auth required (kiosk use).
+    """
+    from fastapi.responses import HTMLResponse
+    _tok = token
+    _html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Castor</title>
+<style>
+  *{{margin:0;padding:0;box-sizing:border-box;}}
+  html,body{{width:100%;height:100%;overflow:hidden;background:#f5f7fa;
+             display:flex;align-items:center;justify-content:center;
+             font-family:system-ui,sans-serif;user-select:none;-webkit-user-select:none;}}
+  svg{{max-width:min(90vw,90vh);max-height:min(90vw,90vh);}}
+
+  /* idle breathing glow on head */
+  @keyframes breathe{{0%,100%{{filter:drop-shadow(0 0 4px #0057ff88);}}
+                       50%{{filter:drop-shadow(0 0 18px #0057ffcc);}}}}
+  #head{{animation:breathe 2.8s ease-in-out infinite;}}
+
+  /* blink: eye inner circles scale to 0 vertically */
+  @keyframes blink{{0%,90%,100%{{transform:scaleY(1);}}95%{{transform:scaleY(0.05);}}}}
+  .eye-inner{{transform-origin:center;animation:blink 4s ease-in-out infinite;}}
+  .eye-inner-r{{transform-origin:center;animation:blink 4s ease-in-out infinite 0.07s;}}
+
+  /* listening ring pulse */
+  @keyframes listen-ring{{0%,100%{{r:130;opacity:0.25;}}50%{{r:145;opacity:0.7;}}}}
+  #listen-ring{{display:none;animation:listen-ring 1s ease-in-out infinite;}}
+
+  /* long-press progress ring */
+  #lp-ring{{display:none;transform-origin:200px 200px;}}
+
+  /* e-stop red glow */
+  @keyframes estop-glow{{0%,100%{{filter:drop-shadow(0 0 8px #c00000);}}
+                          50%{{filter:drop-shadow(0 0 28px #c00000);}}}}
+  .estop-face{{animation:estop-glow 0.6s ease-in-out infinite;}}
+</style>
+</head>
+<body>
+<svg id="face" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- listening pulse ring (behind head) -->
+  <circle id="listen-ring" cx="200" cy="200" r="130" fill="none"
+          stroke="#0057ff" stroke-width="4"/>
+
+  <!-- long-press progress ring -->
+  <circle id="lp-ring" cx="200" cy="200" r="122" fill="none"
+          stroke="#0057ff" stroke-width="5" stroke-dasharray="767" stroke-dashoffset="767"
+          stroke-linecap="round" transform="rotate(-90 200 200)"/>
+
+  <!-- head: rounded hexagon via path -->
+  <g id="head">
+    <path id="head-path"
+      d="M 200 70 L 295 115 L 295 285 L 200 330 L 105 285 L 105 115 Z"
+      fill="none" stroke="#0057ff" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+
+  <!-- left eye -->
+  <g id="eye-l">
+    <circle cx="158" cy="185" r="22" fill="none" stroke="#0d0d0d" stroke-width="4"/>
+    <circle class="eye-inner" cx="158" cy="185" r="11" fill="#0d0d0d"/>
+  </g>
+
+  <!-- right eye -->
+  <g id="eye-r">
+    <circle cx="242" cy="185" r="22" fill="none" stroke="#0d0d0d" stroke-width="4"/>
+    <circle class="eye-inner eye-inner-r" cx="242" cy="185" r="11" fill="#0d0d0d"/>
+  </g>
+
+  <!-- mouth: calm arc default -->
+  <path id="mouth" d="M 155 230 Q 200 255 245 230"
+        fill="none" stroke="#0d0d0d" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- estop X eyes (hidden by default) -->
+  <g id="x-eyes" style="display:none">
+    <line x1="140" y1="167" x2="176" y2="203" stroke="#c00000" stroke-width="6" stroke-linecap="round"/>
+    <line x1="176" y1="167" x2="140" y2="203" stroke="#c00000" stroke-width="6" stroke-linecap="round"/>
+    <line x1="224" y1="167" x2="260" y2="203" stroke="#c00000" stroke-width="6" stroke-linecap="round"/>
+    <line x1="260" y1="167" x2="224" y2="203" stroke="#c00000" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
+
+<script>
+const TOKEN = "{_tok}";
+const API   = window.location.origin;
+const DASH  = "http://" + window.location.hostname + ":8501";
+const LP_MS = 2000;
+const LP_CIRC = 2 * Math.PI * 122;
+
+const headPath  = document.getElementById("head-path");
+const headG     = document.getElementById("head");
+const eyeL      = document.getElementById("eye-l");
+const eyeR      = document.getElementById("eye-r");
+const xEyes     = document.getElementById("x-eyes");
+const mouth     = document.getElementById("mouth");
+const lpRing    = document.getElementById("lp-ring");
+const lsRing    = document.getElementById("listen-ring");
+const eyeInners = document.querySelectorAll(".eye-inner");
+
+let state = "idle";
+
+function applyState(s) {{
+  if (s === state) return;
+  state = s;
+  headG.classList.remove("estop-face");
+  xEyes.style.display = "none";
+  eyeL.style.display = "block";
+  eyeR.style.display = "block";
+  lsRing.style.display = "none";
+  headPath.setAttribute("stroke", "#0057ff");
+  eyeInners.forEach(e => {{
+    e.style.transform = "";
+    e.style.transformBox = "";
+    e.style.transformOrigin = "";
+    e.setAttribute("fill", "#0d0d0d");
+  }});
+  mouth.style.animation = "";
+
+  if (s === "idle") {{
+    mouth.setAttribute("d", "M 155 230 Q 200 255 245 230");
+  }} else if (s === "moving") {{
+    eyeInners.forEach(e => {{
+      e.style.transform = "scaleY(0.45)";
+      e.style.transformBox = "fill-box";
+      e.style.transformOrigin = "center";
+    }});
+    mouth.setAttribute("d", "M 160 232 Q 200 236 240 232");
+  }} else if (s === "speaking") {{
+    mouth.style.animation = "speak 0.35s ease-in-out infinite";
+  }} else if (s === "listening") {{
+    lsRing.style.display = "block";
+    eyeInners.forEach(e => {{
+      e.style.transform = "scale(1.3)";
+      e.style.transformBox = "fill-box";
+      e.style.transformOrigin = "center";
+    }});
+    mouth.setAttribute("d", "M 160 232 Q 200 236 240 232");
+  }} else if (s === "estop") {{
+    headPath.setAttribute("stroke", "#c00000");
+    headG.classList.add("estop-face");
+    xEyes.style.display = "block";
+    eyeL.style.display = "none";
+    eyeR.style.display = "none";
+    mouth.setAttribute("d", "M 155 242 Q 200 222 245 242");
+  }} else if (s === "offline") {{
+    headPath.setAttribute("stroke", "#9aa3af");
+    eyeInners.forEach(e => e.setAttribute("fill", "#9aa3af"));
+    mouth.setAttribute("d", "M 160 232 Q 200 236 240 232");
+  }}
+}}
+
+async function poll() {{
+  const headers = TOKEN ? {{"Authorization": "Bearer " + TOKEN}} : {{}};
+  try {{
+    const r = await fetch(API + "/api/status", {{headers}});
+    if (!r.ok) {{ applyState("offline"); return; }}
+    const d = await r.json();
+    if (d.estop) applyState("estop");
+    else if (d.listening) applyState("listening");
+    else if (d.speaking) applyState("speaking");
+    else if (Math.abs(d.linear||0) > 0.02 || Math.abs(d.angular||0) > 0.02) applyState("moving");
+    else applyState("idle");
+  }} catch(e) {{ applyState("offline"); }}
+}}
+setInterval(poll, 500);
+poll();
+
+let lpTimer = null;
+let lpStart = 0;
+let lpAnim  = null;
+
+function lpBegin(e) {{
+  e.preventDefault();
+  lpStart = Date.now();
+  lpRing.style.display = "block";
+  lpRing.style.strokeDashoffset = LP_CIRC;
+  lpAnim = setInterval(() => {{
+    const frac = Math.min((Date.now() - lpStart) / LP_MS, 1);
+    lpRing.style.strokeDashoffset = LP_CIRC * (1 - frac);
+    if (frac >= 1) {{
+      clearInterval(lpAnim);
+      window.location.href = DASH;
+    }}
+  }}, 16);
+}}
+
+function lpEnd() {{
+  clearInterval(lpAnim);
+  lpRing.style.display = "none";
+}}
+
+document.addEventListener("pointerdown", lpBegin);
+document.addEventListener("pointerup",   lpEnd);
+document.addEventListener("pointercancel", lpEnd);
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=_html)
+
+
 class _SetupTestProviderRequest(BaseModel):
     provider: str
     api_key: str

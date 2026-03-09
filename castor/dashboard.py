@@ -55,24 +55,6 @@ st.markdown(
   [data-testid="stChatInput"] textarea { font-size: 1rem !important; }
   [data-testid="stTextInput"] input   { font-size: 1rem !important; min-height: 44px; }
 
-  /* ── D-pad buttons ── */
-  [data-testid="stButton"].dpad > button {
-    min-height: 68px !important;
-    font-size: 1.5rem !important;
-    background: #ffffff !important;
-    border: 1px solid #d0d5dd !important;
-    border-radius: 12px !important;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.10) !important;
-  }
-  [data-testid="stButton"].dpad-stop > button {
-    min-height: 68px !important;
-    font-size: 1.1rem !important;
-    background: #c00000 !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 12px !important;
-  }
-
   /* ── metric cards ── */
   [data-testid="stMetric"] {
     background: #ffffff !important;
@@ -559,7 +541,6 @@ with _tab_ctrl:
                     st.session_state["voice_input"] = text
             except Exception as _stt_e:
                 st.toast(f"STT: {_stt_e}", icon="❌")
-
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

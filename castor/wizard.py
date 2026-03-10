@@ -1582,6 +1582,11 @@ def choose_embedding_setup() -> dict:
 
     if backend in ("gemini", "auto"):
         interpreter_cfg["gemini"] = {"dimensions": 1536}
+        import os as _os
+
+        if not _os.getenv("GOOGLE_API_KEY"):
+            print(f"\n  {Colors.YELLOW}Gemini embedding requires GOOGLE_API_KEY.{Colors.ENDC}")
+            _google_auth_flow("GOOGLE_API_KEY")
 
     if backend in ("local", "local_extended", "auto"):
         interpreter_cfg["local"] = {"model": "openai/clip-vit-base-patch32"}

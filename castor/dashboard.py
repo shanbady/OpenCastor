@@ -46,6 +46,8 @@ st.markdown(
     min-height: 48px !important;
     font-size: 0.95rem !important;
     touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-appearance: none;
     border-radius: 8px !important;
     background: #ffffff !important;
     color: #0d0d0d !important;
@@ -85,7 +87,8 @@ st.markdown(
   .status-bar {
     background: #ffffff; border: 1px solid #d0d5dd; border-radius: 8px;
     padding: 8px 14px; margin-bottom: 8px; font-family: monospace; font-size: 0.82rem;
-    white-space: nowrap; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    white-space: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     color: #0d0d0d;
   }
   @media (max-width: 768px) { .status-bar { font-size: 0.72rem; padding: 6px 8px; } }
@@ -145,6 +148,11 @@ st.markdown(
     display:inline-block;padding:6px 14px;background:#0057ff;color:#fff !important;
     border-radius:8px;text-decoration:none;font-size:0.82rem;font-weight:600;
     box-shadow:0 1px 4px rgba(0,87,255,0.3);
+  }
+
+  /* iOS Safari scroll fix */
+  .stTabContent, [data-testid="stVerticalBlock"] {
+    -webkit-overflow-scrolling: touch;
   }
 </style>
 """,
@@ -410,7 +418,7 @@ with _tab_ctrl:
 
         # D-pad — rich HTML/JS component with hold-to-move and active feedback
         st.components.v1.html(
-            f"""
+            f"""<body style="margin:0;padding:0;overflow:hidden;touch-action:none;">
 <style>
   .dpad {{
     display:grid;
@@ -511,7 +519,8 @@ with _tab_ctrl:
     btn.addEventListener("pointercancel",function(e){{e.preventDefault();endHold();}});
   }});
 }})();
-</script>""",
+</script>
+</body>""",
             height=320,
         )
 

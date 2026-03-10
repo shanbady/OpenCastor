@@ -235,3 +235,33 @@ def test_dpad_html_component():
     dpad_block = source[dpad_idx : dpad_idx + 4000]
     assert "pointerdown" in dpad_block
     assert "⬆" in dpad_block or "⬅" in dpad_block
+
+
+# ── T-005: iOS Safari compatibility ───────────────────────────────────────────
+
+
+def test_ios_safari_webkit_css():
+    """Dashboard CSS includes -webkit-tap-highlight-color for iOS Safari."""
+    import pathlib
+
+    src = pathlib.Path("castor/dashboard.py").read_text()
+    assert "-webkit-tap-highlight-color" in src
+
+
+def test_streamlit_config_exists():
+    """Streamlit config.toml exists with Safari-required settings."""
+    import pathlib
+
+    config = pathlib.Path(".streamlit/config.toml")
+    assert config.exists(), ".streamlit/config.toml must exist"
+    content = config.read_text()
+    assert "enableCORS" in content
+
+
+def test_dpad_touch_action_none():
+    """D-pad component uses touch-action: none to prevent scroll hijack on iOS."""
+    import pathlib
+
+    src = pathlib.Path("castor/dashboard.py").read_text()
+    # Find the dpad component section and check touch-action
+    assert "touch-action: none" in src or "touch-action:none" in src

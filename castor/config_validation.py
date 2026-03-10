@@ -179,6 +179,9 @@ def validate_rcan_config(config: dict) -> Tuple[bool, List[str]]:
     # ── interpreter block ────────────────────────────────────────────────────
     if "interpreter" in config:
         interp = config["interpreter"]
+        if not isinstance(interp, dict):
+            errors.append(f"interpreter must be a mapping (got {type(interp).__name__!r})")
+            return len(errors) == 0, errors
         valid_backends = {"auto", "local", "local_extended", "gemini", "mock"}
         backend = str(interp.get("backend", "auto"))
         if backend not in valid_backends:

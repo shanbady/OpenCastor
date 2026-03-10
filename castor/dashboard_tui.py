@@ -425,10 +425,14 @@ def _run_embedding_loop() -> None:
         _time.sleep(999999)
         return
 
+    import os as _os
+
     BASE = "http://localhost:18789"
+    _token = _os.getenv("OPENCASTOR_API_TOKEN", "")
+    _headers = {"Authorization": f"Bearer {_token}"} if _token else {}
     while True:
         try:
-            r = requests.get(f"{BASE}/api/interpreter/status", timeout=2)
+            r = requests.get(f"{BASE}/api/interpreter/status", headers=_headers, timeout=2)
             d = r.json()
         except Exception:
             d = {"enabled": False}

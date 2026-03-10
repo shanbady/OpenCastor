@@ -557,7 +557,11 @@ with _tab_ctrl:
                         st.toast("No speech detected", icon="🎤")
                 else:
                     err = resp.json().get("detail", {})
-                    msg = err.get("error", str(resp.status_code)) if isinstance(err, dict) else str(err)
+                    msg = (
+                        err.get("error", str(resp.status_code))
+                        if isinstance(err, dict)
+                        else str(err)
+                    )
                     st.toast(f"STT: {msg}", icon="❌")
             except Exception as _stt_e:
                 st.toast(f"STT: {_stt_e}", icon="❌")

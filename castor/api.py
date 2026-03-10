@@ -1962,9 +1962,7 @@ async def voice_listen():
 
     transcript = await asyncio.to_thread(state.listener.listen_once)
     if transcript is None:
-        raise HTTPException(
-            status_code=503, detail="Could not capture audio or recognise speech"
-        )
+        raise HTTPException(status_code=503, detail="Could not capture audio or recognise speech")
 
     thought_dict: Optional[dict] = None
     if state.brain and transcript:
@@ -4546,9 +4544,7 @@ async def on_startup():
                         )
                         await asyncio.sleep(3)
                     else:
-                        logger.warning(
-                            "Wake word auto-start failed after retry: %s", _ww_exc
-                        )
+                        logger.warning("Wake word auto-start failed after retry: %s", _ww_exc)
 
         asyncio.create_task(_start_hotword_with_retry())
         logger.debug("Wake word auto-start task queued (phrase will log on success)")

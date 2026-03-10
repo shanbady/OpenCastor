@@ -660,9 +660,7 @@ class Listener:
                     )
             else:
                 if self.enabled:
-                    self._log.warning(
-                        "STT enabled in config but no audio input device found"
-                    )
+                    self._log.warning("STT enabled in config but no audio input device found")
 
     def listen_once(self):
         """Capture one phrase from the microphone and return the transcript.

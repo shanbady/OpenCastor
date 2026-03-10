@@ -87,13 +87,16 @@ class SceneContext:
     tick_id: int = 0
     backend: str = "unknown"
     latency_ms: float = 0.0
+    is_null: bool = False  # True when returned by _null_context() on error — skip storage
 
 
 # Sentinel used when no pre_think result is available
-def _null_context(backend: str = "none") -> SceneContext:
+def _null_context(backend: str = "none", dims: int = 1) -> SceneContext:
+    """Return a zero-vector SceneContext marked as null so post_think skips storage."""
     return SceneContext(
-        embedding=np.zeros(1, dtype=np.float32),
+        embedding=np.zeros(dims, dtype=np.float32),
         backend=backend,
+        is_null=True,
     )
 
 
@@ -162,7 +165,7 @@ class EmbeddingInterpreter:
 
     @staticmethod
     def _select_backend(config: dict):
-        from .providers.clip_embedding_provider import CLIPEmbeddingProvider
+        from .providers.clip_embedding_provider import get_clip_provider
         from .providers.gemini_embedding_provider import GeminiEmbeddingProvider
 
         backend_name = config.get("backend", "auto")
@@ -170,11 +173,13 @@ class EmbeddingInterpreter:
         if backend_name == "gemini":
             return GeminiEmbeddingProvider(config.get("gemini", {}))
         elif backend_name == "local":
-            return CLIPEmbeddingProvider(config.get("local", {}))
+            return get_clip_provider(config.get("local", {}))
         elif backend_name == "auto":
             g = GeminiEmbeddingProvider(config.get("gemini", {}))
-            return g if g.available else CLIPEmbeddingProvider(config.get("local", {}))
+            return g if g.available else get_clip_provider(config.get("local", {}))
         elif backend_name == "mock":
+            from .providers.clip_embedding_provider import CLIPEmbeddingProvider
+
             return CLIPEmbeddingProvider({"model": "mock"})
         elif backend_name == "local_extended":
             try:
@@ -185,22 +190,22 @@ class EmbeddingInterpreter:
                     return p
             except Exception:
                 pass
-            return CLIPEmbeddingProvider(config.get("local", {}))
+            return get_clip_provider(config.get("local", {}))
         else:
-            return CLIPEmbeddingProvider(config.get("local", {}))
+            return get_clip_provider(config.get("local", {}))
 
     # ── Metrics init ─────────────────────────────────────────────────────────
 
     def _init_metrics(self) -> None:
         """Register Prometheus metrics with the global MetricsRegistry."""
         try:
-            from .metrics import Counter, Gauge, Histogram, get_registry
+            from .metrics import Counter, Gauge, ProviderLatencyTracker, get_registry
 
             reg = get_registry()
 
-            def _ensure_counter(name: str, help_text: str):
+            def _ensure_counter(name: str, help_text: str, labels: tuple):
                 if name not in reg._counters:
-                    reg._counters[name] = Counter(name, help_text, ("backend",))
+                    reg._counters[name] = Counter(name, help_text, labels)
                 return reg._counters[name]
 
             def _ensure_gauge(name: str, help_text: str):
@@ -208,28 +213,28 @@ class EmbeddingInterpreter:
                     reg._gauges[name] = Gauge(name, help_text)
                 return reg._gauges[name]
 
-            def _ensure_histogram(name: str, help_text: str, buckets: tuple):
-                if name not in reg._histograms:
-                    reg._histograms[name] = Histogram(name, help_text, buckets)
-                return reg._histograms[name]
-
             self._m_requests = _ensure_counter(
                 "opencastor_embedding_requests_total",
-                "Embedding requests by backend",
+                "Embedding requests by backend and modality",
+                ("backend", "modality"),
             )
             self._m_errors = _ensure_counter(
                 "opencastor_embedding_errors_total",
-                "Embedding errors by backend",
+                "Embedding errors by backend and error type",
+                ("backend", "error_type"),
             )
             self._m_escalations = _ensure_counter(
                 "opencastor_embedding_escalations_total",
                 "L2 escalations triggered by interpreter",
+                ("backend",),
             )
-            self._m_latency_hist = _ensure_histogram(
-                "opencastor_embedding_latency_ms",
-                "pre_think latency in ms",
-                (1, 5, 10, 25, 50, 100, 200, 500, 1000, 5000),
-            )
+            # Per-backend latency tracking (supports backend label)
+            lat_key = "opencastor_embedding_latency_ms"
+            if lat_key not in reg._histograms:
+                reg._histograms[lat_key] = ProviderLatencyTracker(
+                    buckets=(1, 5, 10, 25, 50, 100, 200, 500, 1000, 5000)
+                )
+            self._m_latency_hist = reg._histograms[lat_key]
             self._m_similarity = _ensure_gauge(
                 "opencastor_embedding_goal_similarity",
                 "Last tick goal similarity",
@@ -277,6 +282,7 @@ class EmbeddingInterpreter:
         """
         t_start = time.perf_counter()
         tick_id = _next_tick()
+        modality = "scene" if image_bytes is not None else "text"
 
         try:
             scene_emb = self._backend.embed(text=instruction, image_bytes=image_bytes)
@@ -284,7 +290,7 @@ class EmbeddingInterpreter:
             # Increment request counter
             if self._m_requests is not None:
                 try:
-                    self._m_requests.inc(backend=self._backend.backend_name)
+                    self._m_requests.inc(backend=self._backend.backend_name, modality=modality)
                 except Exception:
                     pass
 
@@ -314,7 +320,9 @@ class EmbeddingInterpreter:
             # Update metrics
             if self._m_latency_hist is not None:
                 try:
-                    self._m_latency_hist.observe(latency_ms)
+                    self._m_latency_hist.observe(
+                        f"{self._backend.backend_name}:{modality}", latency_ms
+                    )
                 except Exception:
                     pass
             if self._m_similarity is not None:
@@ -349,10 +357,12 @@ class EmbeddingInterpreter:
             logger.debug("pre_think error: %s", exc)
             if self._m_errors is not None:
                 try:
-                    self._m_errors.inc(backend=self._backend.backend_name)
+                    self._m_errors.inc(
+                        backend=self._backend.backend_name, error_type="embed_failed"
+                    )
                 except Exception:
                     pass
-            return _null_context(self._backend.backend_name)
+            return _null_context(self._backend.backend_name, self._backend.dimensions)
 
     def post_think(
         self,
@@ -367,11 +377,24 @@ class EmbeddingInterpreter:
             thought:   The :class:`~castor.providers.base.Thought` produced by the brain.
             outcome:   Human-readable outcome tag.
         """
-        threading.Thread(
+        if scene_ctx.is_null:
+            return
+        t = threading.Thread(
             target=self._store_episode,
             args=(scene_ctx, thought, outcome),
             daemon=True,
-        ).start()
+        )
+        self._last_store_thread = t
+        t.start()
+
+    def flush(self) -> None:
+        """Block until any in-flight background episode store completes.
+
+        Used in tests to avoid ``time.sleep()`` races.  No-op if no store is pending.
+        """
+        t = getattr(self, "_last_store_thread", None)
+        if t is not None and t.is_alive():
+            t.join(timeout=5.0)
 
     def format_rag_context(self, scene_ctx: SceneContext, k: int | None = None) -> str:
         """Format nearest past episodes as a context string for the L2 planner.
@@ -462,6 +485,8 @@ class EmbeddingInterpreter:
         outcome: str,
     ) -> None:
         """Add an episode to the in-memory store and persist to disk."""
+        if scene_ctx.is_null:
+            return
         meta = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "instruction": getattr(thought, "raw_text", "")[:200],

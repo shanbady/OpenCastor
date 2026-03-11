@@ -56,7 +56,9 @@ class TestGenerateServiceFile:
             "/tmp/robot.rcan.yaml",
             venv_path="/custom/venv",
         )
-        assert "/custom/venv/bin/castor" in content
+        # Service now uses python -m castor.cli instead of the castor binary (#549)
+        assert "/custom/venv/bin/python" in content
+        assert "-m castor.cli gateway" in content
 
     def test_memory_limit(self):
         content = generate_service_file("/tmp/robot.rcan.yaml")

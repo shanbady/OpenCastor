@@ -232,6 +232,16 @@ _imu_orient = _get("/api/imu/orientation")
 _lidar_raw = _get("/api/lidar/scan")
 _bat_raw = _get("/api/battery/latest")
 
+# ACB telemetry — try to fetch from all driver IDs found in driver health
+_acb_telemetry: dict = {}
+_driver_type = driver.get("driver_type", "") if driver else ""
+if "AcbDriver" in _driver_type:
+    # Single AcbDriver — fetch using driver_id from health check (if available)
+    _acb_id = driver.get("id", "acb") if driver else "acb"
+    _telem = _get(f"/api/drivers/{_acb_id}/telemetry")
+    if _telem and not _telem.get("error"):
+        _acb_telemetry[_acb_id] = _telem
+
 _imu_mode = _imu_raw.get("mode", "offline") if _imu_raw else "offline"
 _lidar_mode = _lidar_raw.get("mode", "offline") if _lidar_raw else "offline"
 _bat_mode = _bat_raw.get("mode", "offline") if _bat_raw else "offline"
@@ -791,6 +801,23 @@ with _tab_status:
         _io1.metric("Yaw", f"{_imu_orient.get('yaw_deg', 0):.1f}°")
         _io2.metric("Pitch", f"{_imu_orient.get('pitch_deg', 0):.1f}°")
         _io3.metric("Roll", f"{_imu_orient.get('roll_deg', 0):.1f}°")
+
+    # ── ACB Actuators (#524) ────────────────────────────────────────────────────
+    if _acb_telemetry:
+        st.divider()
+        st.markdown('<p class="sh">⚙️ Actuators (HLabs ACB)</p>', unsafe_allow_html=True)
+        for _joint_id, _tel in _acb_telemetry.items():
+            _err = int(_tel.get("error_flags", 0))
+            _mode_badge = "🟢" if _tel.get("control_mode") else "⚪"
+            _err_badge = "🔴 ERROR" if _err else "✅"
+            st.markdown(
+                f"**{_joint_id}** — mode: `{_tel.get('control_mode', '?')}` "
+                f"{_mode_badge}  {_err_badge}"
+            )
+            _ac1, _ac2, _ac3 = st.columns(3)
+            _ac1.metric("Position", f"{_tel.get('pos_rad', 0.0):.3f} rad")
+            _ac2.metric("Velocity", f"{_tel.get('vel_rad_s', 0.0):.3f} rad/s")
+            _ac3.metric("Current", f"{_tel.get('current_a', 0.0):.2f} A")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

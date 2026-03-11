@@ -477,6 +477,19 @@ class MetricsRegistry:
         self._gauges["opencastor_loop_count"] = Gauge(
             "opencastor_loop_count", "Total loop iterations (same as counter, for dashboard)"
         )
+        # ACB actuator gauges (#524)
+        self._gauges["opencastor_acb_position_rad"] = Gauge(
+            "opencastor_acb_position_rad", "ACB joint position in radians"
+        )
+        self._gauges["opencastor_acb_velocity_rad_s"] = Gauge(
+            "opencastor_acb_velocity_rad_s", "ACB joint velocity in rad/s"
+        )
+        self._gauges["opencastor_acb_current_a"] = Gauge(
+            "opencastor_acb_current_a", "ACB joint motor current in amps"
+        )
+        self._gauges["opencastor_acb_error_flags"] = Gauge(
+            "opencastor_acb_error_flags", "ACB joint error flags bitmask"
+        )
         # Histogram
         self._histograms["opencastor_loop_duration_ms"] = Histogram(
             "opencastor_loop_duration_ms",
@@ -927,6 +940,35 @@ class MetricsRegistry:
 
             _logging.getLogger("OpenCastor.Metrics").warning("error_rate_histogram error: %s", exc)
             return {"buckets": {}, "per_provider": {}, "window_s": window_s}
+
+    def record_acb_telemetry(
+        self,
+        joint: str,
+        pos_rad: float,
+        vel_rad_s: float,
+        current_a: float,
+        error_flags: int,
+    ) -> None:
+        """Update Prometheus gauges for a single ACB joint (#524).
+
+        Args:
+            joint:      Joint name label (e.g. ``"hip_l"``).
+            pos_rad:    Current position in radians.
+            vel_rad_s:  Current velocity in rad/s.
+            current_a:  Motor current in amps.
+            error_flags: Error bitmask from the encoder response.
+        """
+        if not self._enabled:
+            return
+        for name, val in (
+            ("opencastor_acb_position_rad", pos_rad),
+            ("opencastor_acb_velocity_rad_s", vel_rad_s),
+            ("opencastor_acb_current_a", current_a),
+            ("opencastor_acb_error_flags", float(error_flags)),
+        ):
+            g = self._gauges.get(name)
+            if g:
+                g.set(val, joint=joint)
 
     def uptime_histogram(self) -> Dict[str, Any]:
         """Return registry uptime statistics (Issue #431).

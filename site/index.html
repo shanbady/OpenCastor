@@ -33,6 +33,7 @@
       <a href="/beginners">Beginners</a>
       <a href="/tutorials">Tutorials</a>
       <a href="/about">About</a>
+      <a href="/changelog">Changelog</a>
       <a href="https://github.com/craigm26/OpenCastor" class="btn-nav">GitHub <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg></a>
     </div>
     <button class="mobile-toggle" aria-label="Menu">
@@ -47,7 +48,7 @@
 <section class="hero">
   <div class="badge reveal">
     <span class="dot"></span>
-    v2026.3.8.1 Released
+    v2026.3.10.1 Released
   </div>
 
   <h1 class="hero-title reveal reveal-d1">
@@ -55,8 +56,8 @@
   </h1>
 
   <p class="hero-sub reveal reveal-d2">
-    Give any robot a brain. Apple Foundation Models plus 12+ AI providers,<br>
-    LiDAR · IMU · depth cameras · reactive obstacle avoidance. One config file. Zero lock-in.
+    Give any robot a brain. Semantic perception with local embeddings, 13+ AI providers,<br>
+    HLabs ACB · LiDAR · IMU · depth cameras · reactive obstacle avoidance. One config file. Zero lock-in.
   </p>
 
   <div class="hero-actions reveal reveal-d3">
@@ -193,6 +194,18 @@
         <div class="card-icon" style="background: var(--red-light);">🔄</div>
         <h3>Hot-Swap AI Brains</h3>
         <p>Switch between Apple/local/cloud stacks with a single config line. Setup recommends compatible stacks automatically for your device.</p>
+      </div>
+
+      <div class="card reveal reveal-d6">
+        <div class="card-icon" style="background: var(--purple-light);">🧠</div>
+        <h3>Semantic Perception</h3>
+        <p>EmbeddingInterpreter gives your robot semantic memory — it recognizes familiar scenes, detects novel situations, and injects relevant past experience into every decision. Uses local CLIP embeddings by default (no API key needed). Optionally upgrade to Gemini Embedding 2 for multimodal depth. Configure with a single RCAN block.</p>
+      </div>
+
+      <div class="card reveal reveal-d7">
+        <div class="card-icon" style="background: var(--cyan-light);">⚙️</div>
+        <h3>HLabs ACB v2.0 Motor Control</h3>
+        <p>First-class support for HLaboratories' open-source Actuator Control Board — 3-phase BLDC, 12V–30V, 40A, CAN Bus at 1Mbit/s. Auto-detects via USB VID/PID, runs full calibration sequences, streams 50Hz encoder telemetry. Pre-built profiles for single actuator, 3-DOF arm, and 6-DOF biped. Install: <code>pip install opencastor[hlabs]</code>.</p>
       </div>
     </div>
   </div>
@@ -378,6 +391,34 @@
   </div>
 </section>
 
+<!-- ======== RELEASE ======== -->
+<section class="section" id="release">
+  <div class="container">
+    <div class="section-header center reveal">
+      <p class="section-label">v2026.3.10.1 — March 10, 2026</p>
+      <h2 class="section-title">What's New</h2>
+    </div>
+    <div class="feature-grid">
+      <div class="card reveal">
+        <div class="card-icon" style="background: var(--purple-light);">🧠</div>
+        <h3>EmbeddingInterpreter</h3>
+        <p>Local-first multimodal semantic memory. CLIP (512-dim, free) → ImageBind (6-modality, experimental) → Gemini Embedding 2 (3072-dim MRL, premium). Episode store with RAG context injection into every brain tick. Zero config to start.</p>
+      </div>
+      <div class="card reveal reveal-d1">
+        <div class="card-icon" style="background: var(--cyan-light);">⚙️</div>
+        <h3>HLabs ACB v2.0 Hardware</h3>
+        <p>Auto-detect, calibrate, and control HLaboratories BLDC actuators over USB-C or CAN Bus. Profiles for arm, biped, and single-actuator test bench. Firmware flash via DFU. Real-time 50Hz telemetry in dashboard.</p>
+      </div>
+      <div class="card reveal reveal-d2">
+        <div class="card-icon" style="background: var(--green-light);">📋</div>
+        <h3>Full Changelog</h3>
+        <p>View the complete release notes including all bug fixes, API changes, and migration notes.</p>
+        <a href="/changelog" class="btn-secondary" style="margin-top:1rem;display:inline-block;">View Changelog →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ======== CTA ======== -->
 <section class="cta-section">
   <h2 class="reveal">Start building today.</h2>
@@ -410,6 +451,7 @@
         <h4>Product</h4>
         <a href="/docs">Documentation</a>
         <a href="/hardware">Hardware</a>
+        <a href="/changelog">Changelog</a>
         <a href="https://rcan.dev/spec/">RCAN Spec</a>
         <a href="https://pypi.org/project/opencastor/">PyPI</a>
       </div>

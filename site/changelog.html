@@ -133,12 +133,50 @@
     <div class="container">
       <div class="changelog-timeline">
 
+        <!-- v2026.3.12.0 -->
+        <div class="changelog-release current reveal" id="v2026.3.12.0">
+          <div class="release-header">
+            <span class="release-version">v2026.3.12.0</span>
+            <span class="release-date">March 11, 2026</span>
+            <span class="release-badge-current">Current</span>
+          </div>
+          <div class="release-items">
+            <div class="release-item">
+              <div class="release-item-icon">🔍</div>
+              <div class="release-item-body">
+                <h4>castor scan / doctor / upgrade / stop</h4>
+                <p><code>castor scan</code> CLI subcommand prints full hardware scan with <code>--json</code>, <code>--refresh</code>, <code>--preset-only</code> flags. <code>castor doctor</code> now warns on missing optional packages for detected devices (depthai, reachy2-sdk, etc.). <code>castor upgrade</code> does git pull + pip install + service restart in one command with <code>--check</code> and <code>--venv PATH</code> flags. <code>castor stop</code> reads <code>~/.opencastor/gateway.pid</code> and sends SIGTERM for clean shutdown.</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">🛡️</div>
+              <div class="release-item-body">
+                <h4>Gateway Hardening + Venv-Agnostic Systemd</h4>
+                <p>Gateway writes a PID file to <code>~/.opencastor/gateway.pid</code> and detects port-in-use on startup. Systemd service templates now use <code>python -m castor.cli gateway</code> and <code>python -m streamlit run</code> instead of binary paths — survives venv migrations. Services include <code>KillMode=control-group</code>, <code>TimeoutStopSec=15</code>, <code>SendSIGKILL=yes</code>, and <code>ExecStartPre</code> port cleanup. <code>detect_hardware()</code> gets a 30-second TTL cache with <code>invalidate_hardware_cache()</code>.</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">🐛</div>
+              <div class="release-item-body">
+                <h4>Bug Fixes</h4>
+                <p><code>scservo-sdk</code> renamed to <code>feetech-servo-sdk</code> in <code>[lerobot]</code> extras — package now exists on PyPI. OAK-D SR (VID/PID <code>03e7:f63b</code>) lsusb output now normalized to lowercase before model name lookup — no longer misdetected as bootloader/lite. <code>LIBCAMERA_LOG_LEVELS=*:FATAL</code> set at import time to suppress noisy libcamera stderr during scans.</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">📖</div>
+              <div class="release-item-body">
+                <h4>Upgrade Guide</h4>
+                <p>New <a href="https://github.com/craigm26/OpenCastor/blob/main/docs/install/upgrade.md">docs/install/upgrade.md</a> covering Pi OS PEP 668, <code>--system-site-packages</code> venv setup, systemd service migration, and troubleshooting common install errors.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- v2026.3.11.0 -->
-        <div class="changelog-release current reveal">
+        <div class="changelog-release reveal">
           <div class="release-header">
             <span class="release-version">v2026.3.11.0</span>
             <span class="release-date">March 11, 2026</span>
-            <span class="release-badge-current">Current</span>
           </div>
           <div class="release-items">
             <div class="release-item">

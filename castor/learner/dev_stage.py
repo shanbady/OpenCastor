@@ -6,9 +6,6 @@ Cache-safe forking note (Claude Code lesson):
   # CACHE NOTE: System prompt intentionally matches parent session prefix.
   # Do NOT add stage-specific content to system prompt — use user messages instead.
   # Per Claude Code: fork operations must share the parent's cached prefix.
-  # TODO: When adding LLM calls here, use build_cached_system_prompt() from
-  #       castor.prompt_cache and inject stage context via build_sensor_reminder()
-  #       or a similar user-message block pattern.
 """
 
 from __future__ import annotations

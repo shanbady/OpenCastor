@@ -10,6 +10,9 @@ rcan_version: "1.2.0"
 
 metadata:
   robot_name: acb-single
+  robot_uuid: "00000000-0000-0000-0000-000000000001"  # replace with your UUID
+  author: HLaboratories
+  license: Apache-2.0
   description: "Single HLabs ACB v2.0 joint — USB-C serial, velocity control"
   manufacturer: HLaboratories
   hardware_version: "v2.0"
@@ -39,11 +42,16 @@ drivers:
       curr_i: 0.1
       curr_d: 0.001
 
+network:
+  telemetry_stream: true
+
+physics:
+  type: serial_manipulator
+  dof: 1
+
 rcan_protocol:
   port: 8000
   capabilities: [status, move, chat]
   enable_mdns: true
   enable_jwt: false
 
-improve:
-  enabled: false             # set true to enable SisyphusLoop continuous improvement

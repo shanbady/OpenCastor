@@ -18,7 +18,7 @@ import yaml
 logger = logging.getLogger("OpenCastor.Migrate")
 
 # Current RCAN schema version
-CURRENT_VERSION = "1.0.0-alpha"
+CURRENT_VERSION = "1.3"
 
 # Ordered list of migrations: (from_version, to_version, migration_fn)
 # Each migration_fn takes a config dict and returns the modified config.

@@ -24,9 +24,9 @@ REQUIRED_TOP_LEVEL: List[str] = [
     "rcan_protocol",
 ]
 
-# Optional top-level keys recognised by RCAN v1.2+
+# Optional top-level keys recognised by RCAN v1.3+
 OPTIONAL_TOP_LEVEL: List[str] = [
-    "security_level",  # v1.2: deployment security posture (e.g. "standard", "high")
+    "security_level",  # v1.3: deployment security posture (e.g. "standard", "high")
     "profile",  # HLabs / hardware profile name (e.g. "hlabs/acb-single")
     "reactive",
     "tiered_brain",
@@ -43,15 +43,15 @@ OPTIONAL_TOP_LEVEL: List[str] = [
 # Required keys inside the 'agent' block
 REQUIRED_AGENT_KEYS: List[str] = ["model"]
 
-# Optional keys inside the 'agent' block (recognised by RCAN v1.2+)
+# Optional keys inside the 'agent' block (recognised by RCAN v1.3+)
 OPTIONAL_AGENT_KEYS: List[str] = [
     "provider",
     "vision_enabled",
     "latency_budget_ms",
     "safety_stop",
-    "confidence_gates",  # v1.2: list of confidence gate definitions
-    "hitl_gates",  # v1.2: list of HiTL gate definitions
-    "security_level",  # v1.2: agent-level security override
+    "confidence_gates",  # v1.3: list of confidence gate definitions
+    "hitl_gates",  # v1.3: list of HiTL gate definitions
+    "security_level",  # v1.3: agent-level security override
 ]
 
 # Required keys inside the 'metadata' block
@@ -93,7 +93,7 @@ def validate_rcan_config(config: dict) -> Tuple[bool, List[str]]:
             if not agent.get(key):
                 errors.append(f"Missing or empty required key: 'agent.{key}'")
 
-        # ── RCAN v1.2: confidence_gates ───────────────────────────────────
+        # ── RCAN v1.3: confidence_gates ───────────────────────────────────
         confidence_gates = agent.get("confidence_gates")
         if confidence_gates is not None:
             if not isinstance(confidence_gates, list):
@@ -116,7 +116,7 @@ def validate_rcan_config(config: dict) -> Tuple[bool, List[str]]:
                             f"{sorted(_VALID_CONF_ON_FAIL)}, got '{on_fail}'"
                         )
 
-        # ── RCAN v1.2: hitl_gates ─────────────────────────────────────────
+        # ── RCAN v1.3: hitl_gates ─────────────────────────────────────────
         hitl_gates = agent.get("hitl_gates")
         if hitl_gates is not None:
             if not isinstance(hitl_gates, list):

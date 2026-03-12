@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="brnad/icon-192.png" alt="OpenCastor" width="200"/>
+  <img src="brand/icon-192.png" alt="OpenCastor" width="200"/>
 </p>
 
 <h1 align="center">OpenCastor</h1>
@@ -10,7 +10,7 @@
   <a href="https://github.com/craigm26/OpenCastor/actions"><img src="https://img.shields.io/github/actions/workflow/status/craigm26/OpenCastor/ci.yml?label=CI" alt="CI"></a>
   <a href="https://github.com/craigm26/OpenCastor/blob/main/LICENSE"><img src="https://img.shields.io/github/license/craigm26/OpenCastor?color=green" alt="License"></a>
   <a href="https://pypi.org/project/opencastor/"><img src="https://img.shields.io/pypi/pyversions/opencastor" alt="Python"></a>
-  <a href="https://discord.gg/jMjA8B26Bq"><img src="https://img.shields.io/discord/1473117064020627567?label=Discord&color=5865F2&logo=discord" alt="Discord"></a>
+  <a href="https://discord.gg/jMjA8B26Bq"><img src="https://img.shields.io/badge/Discord-join%20server-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="./sbom/"><img src="https://img.shields.io/badge/SBOM-CycloneDX-blue" alt="SBOM"></a>
 </p>
 

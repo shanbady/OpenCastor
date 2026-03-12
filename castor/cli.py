@@ -3906,9 +3906,7 @@ def main() -> None:
         "--output", "-o", default="robot.rcan.yaml", help="Output path (default: robot.rcan.yaml)"
     )
     p_init.add_argument("--name", "-n", default=None, help="Robot name (default: hostname)")
-    p_init.add_argument(
-        "--overwrite", action="store_true", help="Overwrite existing config file"
-    )
+    p_init.add_argument("--overwrite", action="store_true", help="Overwrite existing config file")
     p_init.add_argument(
         "--print", action="store_true", help="Print config to stdout instead of writing to file"
     )

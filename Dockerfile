@@ -44,6 +44,7 @@ RUN groupadd --system castor && \
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV CASTOR_CONFIG=/app/config/robot.rcan.yaml
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
@@ -54,6 +55,10 @@ COPY --from=builder /build/pyproject.toml ./
 
 # Create config mount point
 RUN mkdir -p /app/config && chown castor:castor /app/config
+
+# Copy entrypoint script (needs root for chmod)
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Switch to non-root user
 USER castor
@@ -66,5 +71,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" || exit 1
 
 # Default: run with config from volume mount
-ENTRYPOINT ["castor"]
-CMD ["run", "--config", "/app/config/robot.rcan.yaml"]
+# entrypoint.sh auto-generates robot.rcan.yaml on first run if missing
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["castor", "run", "--config", "/app/config/robot.rcan.yaml"]

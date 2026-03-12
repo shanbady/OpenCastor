@@ -38,6 +38,7 @@ Usage:
     castor agents list                                 # List active agents
     castor agents status                               # Agent health report
     castor agents spawn --name observer                # Spawn an agent
+    castor init     [--output robot.rcan.yaml]         # Scaffold starter config (non-interactive)
 """
 
 import argparse
@@ -181,6 +182,23 @@ def cmd_wizard(args) -> None:
         wizard_args.append("--accept-risk")
     sys.argv = wizard_args
     run_wizard()
+
+
+def cmd_init(args) -> None:
+    """Scaffold a minimal starter robot.rcan.yaml without an interactive TTY."""
+    from castor.init_config import generate_config, write_config
+
+    if getattr(args, "print", False):
+        print(generate_config(robot_name=args.name))
+        return
+
+    try:
+        path = write_config(args.output, robot_name=args.name, overwrite=args.overwrite)
+        print(f"✓ Config written to: {path}")
+        print(f"\nNext: edit {path}, then run: castor run --config {path}")
+    except FileExistsError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        raise SystemExit(1) from e
 
 
 def _auto_detect_config(specified: str = "robot.rcan.yaml") -> str:
@@ -3878,6 +3896,23 @@ def main() -> None:
         help="Model task filter for --list-models (default: text-generation)",
     )
 
+    # castor init — generate starter config (non-interactive)
+    p_init = sub.add_parser(
+        "init",
+        help="Generate a minimal starter robot.rcan.yaml config",
+        description="Scaffold a minimal valid robot.rcan.yaml without the interactive wizard.",
+    )
+    p_init.add_argument(
+        "--output", "-o", default="robot.rcan.yaml", help="Output path (default: robot.rcan.yaml)"
+    )
+    p_init.add_argument("--name", "-n", default=None, help="Robot name (default: hostname)")
+    p_init.add_argument(
+        "--overwrite", action="store_true", help="Overwrite existing config file"
+    )
+    p_init.add_argument(
+        "--print", action="store_true", help="Print config to stdout instead of writing to file"
+    )
+
     # Shell completions (argcomplete)
     try:
         import argcomplete
@@ -3964,6 +3999,7 @@ def main() -> None:
         "fit": lambda _args: __import__(
             "castor.llmfit_helper", fromlist=["run_fit_command"]
         ).run_fit_command(),
+        "init": cmd_init,
     }
 
     # Load plugins and merge any plugin-provided commands

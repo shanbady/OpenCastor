@@ -12,6 +12,9 @@ services:
     environment:
       - OPENCASTOR_API_HOST=0.0.0.0
       - OPENCASTOR_API_PORT=8000
+      - CASTOR_CONFIG=/app/config/robot.rcan.yaml
+    # Mount your robot.rcan.yaml here. If it doesn't exist, a starter config
+    # will be auto-generated on first run. Edit it and restart.
     volumes:
       - ./config:/app/config
     restart: unless-stopped

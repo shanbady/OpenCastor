@@ -47,10 +47,31 @@ The wizard selects a device-aware stack profile:
 | `apple-tagging` | Apple Tagging |
 <!-- SETUP_CATALOG:END -->
 
-Or with Docker:
+## Docker Quickstart
+
 ```bash
-cp .env.example .env && nano .env
+# 1. Clone and enter the repo
+git clone https://github.com/craigm26/OpenCastor.git && cd OpenCastor
+
+# 2. Copy and edit environment variables
+cp .env.example .env
+nano .env   # Add your AI provider key (ANTHROPIC_API_KEY, GOOGLE_API_KEY, etc.)
+
+# 3. Start — a starter config is auto-generated on first run
 docker compose up
+
+# The first run will create ./config/robot.rcan.yaml with sensible defaults.
+# Edit it to match your hardware, then restart:
+docker compose restart
+```
+
+**Or generate the config manually first:**
+```bash
+# Non-interactive: scaffold a starter config
+castor init --output ./config/robot.rcan.yaml
+
+# Interactive: full setup wizard (requires TTY)
+docker run -it --rm -v ./config:/app/config opencastor castor wizard
 ```
 
 ## Minimal Config

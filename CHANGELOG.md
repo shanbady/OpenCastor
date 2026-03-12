@@ -6,6 +6,15 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.12.1] — 2026-03-12
+
+### Fixed
+- **#580** `migrate.py`: `CURRENT_VERSION` was stale `"1.0.0-alpha"` — updated to `"1.3"`
+- **#581** `web_wizard/server.py` + `wizard.py`: generated configs now emit `rcan_version: "1.3"` instead of `"1.2"` / `"1.0.0-alpha"`
+- **#582** `config_validation.py`: inline comments updated from `v1.2` to `v1.3`
+
+---
+
 ## [2026.3.12.0] — 2026-03-12
 
 ### Added

@@ -8,7 +8,7 @@ def test_invoke_request_to_message():
     msg = req.to_message("rcan://localhost/test/bot/1", "rcan://localhost/test/bot/1")
     assert msg["type"] == "INVOKE"
     assert msg["payload"]["skill"] == "nav.go_to"
-    assert msg["invoke_id"] == "test-123"
+    assert msg["msg_id"] == "test-123"  # §19.3 — wire field is msg_id
 
 
 def test_invoke_result_success():

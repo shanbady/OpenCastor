@@ -22,7 +22,7 @@ def test_manual_url_printed(capsys):
         model="arm",
     )
     out = capsys.readouterr().out
-    assert "rcan.dev" in out
+    assert "robotregistryfoundation.org" in out
     assert "acme" in out
 
 
@@ -31,7 +31,7 @@ def test_manual_url_empty_config(capsys):
 
     _print_manual_registration_url({}, "TestBot")
     out = capsys.readouterr().out
-    assert "rcan.dev" in out
+    assert "robotregistryfoundation.org" in out
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ def test_programmatic_register_network_error(capsys):
 
     assert rrn is None
     out = capsys.readouterr().out
-    assert "rcan.dev" in out or "Error" in out
+    assert "robotregistryfoundation.org" in out or "Error" in out
 
 
 # ---------------------------------------------------------------------------

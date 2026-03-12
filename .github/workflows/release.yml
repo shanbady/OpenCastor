@@ -225,7 +225,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python3 .github/scripts/generate_sbom.py
       - name: Attach SBOM to release
-        uses: softprops/action-gh-release@e7a8f85ef1c1a55d4177bc9474eb8a0550d67c05  # v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b  # v2
         with:
           files: opencastor-${{ github.ref_name }}-sbom.cyclonedx.json
           fail_on_unmatched_files: false

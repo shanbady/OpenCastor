@@ -33,18 +33,24 @@ castor wizard          # guided setup: API keys, hardware, channels
 castor gateway         # start the API gateway + messaging
 ```
 
-The wizard selects a device-aware stack profile:
+The wizard detects your hardware and selects a stack profile automatically:
 
 <!-- SETUP_CATALOG:BEGIN -->
-- `apple_native` — Apple Native (Recommended on eligible Mac)
-- `mlx_local_vision` — MLX Local Vision
-- `ollama_universal_local` — Ollama Universal Local
+| Profile | Best for | Requires |
+|---|---|---|
+| `apple_native` | **Mac with Apple Silicon (M1–M4)** — runs models on-device via Apple's Foundation Models framework. No API key needed. | macOS 26+ (Tahoe), Apple Silicon |
+| `mlx_local_vision` | Mac with Apple Silicon — open-source models via MLX (Llama, Mistral, Qwen). Faster and more model choice than `apple_native`. | macOS, Apple Silicon, `pip install opencastor[mlx]` |
+| `ollama_universal_local` | Any machine — runs local models via Ollama. Works on Mac, Linux, and Windows. Slower than MLX on Apple Silicon. | [Ollama](https://ollama.com) installed |
 
-| Apple Profile | Meaning |
-|---|---|
-| `apple-balanced` | Apple Balanced |
-| `apple-creative` | Apple Creative |
-| `apple-tagging` | Apple Tagging |
+**On Apple Silicon, `apple_native` is the default.** The wizard will ask which Apple model profile fits your use case:
+
+| Apple Model Profile | Use case | Guardrails |
+|---|---|---|
+| `apple-balanced` ⭐ | General chat and robot commands — best starting point | Default (safe) |
+| `apple-creative` | Creative tasks, less restrictive output | Permissive |
+| `apple-tagging` | Classifying or labeling objects/scenes | Default (safe) |
+
+When in doubt, pick `apple-balanced`. You can change profiles anytime by re-running `castor wizard`.
 <!-- SETUP_CATALOG:END -->
 
 ## Docker Quickstart

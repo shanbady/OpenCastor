@@ -1,0 +1,49 @@
+# HLabs ACB v2.0 — Single Joint preset
+# Install: pip install opencastor[hlabs]
+# Usage: castor gateway --config config/presets/hlabs/acb-single.rcan.yaml
+#
+# Good for: standalone wheel, linear actuator, single-axis gimbal
+# Transport: USB-C serial (newline-delimited JSON)
+# Hardware: STM32G474RET6, 3-phase BLDC, 12V–30V, up to 40A (XT60)
+
+rcan_version: "1.2.0"
+
+metadata:
+  robot_name: acb-single
+  description: "Single HLabs ACB v2.0 joint — USB-C serial, velocity control"
+  manufacturer: HLaboratories
+  hardware_version: "v2.0"
+  tags: [hlabs, acb, single-joint, bldc]
+
+agent:
+  provider: google
+  model: gemini-2.5-flash    # swap to: anthropic/claude-sonnet-4-6, openai/gpt-4o, etc.
+  vision_enabled: false
+  safety_stop: true
+
+drivers:
+  - id: joint_0
+    protocol: acb
+    port: auto               # USB VID/PID auto-detection; or set /dev/ttyACM0 explicitly
+    pole_pairs: 7            # adjust for your motor (common: 7 for small BLDC, 14 for larger)
+    control_mode: velocity   # velocity | position | torque | voltage
+    max_velocity: 50.0       # rad/s; lower for safety during first run
+    pid:
+      vel_p: 0.25
+      vel_i: 1.0
+      vel_d: 0.0
+      pos_p: 20.0
+      pos_i: 1.0
+      pos_d: 0.0
+      curr_p: 0.5
+      curr_i: 0.1
+      curr_d: 0.001
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, move, chat]
+  enable_mdns: true
+  enable_jwt: false
+
+improve:
+  enabled: false             # set true to enable SisyphusLoop continuous improvement

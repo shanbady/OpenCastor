@@ -1,0 +1,92 @@
+# HLabs ACB v2.0 — 3-DOF Robot Arm preset
+# Install: pip install opencastor[hlabs]
+# Usage: castor gateway --config config/presets/hlabs/acb-arm-3dof.rcan.yaml
+#
+# Joints: shoulder (CAN node 1), elbow (CAN node 2), wrist (USB-C auto)
+# CAN used for high-load shoulder/elbow; USB-C for lighter wrist joint
+# CAN Bus: 1Mbit/s via socketcan (2-pin JST GH connector)
+
+rcan_version: "1.2.0"
+
+metadata:
+  robot_name: acb-arm-3dof
+  description: "3-joint HLabs ACB v2.0 robot arm — shoulder/elbow CAN, wrist USB-C, position control"
+  manufacturer: HLaboratories
+  hardware_version: "v2.0"
+  tags: [hlabs, acb, arm, 3dof, bldc, can]
+
+agent:
+  provider: google
+  model: gemini-2.5-flash    # swap to: anthropic/claude-sonnet-4-6, openai/gpt-4o, etc.
+  vision_enabled: true       # enable for pick-and-place tasks with a camera
+  safety_stop: true
+
+drivers:
+  # --- Shoulder: CAN Bus node 1 (high-load, proximal joint) ---
+  - id: shoulder
+    protocol: acb
+    transport: can
+    can_interface: socketcan  # Linux SocketCAN; run: ip link set can0 up type can bitrate 1000000
+    can_channel: can0
+    can_node_id: 1
+    pole_pairs: 14            # larger motor, higher pole count; adjust as needed
+    control_mode: position
+    max_velocity: 20.0        # rad/s; conservative for a loaded shoulder
+    pid:
+      vel_p: 0.3
+      vel_i: 1.2
+      vel_d: 0.01
+      pos_p: 30.0
+      pos_i: 1.5
+      pos_d: 0.1
+      curr_p: 0.6
+      curr_i: 0.15
+      curr_d: 0.001
+
+  # --- Elbow: CAN Bus node 2 (mid-load, second joint) ---
+  - id: elbow
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 2
+    pole_pairs: 14
+    control_mode: position
+    max_velocity: 25.0        # slightly faster than shoulder; less torque required
+    pid:
+      vel_p: 0.28
+      vel_i: 1.1
+      vel_d: 0.005
+      pos_p: 25.0
+      pos_i: 1.2
+      pos_d: 0.08
+      curr_p: 0.55
+      curr_i: 0.12
+      curr_d: 0.001
+
+  # --- Wrist: USB-C serial (lighter distal joint; easier to hot-swap) ---
+  - id: wrist
+    protocol: acb
+    port: auto                # USB VID/PID auto-detection; or set /dev/ttyACM0 explicitly
+    pole_pairs: 7
+    control_mode: position
+    max_velocity: 30.0
+    pid:
+      vel_p: 0.25
+      vel_i: 1.0
+      vel_d: 0.0
+      pos_p: 20.0
+      pos_i: 1.0
+      pos_d: 0.0
+      curr_p: 0.5
+      curr_i: 0.1
+      curr_d: 0.001
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, arm, chat]
+  enable_mdns: true
+  enable_jwt: false
+
+improve:
+  enabled: false             # set true to enable SisyphusLoop continuous improvement

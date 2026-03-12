@@ -1,0 +1,163 @@
+# HLabs ACB v2.0 — 6-DOF Biped Leg Pair preset
+# Install: pip install opencastor[hlabs]
+# Usage: castor gateway --config config/presets/hlabs/acb-biped-6dof.rcan.yaml
+#
+# Joints: left_hip (1), left_knee (2), left_ankle (3),
+#         right_hip (4), right_knee (5), right_ankle (6)
+# All joints connected via CAN Bus @ 1Mbit/s (socketcan)
+# Symmetric PID tuning; adjust per-joint after physical testing
+
+rcan_version: "1.2.0"
+
+metadata:
+  robot_name: acb-biped-6dof
+  description: "6-joint HLabs ACB v2.0 biped leg pair — all CAN Bus, position control"
+  manufacturer: HLaboratories
+  hardware_version: "v2.0"
+  tags: [hlabs, acb, biped, 6dof, bldc, can, legged]
+
+agent:
+  provider: google
+  model: gemini-2.5-flash    # swap to: anthropic/claude-sonnet-4-6, openai/gpt-4o, etc.
+  vision_enabled: false
+  safety_stop: true          # always true for legged robots; prevents falls on startup
+
+drivers:
+  # ---- Left leg ----
+
+  # Left hip: CAN node 1 (high-load; abduction/flexion)
+  - id: left_hip
+    protocol: acb
+    transport: can
+    can_interface: socketcan  # run: ip link set can0 up type can bitrate 1000000
+    can_channel: can0
+    can_node_id: 1
+    pole_pairs: 14            # adjust for your motor
+    control_mode: position
+    max_velocity: 15.0        # rad/s; conservative for a weight-bearing hip
+    pid:
+      vel_p: 0.3
+      vel_i: 1.2
+      vel_d: 0.01
+      pos_p: 30.0
+      pos_i: 1.5
+      pos_d: 0.1
+      curr_p: 0.6
+      curr_i: 0.15
+      curr_d: 0.001
+
+  # Left knee: CAN node 2 (high-load; extension/flexion)
+  - id: left_knee
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 2
+    pole_pairs: 14
+    control_mode: position
+    max_velocity: 20.0
+    pid:
+      vel_p: 0.3
+      vel_i: 1.2
+      vel_d: 0.01
+      pos_p: 30.0
+      pos_i: 1.5
+      pos_d: 0.1
+      curr_p: 0.6
+      curr_i: 0.15
+      curr_d: 0.001
+
+  # Left ankle: CAN node 3 (medium-load; dorsiflexion/plantarflexion)
+  - id: left_ankle
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 3
+    pole_pairs: 7             # smaller/lighter motor typical for ankle
+    control_mode: position
+    max_velocity: 25.0
+    pid:
+      vel_p: 0.25
+      vel_i: 1.0
+      vel_d: 0.005
+      pos_p: 22.0
+      pos_i: 1.1
+      pos_d: 0.05
+      curr_p: 0.5
+      curr_i: 0.1
+      curr_d: 0.001
+
+  # ---- Right leg ----
+
+  # Right hip: CAN node 4 (mirror of left_hip)
+  - id: right_hip
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 4
+    pole_pairs: 14
+    control_mode: position
+    max_velocity: 15.0
+    pid:
+      vel_p: 0.3
+      vel_i: 1.2
+      vel_d: 0.01
+      pos_p: 30.0
+      pos_i: 1.5
+      pos_d: 0.1
+      curr_p: 0.6
+      curr_i: 0.15
+      curr_d: 0.001
+
+  # Right knee: CAN node 5 (mirror of left_knee)
+  - id: right_knee
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 5
+    pole_pairs: 14
+    control_mode: position
+    max_velocity: 20.0
+    pid:
+      vel_p: 0.3
+      vel_i: 1.2
+      vel_d: 0.01
+      pos_p: 30.0
+      pos_i: 1.5
+      pos_d: 0.1
+      curr_p: 0.6
+      curr_i: 0.15
+      curr_d: 0.001
+
+  # Right ankle: CAN node 6 (mirror of left_ankle)
+  - id: right_ankle
+    protocol: acb
+    transport: can
+    can_interface: socketcan
+    can_channel: can0
+    can_node_id: 6
+    pole_pairs: 7
+    control_mode: position
+    max_velocity: 25.0
+    pid:
+      vel_p: 0.25
+      vel_i: 1.0
+      vel_d: 0.005
+      pos_p: 22.0
+      pos_i: 1.1
+      pos_d: 0.05
+      curr_p: 0.5
+      curr_i: 0.1
+      curr_d: 0.001
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, move, chat]
+  enable_mdns: true
+  enable_jwt: false
+
+improve:
+  enabled: false             # set true to enable SisyphusLoop continuous improvement

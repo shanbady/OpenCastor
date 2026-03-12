@@ -21,7 +21,9 @@
 
 ---
 
-OpenCastor is a universal runtime for embodied AI. Point it at any LLM (Gemini, GPT-4.1, Claude, Ollama, and 13 more) and any robot body (Raspberry Pi, Jetson, Arduino, ESP32, LEGO) via a single YAML config. The robot answers to WhatsApp, Telegram, Discord, Slack, and Home Assistant — and learns from its own experience.
+OpenCastor is an open-source runtime for embodied AI — one implementation of the [RCAN open protocol](https://rcan.dev/spec/). Point it at any LLM (Gemini, GPT-4.1, Claude, Ollama, and 13 more) and any robot body (Raspberry Pi, Jetson, Arduino, ESP32, LEGO) via a single YAML config. The robot answers to WhatsApp, Telegram, Discord, Slack, and Home Assistant — and learns from its own experience.
+
+> **RCAN is not OpenCastor.** RCAN ([rcan.dev](https://rcan.dev)) is an independent open protocol — like DNS and ICANN, but for robotics. Any robot, any runtime, any manufacturer can implement RCAN and register at the RCAN Registry. OpenCastor is a reference implementation that helped inform the spec. You don't need OpenCastor to use RCAN, and RCAN doesn't require OpenCastor.
 
 ## Quick Install
 
@@ -361,5 +363,6 @@ Reference docs: [`docs/claude/structure.md`](docs/claude/structure.md) · [`docs
 ---
 
 <p align="center">
-  Built on the <a href="https://rcan.dev/spec/">RCAN Spec</a> by <a href="https://github.com/craigm26">Craig Merry</a> · Apache 2.0
+  Implements the <a href="https://rcan.dev/spec/">RCAN open protocol</a> · Apache 2.0 · by <a href="https://github.com/craigm26">Craig Merry</a><br/>
+  <sub>RCAN is an independent open standard. Any robot or runtime can implement it — OpenCastor is one implementation.</sub>
 </p>

@@ -73,12 +73,17 @@ class InvokeCancelRequest:
 
     msg_id: str  # Correlates to the InvokeRequest.invoke_id (wire: msg_id)
     reason: Optional[str] = None  # Human-readable cancellation reason
+    cancel_timeout_ms: Optional[int] = (
+        None  # §19.4: ms receiver waits for graceful abort; defaults to 5000
+    )
 
     def to_message(self, source_ruri: str, target_ruri: str) -> dict[str, Any]:
         """Serialize to RCAN message format."""
         payload: dict[str, Any] = {"msg_id": self.msg_id}
         if self.reason is not None:
             payload["reason"] = self.reason
+        if self.cancel_timeout_ms is not None:
+            payload["cancel_timeout_ms"] = self.cancel_timeout_ms
         return {
             "type": MessageType.INVOKE_CANCEL,
             "source_ruri": source_ruri,

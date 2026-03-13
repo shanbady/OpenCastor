@@ -6,6 +6,16 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.13.10] — 2026-03-13
+
+### Fixed
+- `castor/fleet/group_policy.py`: `FleetManager.from_config` now emits `logger.warning` when a group entry is not a dict, instead of silently dropping it (#641)
+
+### Added
+- `tests/test_fleet_group_policy.py`: 28 tests covering `GroupPolicy.matches`, `FleetManager.from_config` (including malformed-entry warning path), `resolve_config` deep-merge, `apply_to_all`, add/remove helpers, and `_deep_merge` semantics (#640)
+
+---
+
 ## [2026.3.13.9] — 2026-03-13
 
 ### Added

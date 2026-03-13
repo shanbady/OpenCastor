@@ -6,6 +6,17 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.13.1] — 2026-03-13
+
+### Added
+- `castor/rcan/message.py`: `INVOKE_CANCEL = 15` added to `MessageType` enum (RCAN v1.3 §19 compliance). (#607)
+- `tests/test_rcan_invoke.py`: `TestTimeoutEnforcement` — blocking-timeout enforcement tests; `TestConcurrentInvoke` — concurrent INVOKE execution tests. (#605)
+
+### Fixed
+- `castor/rcan/invoke.py`: `SkillRegistry.invoke()` now executes skills in a `ThreadPoolExecutor` thread and enforces `InvokeRequest.timeout_ms` via `future.result(timeout=...)`, returning `status="timeout"` immediately on deadline expiry instead of blocking indefinitely. (#608)
+
+---
+
 ## [2026.3.13.0] — 2026-03-13
 
 ### Changed

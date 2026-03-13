@@ -16,14 +16,10 @@ Covers:
 from __future__ import annotations
 
 import json
-import pathlib
 import struct
-import threading
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -574,7 +570,6 @@ class TestAcbApiEndpoints:
 
     def test_driver_telemetry_with_acb_driver(self, client):
         import castor.api as _api
-        from castor.drivers.acb_driver import AcbDriver
 
         drv = _make_acb_driver({"id": "motor_0"})
         _api.state.driver = drv

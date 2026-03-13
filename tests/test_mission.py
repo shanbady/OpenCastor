@@ -237,11 +237,11 @@ def mission_client():
     """
     import collections
 
-    import castor.api as api_mod
-    from castor.api import app
-
     # Suppress lifecycle events (same pattern as test_api_endpoints.py client fixture)
     import contextlib
+
+    import castor.api as api_mod
+    from castor.api import app
 
     original_startup = app.router.on_startup[:]
     original_shutdown = app.router.on_shutdown[:]

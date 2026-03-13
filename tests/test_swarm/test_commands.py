@@ -79,6 +79,7 @@ class TestLoadSwarmYaml:
     def test_load_swarm_yaml(self, tmp_path):
         """load_swarm_config should parse a valid swarm.yaml and return nodes."""
         import yaml
+
         from castor.commands.swarm import load_swarm_config
 
         # config/swarm.yaml is gitignored (contains real tokens); test with a fixture

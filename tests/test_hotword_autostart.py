@@ -2,9 +2,6 @@
 
 import os
 
-import pytest
-from unittest.mock import MagicMock
-
 
 def test_hotword_autostart_when_env_set(monkeypatch):
     """Wake word auto-start task is created when CASTOR_HOTWORD is set."""
@@ -98,6 +95,7 @@ def test_hotword_wake_phrase_defaults_to_hey_castor(monkeypatch):
 def test_hotword_status_endpoint_returns_active_state():
     """GET /api/hotword/status returns expected shape."""
     from fastapi.testclient import TestClient
+
     from castor.api import app
 
     client = TestClient(app)

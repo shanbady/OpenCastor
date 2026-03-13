@@ -1,8 +1,6 @@
 """Tests for USB mic auto-detection and GET /api/voice/devices."""
 
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 def test_detect_usb_microphone_finds_usb(monkeypatch):
@@ -99,6 +97,7 @@ def test_detect_usb_microphone_no_devices():
 def test_voice_devices_endpoint():
     """GET /api/voice/devices returns 200 with devices list."""
     from fastapi.testclient import TestClient
+
     from castor.api import app
 
     client = TestClient(app)
@@ -112,6 +111,7 @@ def test_voice_devices_endpoint():
 def test_voice_listen_no_listener_returns_503():
     """POST /api/voice/listen returns 503 when listener is not initialized."""
     from fastapi.testclient import TestClient
+
     from castor.api import app, state
 
     original_listener = state.listener
@@ -126,9 +126,11 @@ def test_voice_listen_no_listener_returns_503():
 
 def test_voice_listen_disabled_returns_503():
     """POST /api/voice/listen returns 503 when STT is disabled."""
-    from fastapi.testclient import TestClient
-    from castor.api import app, state
     from unittest.mock import MagicMock
+
+    from fastapi.testclient import TestClient
+
+    from castor.api import app, state
 
     original_listener = state.listener
     mock_listener = MagicMock()

@@ -1,7 +1,7 @@
 """Tests for CameraManager.model, .composite_mode, and OAK camera type routing."""
 
 from unittest.mock import MagicMock
-import pytest
+
 from castor.camera import CameraManager, _OakCameraSource
 
 
@@ -43,6 +43,7 @@ def test_camera_manager_is_available_false_when_not_open():
 def test_api_status_includes_camera_fields(monkeypatch):
     """GET /api/status must include camera_model and camera_mode."""
     from fastapi.testclient import TestClient
+
     from castor.api import app, state
 
     mock_cam = MagicMock()

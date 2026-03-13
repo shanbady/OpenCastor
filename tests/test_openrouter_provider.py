@@ -93,6 +93,23 @@ class TestOpenRouterProviderInit:
                 p = OpenRouterProvider({"provider": "openrouter", "model": "x/y"})
         assert p.model_name == "openai/gpt-4o-mini"
 
+    def test_model_name_defaults_when_not_configured(self):
+        """No 'model' key in config and no OPENROUTER_MODEL env var → _DEFAULT_MODEL used."""
+        with patch.dict(
+            os.environ,
+            {"OPENROUTER_API_KEY": "k"},
+            clear=False,
+        ):
+            # Remove OPENROUTER_MODEL from env if present so the default kicks in.
+            env = {k: v for k, v in os.environ.items() if k != "OPENROUTER_MODEL"}
+            with patch.dict(os.environ, env, clear=True):
+                with patch("openai.OpenAI") as mock_cls:
+                    mock_cls.return_value = MagicMock()
+                    from castor.providers.openrouter_provider import OpenRouterProvider
+
+                    p = OpenRouterProvider({"provider": "openrouter"})
+        assert p.model_name == "anthropic/claude-3.5-sonnet"
+
 
 # ---------------------------------------------------------------------------
 # Health check

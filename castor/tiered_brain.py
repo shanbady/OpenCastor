@@ -321,9 +321,12 @@ class TieredBrain:
         # Layer 2: Planner (periodic or on escalation)
         # Task-category overrides: SENSOR_POLL skips planner; high-complexity categories force it.
         if _resolved_category in _FAST_ONLY_CATEGORIES:
-            # Cheap tasks: never escalate to planner regardless of interval or uncertainty
+            # Cheap tasks: NEVER escalate to planner — hard override.
+            # Explicitly clear should_plan even if interpreter pre-think set should_escalate=True,
+            # so sensor_poll ticks stay cheap regardless of prior escalation signals.
+            should_plan = False
             logger.debug(
-                "TieredBrain: task_category=%s → fast-only, skipping planner",
+                "TieredBrain: task_category=%s → fast-only, planner suppressed",
                 _resolved_category.value if _resolved_category else None,
             )
         elif _resolved_category in _PREFER_PLANNER_CATEGORIES and self.planner:

@@ -131,6 +131,7 @@ class TestRegistryResolveRequest:
 
 class TestRegistryResolveResponse:
     def test_to_message_type(self):
+        # RegistryResolveResponse is the §21 response — should emit REGISTRY_RESOLVE_RESULT (17)
         resp = RegistryResolveResponse(
             rrn="rrn://example.org/rover-1",
             ruri="rcan://rover1.local:8000/rover-1",
@@ -138,7 +139,7 @@ class TestRegistryResolveResponse:
             tier="pro",
         )
         raw = resp.to_message()
-        assert raw["type"] == MessageType.REGISTRY_RESOLVE
+        assert raw["type"] == MessageType.REGISTRY_RESOLVE_RESULT
 
     def test_to_message_all_fields(self):
         resp = RegistryResolveResponse(
@@ -286,7 +287,7 @@ class TestRegistryResolveResult:
         original = RegistryResolveResult(
             msg_id="rr-005",
             status="found",
-            rrn="rrn://example.org/robots/rover-3",
+            rrn="rrn://example.org/rover-3",
             ruri="rcan://rover3.local:8000/rover-3",
             verified=True,
             tier="enterprise",
@@ -294,7 +295,7 @@ class TestRegistryResolveResult:
         restored = RegistryResolveResult.from_message(original.to_message())
         assert restored.msg_id == "rr-005"
         assert restored.status == "found"
-        assert restored.rrn == "rrn://example.org/robots/rover-3"
+        assert restored.rrn == "rrn://example.org/rover-3"
         assert restored.ruri == "rcan://rover3.local:8000/rover-3"
         assert restored.verified is True
         assert restored.tier == "enterprise"
@@ -303,7 +304,7 @@ class TestRegistryResolveResult:
         original = RegistryResolveResult(
             msg_id="rr-006",
             status="not_found",
-            rrn="rrn://example.org/robots/ghost",
+            rrn="rrn://example.org/ghost",
             error="Not registered",
         )
         restored = RegistryResolveResult.from_message(original.to_message())
@@ -552,3 +553,115 @@ class TestRegistryResolveResponseFromMessage:
             RegistryResolveResponse.from_message(
                 {"payload": {"rrn": "rrn://x/y", "verified": True, "tier": "free"}}
             )
+
+
+# ── Copilot-flagged validation fixes ─────────────────────────────────────────
+
+
+class TestRRNTypeCheck:
+    def test_non_string_rrn_raises_value_error(self):
+        """_validate_rrn must raise ValueError (not AttributeError) for non-string input."""
+        with pytest.raises(ValueError, match="string"):
+            _validate_rrn(123)
+
+    def test_none_rrn_raises_value_error(self):
+        with pytest.raises(ValueError, match="string"):
+            _validate_rrn(None)
+
+
+class TestRegistryRegisterResultStatusConsistency:
+    def test_success_without_rrn_raises(self):
+        """status='success' requires rrn in payload."""
+        with pytest.raises(ValueError, match="rrn.*required.*success"):
+            RegistryRegisterResult.from_message({"payload": {"status": "success"}})
+
+    def test_failure_without_error_raises(self):
+        """status='failure' requires error in payload."""
+        with pytest.raises(ValueError, match="error.*required.*failure"):
+            RegistryRegisterResult.from_message({"payload": {"status": "failure"}})
+
+    def test_success_with_rrn_passes(self):
+        result = RegistryRegisterResult.from_message(
+            {
+                "payload": {"status": "success", "rrn": "rrn://example.org/rover-1"},
+            }
+        )
+        assert result.status == "success"
+        assert result.rrn == "rrn://example.org/rover-1"
+
+    def test_failure_with_error_passes(self):
+        result = RegistryRegisterResult.from_message(
+            {
+                "payload": {"status": "failure", "error": "auth failed"},
+            }
+        )
+        assert result.status == "failure"
+
+    def test_success_with_invalid_rrn_raises(self):
+        """RRN in result payload is validated."""
+        with pytest.raises(ValueError):
+            RegistryRegisterResult.from_message(
+                {
+                    "payload": {"status": "success", "rrn": "not-a-valid-rrn"},
+                }
+            )
+
+
+class TestRegistryResolveResultFoundRequiresRuri:
+    def test_found_without_ruri_raises(self):
+        """status='found' requires ruri."""
+        with pytest.raises(ValueError, match="ruri.*required.*found"):
+            RegistryResolveResult.from_message(
+                {
+                    "payload": {"status": "found", "rrn": "rrn://example.org/rover-1"},
+                }
+            )
+
+    def test_found_with_ruri_passes(self):
+        result = RegistryResolveResult.from_message(
+            {
+                "payload": {
+                    "status": "found",
+                    "rrn": "rrn://example.org/rover-1",
+                    "ruri": "rcan://rover.local:8000/rover-1",
+                },
+            }
+        )
+        assert result.status == "found"
+        assert result.ruri == "rcan://rover.local:8000/rover-1"
+
+    def test_not_found_without_ruri_passes(self):
+        """status='not_found' does not require ruri."""
+        result = RegistryResolveResult.from_message(
+            {
+                "payload": {"status": "not_found", "rrn": "rrn://example.org/ghost"},
+            }
+        )
+        assert result.ruri is None
+
+    def test_invalid_rrn_in_resolve_result_raises(self):
+        """RRN in resolve result payload is validated."""
+        with pytest.raises(ValueError):
+            RegistryResolveResult.from_message(
+                {
+                    "payload": {
+                        "status": "found",
+                        "rrn": "bad-rrn",
+                        "ruri": "rcan://x.local:8000/x",
+                    },
+                }
+            )
+
+
+class TestRegistryResolveResponseMessageType:
+    def test_uses_resolve_result_type(self):
+        """RegistryResolveResponse.to_message() must use REGISTRY_RESOLVE_RESULT (17), not REGISTRY_RESOLVE (14)."""
+        resp = RegistryResolveResponse(
+            rrn="rrn://example.org/rover-1",
+            ruri="rcan://rover.local:8000/rover-1",
+            verified=True,
+            tier="pro",
+        )
+        raw = resp.to_message()
+        assert raw["type"] == MessageType.REGISTRY_RESOLVE_RESULT
+        assert raw["type"] != MessageType.REGISTRY_RESOLVE

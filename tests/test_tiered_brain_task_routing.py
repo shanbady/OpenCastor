@@ -70,7 +70,7 @@ class TestReasoningForcesPlanner:
         planner = _make_provider(text="planner response")
         brain, fast = _brain(planner=planner)
         # Ensure we're NOT on a periodic interval tick
-        brain.tick_count = 999  # won't hit any interval
+        brain.tick_count = 998  # next tick → 999, not divisible by default interval (10)
 
         brain.think(b"", "complex task", task_category=category)
 
@@ -80,7 +80,7 @@ class TestReasoningForcesPlanner:
         """SAFETY must never be downgraded — always uses planner if available."""
         planner = _make_provider(text="safety check result")
         brain, fast = _brain(planner=planner)
-        brain.tick_count = 997  # non-interval tick
+        brain.tick_count = 998  # next tick → 999, not divisible by default interval (10)
 
         brain.think(b"", "check safe to proceed", task_category="safety")
 

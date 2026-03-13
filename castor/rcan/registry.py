@@ -93,6 +93,8 @@ def _validate_rrn(rrn: str) -> None:
     Raises:
         ValueError: If the RRN does not conform to the expected format.
     """
+    if not isinstance(rrn, str):
+        raise ValueError(f"RRN must be a string, got {type(rrn).__name__}: {rrn!r}")
     if not rrn:
         raise ValueError("RRN must not be empty")
     if not rrn.startswith(_RRN_SCHEME):
@@ -311,9 +313,9 @@ class RegistryResolveResponse:
     tier: str
 
     def to_message(self) -> dict[str, Any]:
-        """Serialize to a response dict."""
+        """Serialize to a response dict using REGISTRY_RESOLVE_RESULT type (§21.5)."""
         return {
-            "type": MessageType.REGISTRY_RESOLVE,
+            "type": MessageType.REGISTRY_RESOLVE_RESULT,
             "payload": {
                 "rrn": self.rrn,
                 "ruri": self.ruri,
@@ -385,16 +387,26 @@ class RegistryRegisterResult:
             data: Raw message dict (as returned by ``to_message()``).
 
         Raises:
-            ValueError: If ``status`` field is missing.
+            ValueError: If required fields are missing or inconsistent with status:
+                        ``status`` is always required; ``rrn`` is required on success;
+                        ``error`` is required on failure.
         """
         payload = data.get("payload", data)
         if "status" not in payload:
             raise ValueError("Missing required field: 'status'")
+        status = payload["status"]
+        if status == "success" and "rrn" not in payload:
+            raise ValueError("RegistryRegisterResult: 'rrn' is required when status='success'")
+        if status == "failure" and "error" not in payload:
+            raise ValueError("RegistryRegisterResult: 'error' is required when status='failure'")
+        rrn = payload.get("rrn")
+        if rrn is not None:
+            _validate_rrn(rrn)
         msg_id = data.get("msg_id") or str(uuid.uuid4())
         return cls(
             msg_id=msg_id,
-            status=payload["status"],
-            rrn=payload.get("rrn"),
+            status=status,
+            rrn=rrn,
             error=payload.get("error"),
         )
 
@@ -449,17 +461,24 @@ class RegistryResolveResult:
             data: Raw message dict (as returned by ``to_message()``).
 
         Raises:
-            ValueError: If ``status`` or ``rrn`` fields are missing.
+            ValueError: If required fields are missing or inconsistent with status:
+                        ``status`` and ``rrn`` are always required; ``ruri`` is required
+                        when status is ``"found"``; ``rrn`` is validated as a legal RRN.
         """
         payload = data.get("payload", data)
         for key in ("status", "rrn"):
             if key not in payload:
                 raise ValueError(f"Missing required field: '{key}'")
+        status = payload["status"]
+        rrn = payload["rrn"]
+        _validate_rrn(rrn)
+        if status == "found" and "ruri" not in payload:
+            raise ValueError("RegistryResolveResult: 'ruri' is required when status='found'")
         msg_id = data.get("msg_id") or str(uuid.uuid4())
         return cls(
             msg_id=msg_id,
-            status=payload["status"],
-            rrn=payload["rrn"],
+            status=status,
+            rrn=rrn,
             ruri=payload.get("ruri"),
             error=payload.get("error"),
             verified=payload.get("verified", False),

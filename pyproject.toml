@@ -156,7 +156,7 @@ opencastor = "castor.cli:_friendly_error_handler"
 [project.urls]
 Homepage = "https://opencastor.com"
 Repository = "https://github.com/craigm26/OpenCastor"
-Documentation = "https://github.com/craigm26/OpenCastor#readme"
+Documentation = "https://opencastor.com/docs"
 "Bug Tracker" = "https://github.com/craigm26/OpenCastor/issues"
 "Changelog" = "https://github.com/craigm26/OpenCastor/blob/main/CHANGELOG.md"
 "Discord" = "https://discord.gg/jMjA8B26Bq"

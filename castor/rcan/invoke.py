@@ -22,7 +22,7 @@ logger = logging.getLogger("OpenCastor.RCAN.Invoke")
 
 @dataclass
 class InvokeRequest:
-    """INVOKE message payload (§19.3)."""
+    """INVOKE message payload (§19.2)."""
 
     skill: str  # Skill/behavior name (e.g. "nav.go_to", "arm.pick")
     params: Dict[str, Any] = field(default_factory=dict)
@@ -54,7 +54,7 @@ class InvokeRequest:
 
 @dataclass
 class InvokeResult:
-    """INVOKE_RESULT message payload (§19.4)."""
+    """INVOKE_RESULT message payload (§19.3)."""
 
     invoke_id: str
     status: str  # "success" | "error" | "timeout" | "not_found"

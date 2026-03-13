@@ -6,6 +6,13 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.12.2] — 2026-03-12
+
+### Fixed
+- **#583** Release CI gate unblocked: enriched `setup_catalog.py` StackProfile/ModelProfile `desc` fields with informative copy; updated `sync_setup_docs.py` `_build_readme_block()` to generate a richer 3-column table; re-synced README — the `SETUP_CATALOG:BEGIN/END` check-sync step now passes cleanly
+
+---
+
 ## [2026.3.12.1] — 2026-03-12
 
 ### Fixed

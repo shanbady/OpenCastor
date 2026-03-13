@@ -1428,6 +1428,22 @@ def cmd_swarm(args) -> None:
     print("castor swarm: coming soon.")
 
 
+def _cmd_arm(args) -> None:
+    """castor arm — SO-ARM101 assembly, port detection, motor setup, config generation."""
+    from castor.hardware.so_arm101.cli import build_parser as _arm_build_parser
+
+    arm_parser = _arm_build_parser()
+    # Strip 'arm' from argv and re-parse the remainder
+    import sys as _sys
+
+    argv = _sys.argv[2:]  # everything after 'castor arm'
+    arm_args = arm_parser.parse_args(argv)
+    if not hasattr(arm_args, "func") or arm_args.func is None:
+        arm_parser.print_help()
+        return
+    arm_args.func(arm_args)
+
+
 def cmd_test(args) -> None:
     """castor test — run the castor test suite via pytest."""
     import subprocess
@@ -3911,6 +3927,21 @@ def main() -> None:
         "--print", action="store_true", help="Print config to stdout instead of writing to file"
     )
 
+    # SO-ARM101 arm setup (issue #658)
+    p_arm = sub.add_parser(
+        "arm",
+        help="SO-ARM101 arm setup: assemble, detect ports, configure motors, generate config",
+        description=(
+            "Guided setup for the SO-ARM101 robotic arm (HuggingFace LeRobot / TheRobotStudio).\n\n"
+            "  castor arm assemble   — step-by-step physical assembly guide\n"
+            "  castor arm detect     — find USB ports for controller boards\n"
+            "  castor arm setup      — configure motor IDs and baudrates\n"
+            "  castor arm verify     — ping all motors in daisy chain\n"
+            "  castor arm config     — generate RCAN config file\n"
+        ),
+    )
+    p_arm.add_argument("arm_subcmd", nargs="?", help="Subcommand (see above)")
+
     # Shell completions (argcomplete)
     try:
         import argcomplete
@@ -3998,6 +4029,8 @@ def main() -> None:
             "castor.llmfit_helper", fromlist=["run_fit_command"]
         ).run_fit_command(),
         "init": cmd_init,
+        # SO-ARM101 arm setup (issue #658)
+        "arm": _cmd_arm,
     }
 
     # Load plugins and merge any plugin-provided commands

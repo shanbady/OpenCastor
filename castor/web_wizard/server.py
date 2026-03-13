@@ -134,10 +134,20 @@ HTML = """<!DOCTYPE html>
 </footer>
 
 <script>
-const STEPS = [
+const BASE_STEPS = [
   "Welcome", "Hardware", "Provider", "API Keys",
   "Channels", "Config", "Register", "Done"
 ];
+const ARM_STEPS = [
+  "Welcome", "Hardware", "Assemble Arm", "Detect Ports",
+  "Motor Setup", "Provider", "API Keys", "Config", "Register", "Done"
+];
+
+function getSteps() {
+  return (state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual")
+    ? ARM_STEPS : BASE_STEPS;
+}
+const STEPS = BASE_STEPS; // keep for back-compat refs
 
 let state = {
   step: 0,
@@ -155,14 +165,18 @@ let state = {
   configYaml: "",
   rrn: "",
   detectedHardware: null,
+  // SO-ARM101
+  followerPort: "",
+  leaderPort: "",
 };
 
 // ── Step bar ────────────────────────────────────────────────────────────────
 function renderSteps() {
+  const steps = getSteps();
   const bar = document.getElementById("steps-bar");
-  bar.innerHTML = STEPS.map((_, i) => {
+  bar.innerHTML = steps.map((_, i) => {
     const cls = i < state.step ? "done" : i === state.step ? "active" : "";
-    return `<div class="step ${cls}" title="${STEPS[i]}"></div>`;
+    return `<div class="step ${cls}" title="${steps[i]}"></div>`;
   }).join("");
 }
 
@@ -182,11 +196,34 @@ function render() {
     case 0: root.innerHTML = stepWelcome(); break;
     case 1: root.innerHTML = stepHardware(); break;
     case 2: root.innerHTML = stepProvider(); break;
-    case 3: root.innerHTML = stepApiKeys(); break;
-    case 4: root.innerHTML = stepChannels(); break;
-    case 5: root.innerHTML = stepConfig(); fetchConfig(); break;
-    case 6: root.innerHTML = stepRegister(); break;
-    case 7: root.innerHTML = stepDone(); break;
+    case 3: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      root.innerHTML = isArm ? stepArmAssemble() : stepApiKeys(); break;
+    }
+    case 4: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      root.innerHTML = isArm ? stepArmDetect() : stepChannels(); break;
+    }
+    case 5: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      if (isArm) { root.innerHTML = stepArmMotorSetup(); break; }
+      root.innerHTML = stepConfig(); fetchConfig(); break;
+    }
+    case 6: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      if (isArm) { root.innerHTML = stepApiKeys(); break; }
+      root.innerHTML = stepRegister(); break;
+    }
+    case 7: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      if (isArm) { root.innerHTML = stepConfig(); fetchConfig(); break; }
+      root.innerHTML = stepDone(); break;
+    }
+    case 8: {
+      const isArm = state.hardware === "so_arm101" || state.hardware === "so_arm101_bimanual";
+      root.innerHTML = isArm ? stepRegister() : stepDone(); break;
+    }
+    case 9: root.innerHTML = stepDone(); break;
     default: root.innerHTML = stepDone();
   }
 }
@@ -224,6 +261,8 @@ function stepHardware() { return `
       { id:"x86", icon:"💻", name:"x86 / PC", desc:"Ubuntu / Debian" },
       { id:"hailo", icon:"🔺", name:"Hailo-8 AI Kit", desc:"NPU accelerated" },
       { id:"mac", icon:"🍎", name:"macOS", desc:"Apple Silicon / Intel" },
+      { id:"so_arm101", icon:"🦾", name:"SO-ARM101", desc:"HuggingFace LeRobot arm" },
+      { id:"so_arm101_bimanual", icon:"🤲", name:"SO-ARM101 Bimanual", desc:"Leader + follower pair" },
       { id:"other", icon:"🔧", name:"Other / Custom", desc:"Manual config" },
     ].map(h => `
       <div class="hw-card ${state.hardware===h.id?'selected':''}" onclick="selectHardware('${h.id}')">
@@ -394,6 +433,146 @@ function stepRegister() { return `
   </div>
 </div>`; }
 
+// ── SO-ARM101 wizard steps ─────────────────────────────────────────────────
+
+const ARM_ASSEMBLY_STEPS = [
+  { step: 1, title: "Prepare the controller board", motor: null,
+    desc: "Mount the Waveshare Serial Bus Servo Board to the base plate. Connect the 12V power supply. Leave USB disconnected until prompted during motor setup.",
+    screws: [], tips: ["Waveshare board: set both jumpers to channel B (USB).", "Do NOT connect USB yet — each motor is configured individually."] },
+  { step: 2, title: "Joint 1 — Shoulder Pan (Motor ID 1)", motor: 1,
+    desc: "Insert motor 1 (STS3215) into the base housing from the bottom. Attach both motor horns. Secure with 4x M2x6mm screws. Use one M3x6mm horn screw on each horn.",
+    screws: ["4x M2x6mm (motor body)", "2x M3x6mm (motor horns)"], tips: ["Align cable exit toward the back of the base."] },
+  { step: 3, title: "Joint 2 — Shoulder Lift (Motor ID 2)", motor: 2,
+    desc: "Slide motor 2 into the upper arm housing from the top. Fasten with 4x M2x6mm screws. Attach both motor horns with M3x6mm screws. Connect the upper arm segment with 4x M3x6mm screws on each side.",
+    screws: ["4x M2x6mm", "2x M3x6mm (horns)", "8x M3x6mm (upper arm)"], tips: ["Keep the cable routing channel clear before closing housing."] },
+  { step: 4, title: "Joint 3 — Elbow Flex (Motor ID 3)", motor: 3,
+    desc: "Insert motor 3 into the forearm housing and fasten with 4x M2x6mm screws. Attach both motor horns. Connect the forearm segment with 4x M3x6mm screws on each side.",
+    screws: ["4x M2x6mm", "2x M3x6mm (horns)", "8x M3x6mm (forearm)"], tips: ["Route the 3-pin cable through the forearm channel first."] },
+  { step: 5, title: "Joint 4 — Wrist Flex (Motor ID 4)", motor: 4,
+    desc: "Slide motor holder 4 over the wrist section. Insert motor 4 and fasten with 4x M2x6mm screws. Attach motor horns and secure with M3x6mm screws.",
+    screws: ["4x M2x6mm", "2x M3x6mm (horns)"], tips: [] },
+  { step: 6, title: "Joint 5 — Wrist Roll (Motor ID 5)", motor: 5,
+    desc: "Insert motor 5 into the wrist holder. Secure with 2x M2x6mm front screws. Install ONE motor horn only (intentional — wrist roll is single-sided). Secure wrist to motor 4 with 4x M3x6mm screws on both sides.",
+    screws: ["2x M2x6mm", "1x M3x6mm (horn)", "8x M3x6mm (wrist-to-motor4)"], tips: ["Only one horn for wrist roll — this is correct."] },
+  { step: 7, title: "Joint 6 — Gripper (Motor ID 6)", motor: 6,
+    desc: "Attach the gripper body to motor 5 with 4x M3x6mm screws. Insert gripper motor 6, secure with 4x M2x6mm screws. Attach motor horn. Install gripper claw and secure with 4x M3x6mm screws on both sides.",
+    screws: ["4x M3x6mm (gripper body)", "4x M2x6mm (motor)", "1x M3x6mm (horn)", "8x M3x6mm (claw)"], tips: ["Test claw movement by hand before closing."] },
+  { step: 8, title: "Daisy-chain the motors", motor: null,
+    desc: "Connect 3-pin cables in series: board → motor 1 → 2 → 3 → 4 → 5 → 6. Motor 6 only needs one cable. Attach controller board to the base plate.",
+    screws: [], tips: ["Each motor has 2 cables (in + out) except motor 6 (1 cable).", "Secure cables with clips to avoid catching on joints."] },
+];
+
+let armAssemblyStep = 0;
+
+function stepArmAssemble() {
+  const s = ARM_ASSEMBLY_STEPS[armAssemblyStep] || ARM_ASSEMBLY_STEPS[0];
+  const progress = `${armAssemblyStep + 1} / ${ARM_ASSEMBLY_STEPS.length}`;
+  const isLast = armAssemblyStep >= ARM_ASSEMBLY_STEPS.length - 1;
+  return `
+<div class="card">
+  <h2>🦾 Arm Assembly Guide <span class="badge badge-blue">${progress}</span></h2>
+  <p class="subtitle">Step-by-step physical assembly. Complete each step, then press Next Step.</p>
+  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem">
+    <h3 style="font-size:1rem;font-weight:700;margin-bottom:0.5rem">${s.title}</h3>
+    ${s.motor ? `<div style="font-size:0.78rem;color:var(--accent);margin-bottom:0.5rem">⚙ Motor ID ${s.motor} — connect this motor individually during setup step</div>` : ""}
+    <p style="font-size:0.9rem;color:var(--muted);line-height:1.6">${s.desc}</p>
+    ${s.screws.length ? `<div style="margin-top:0.75rem"><div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.35rem">Screws needed</div>${s.screws.map(sc => `<div style="font-size:0.85rem;margin:0.2rem 0">• ${sc}</div>`).join("")}</div>` : ""}
+    ${s.tips.length ? `<div style="margin-top:0.75rem;padding:0.75rem;background:rgba(14,165,233,0.07);border-radius:8px;border-left:3px solid var(--accent)">${s.tips.map(t => `<div style="font-size:0.82rem;color:var(--muted);margin:0.15rem 0">💡 ${t}</div>`).join("")}</div>` : ""}
+  </div>
+  <div style="margin-bottom:1rem">
+    <a href="https://huggingface.co/docs/lerobot/so101" target="_blank" style="font-size:0.82rem;color:var(--accent)">📖 Full SO-ARM101 docs ↗</a>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    <button class="btn btn-secondary" onclick="prev()">← Back</button>
+    ${armAssemblyStep > 0 ? `<button class="btn btn-secondary" onclick="armAssemblyStep--;render()">◀ Prev Step</button>` : ""}
+    ${!isLast ? `<button class="btn btn-primary" onclick="armAssemblyStep++;render()">Next Step ▶</button>` : `<button class="btn btn-primary" onclick="armAssemblyStep=0;next()">Assembly Done — Detect Ports →</button>`}
+  </div>
+</div>`;
+}
+
+function stepArmDetect() {
+  return `
+<div class="card">
+  <h2>🔌 Detect Controller Ports</h2>
+  <p class="subtitle">Connect both arm controller boards via USB, then detect which port is which.</p>
+  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem">
+    <div style="font-size:0.85rem;color:var(--muted);margin-bottom:1rem;line-height:1.6">
+      On Linux you may need to grant USB access:<br>
+      <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-size:0.8rem">sudo chmod 666 /dev/ttyACM0 /dev/ttyACM1</code>
+    </div>
+    <button class="btn btn-primary" onclick="detectArmPorts()" id="detect-btn">🔍 Auto-detect ports</button>
+    <div id="detect-result" style="margin-top:1rem"></div>
+  </div>
+  <div style="margin-bottom:1rem">
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.5rem">Or enter manually:</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+      <div class="field"><label>Follower port</label>
+        <input type="text" placeholder="/dev/ttyACM0" id="follower-port" oninput="state.followerPort=this.value" value="${state.followerPort||''}" />
+      </div>
+      <div class="field"><label>Leader port ${state.hardware==='so_arm101'?'(optional)':''}</label>
+        <input type="text" placeholder="/dev/ttyACM1" id="leader-port" oninput="state.leaderPort=this.value" value="${state.leaderPort||''}" />
+      </div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="prev()">Back</button>
+    <button class="btn btn-primary" onclick="next()" ${!state.followerPort?"disabled":""}>Motor Setup →</button>
+  </div>
+</div>`;
+}
+
+async function detectArmPorts() {
+  document.getElementById("detect-btn").disabled = true;
+  document.getElementById("detect-result").innerHTML = '<div class="alert alert-warn"><span class="loading"></span> Scanning…</div>';
+  const data = await api("/api/wizard/arm/detect", "POST", {});
+  if (data.ports && Object.keys(data.ports).length > 0) {
+    state.followerPort = data.ports.follower || "";
+    state.leaderPort = data.ports.leader || "";
+    const lines = Object.entries(data.ports).map(([arm, port]) => `<div>✓ <strong>${arm}</strong>: <code>${port}</code></div>`).join("");
+    document.getElementById("detect-result").innerHTML = `<div class="alert alert-success">${lines}</div>`;
+    document.getElementById("follower-port").value = state.followerPort;
+    document.getElementById("leader-port").value = state.leaderPort;
+    // Re-enable Next button
+    render();
+  } else {
+    document.getElementById("detect-result").innerHTML = '<div class="alert alert-warn">⚠ No Feetech boards detected. Enter ports manually above.</div>';
+  }
+  document.getElementById("detect-btn").disabled = false;
+}
+
+function stepArmMotorSetup() {
+  const bimanual = state.hardware === "so_arm101_bimanual";
+  return `
+<div class="card">
+  <h2>⚙ Motor Setup</h2>
+  <p class="subtitle">Set unique IDs (1–6) and baudrate on each servo motor. Connect motors one at a time as prompted by the terminal.</p>
+  <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem">
+    <div style="font-size:0.85rem;color:var(--muted);line-height:1.6;margin-bottom:1rem">
+      Each STS3215 motor ships with ID=1. You'll connect them individually and the wizard sets the correct ID (1–6) and baudrate (1,000,000) in EEPROM — this only needs to happen once.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr ${bimanual ? "1fr" : ""};gap:0.75rem;margin-bottom:1rem">
+      <div>
+        <div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:0.5rem">Follower arm — ${state.followerPort || "/dev/ttyACM0"}</div>
+        ${[{id:1,joint:"shoulder_pan"},{id:2,joint:"shoulder_lift"},{id:3,joint:"elbow_flex"},{id:4,joint:"wrist_flex"},{id:5,joint:"wrist_roll"},{id:6,joint:"gripper"}]
+          .map(m => `<div style="font-size:0.82rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:var(--accent);font-family:monospace">ID ${m.id}</span> — ${m.joint}</div>`).join("")}
+      </div>
+      ${bimanual ? `<div>
+        <div style="font-size:0.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:0.5rem">Leader arm — ${state.leaderPort || "/dev/ttyACM1"}</div>
+        ${[{id:1,joint:"shoulder_pan (1/191)"},{id:2,joint:"shoulder_lift (1/345)"},{id:3,joint:"elbow_flex (1/191)"},{id:4,joint:"wrist_flex (1/147)"},{id:5,joint:"wrist_roll (1/147)"},{id:6,joint:"gripper (1/147)"}]
+          .map(m => `<div style="font-size:0.82rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:var(--accent);font-family:monospace">ID ${m.id}</span> — ${m.joint}</div>`).join("")}
+      </div>` : ""}
+    </div>
+    <div style="font-size:0.82rem;color:var(--muted);padding:0.75rem;background:rgba(14,165,233,0.07);border-radius:8px;border-left:3px solid var(--accent)">
+      💡 Run in a terminal: <code style="font-size:0.78rem">castor arm setup --arm ${bimanual?"bimanual":"follower"} ${state.followerPort ? "--port "+state.followerPort : ""}</code>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="prev()">Back</button>
+    <button class="btn btn-primary" onclick="next()">Motors Done →</button>
+  </div>
+</div>`;
+}
+
 async function doRegister() {
   const resultEl = document.getElementById("register-result");
   resultEl.innerHTML = '<div class="alert alert-warn"><span class="loading"></span> Registering…</div>';
@@ -432,7 +611,7 @@ function stepDone() { return `
 </div>`; }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-function next() { if (state.step < STEPS.length - 1) { state.step++; render(); } }
+function next() { if (state.step < getSteps().length - 1) { state.step++; render(); } }
 function prev() { if (state.step > 0) { state.step--; render(); } }
 function selectHardware(id) {
   state.hardware = id;
@@ -596,6 +775,21 @@ class WizardHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 logger.warning("Registration failed: %s", e)
                 self._json({"error": str(e)})
+
+        elif self.path == "/api/wizard/arm/detect":
+            try:
+                from castor.hardware.so_arm101.port_finder import detect_feetech_ports
+
+                ports_found = detect_feetech_ports()
+                result: dict = {}
+                if len(ports_found) >= 2:
+                    result = {"follower": ports_found[0]["port"], "leader": ports_found[1]["port"]}
+                elif len(ports_found) == 1:
+                    result = {"follower": ports_found[0]["port"]}
+                self._json({"ports": result, "raw": ports_found})
+            except Exception as e:
+                logger.warning("Arm port detect failed: %s", e)
+                self._json({"ports": {}, "error": str(e)})
 
         else:
             self._send(404, b"Not found")

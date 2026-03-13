@@ -9,6 +9,7 @@ Spec: https://rcan.dev/spec/section-19/
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import time
 import uuid
@@ -28,7 +29,7 @@ class InvokeRequest:
     skill: str  # Skill/behavior name (e.g. "nav.go_to", "arm.pick")
     params: dict[str, Any] = field(default_factory=dict)
     invoke_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timeout_ms: int = 30_000  # Default 30s timeout
+    timeout_ms: Optional[int] = None  # None = no explicit timeout
     reply_to: Optional[str] = None  # RURI to send INVOKE_RESULT to
 
     def to_message(self, source_ruri: str, target_ruri: str) -> dict[str, Any]:
@@ -38,17 +39,19 @@ class InvokeRequest:
         RCAN specification.  The Python attribute is kept as ``invoke_id`` for
         backward-compatibility with existing call-sites.
         """
+        payload: dict[str, Any] = {
+            "skill": self.skill,
+            "params": self.params,
+            "reply_to": self.reply_to,
+        }
+        if self.timeout_ms is not None:
+            payload["timeout_ms"] = self.timeout_ms
         return {
             "type": MessageType.INVOKE,
             "source_ruri": source_ruri,
             "target_ruri": target_ruri,
             "msg_id": self.invoke_id,  # §19.3 — wire field is msg_id
-            "payload": {
-                "skill": self.skill,
-                "params": self.params,
-                "timeout_ms": self.timeout_ms,
-                "reply_to": self.reply_to,
-            },
+            "payload": payload,
             "timestamp": time.time(),
         }
 
@@ -130,8 +133,12 @@ class SkillRegistry:
     def invoke(self, request: InvokeRequest) -> InvokeResult:
         """Invoke a skill by name with params. Returns InvokeResult.
 
+        If ``request.timeout_ms`` is set, the skill is executed in a thread and
+        cancelled (best-effort) once the deadline elapses, returning a
+        ``"timeout"`` result instead of blocking indefinitely.
+
         Args:
-            request: InvokeRequest with skill name and params.
+            request: InvokeRequest with skill name, params, and optional timeout.
 
         Returns:
             InvokeResult with status and result or error.
@@ -145,16 +152,26 @@ class SkillRegistry:
                 error=f"Skill '{request.skill}' not registered. Available: {self.list_skills()}",
             )
 
+        timeout_s = request.timeout_ms / 1000.0 if request.timeout_ms is not None else None
+
+        # Run the skill in a thread so we can enforce timeout_ms without blocking.
+        # shutdown(wait=False) abandons the thread on timeout rather than waiting for it
+        # to finish (Python threads cannot be forcibly killed, but we stop blocking on them).
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._skills[request.skill], request.params)
         try:
-            result = self._skills[request.skill](request.params)
-            duration_ms = (time.monotonic() - start) * 1000
+            raw = future.result(timeout=timeout_s)
+        except concurrent.futures.TimeoutError:
+            executor.shutdown(wait=False)
+            logger.warning("Skill '%s' timed out after %d ms", request.skill, request.timeout_ms)
             return InvokeResult(
                 invoke_id=request.invoke_id,
-                status="success",
-                result=result if isinstance(result, dict) else {"value": result},
-                duration_ms=duration_ms,
+                status="timeout",
+                error=f"Skill '{request.skill}' timed out after {request.timeout_ms} ms",
+                duration_ms=(time.monotonic() - start) * 1000,
             )
         except TimeoutError:
+            executor.shutdown(wait=False)
             return InvokeResult(
                 invoke_id=request.invoke_id,
                 status="timeout",
@@ -162,6 +179,7 @@ class SkillRegistry:
                 duration_ms=(time.monotonic() - start) * 1000,
             )
         except Exception as exc:  # noqa: BLE001
+            executor.shutdown(wait=False)
             logger.exception("Skill '%s' raised exception", request.skill)
             return InvokeResult(
                 invoke_id=request.invoke_id,
@@ -169,3 +187,12 @@ class SkillRegistry:
                 error=str(exc),
                 duration_ms=(time.monotonic() - start) * 1000,
             )
+        executor.shutdown(wait=False)
+
+        duration_ms = (time.monotonic() - start) * 1000
+        return InvokeResult(
+            invoke_id=request.invoke_id,
+            status="success",
+            result=raw if isinstance(raw, dict) else {"value": raw},
+            duration_ms=duration_ms,
+        )

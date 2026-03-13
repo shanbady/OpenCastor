@@ -16,8 +16,11 @@ Message types follow the RCAN spec::
     ERROR         -- Error response
     AUTHORIZE     -- Out-of-band authorization for HiTL gate (v1.2)
     PENDING_AUTH  -- Notification that HiTL gate is awaiting authorization (v1.2)
-    INVOKE        -- Trigger a named skill/behavior on the robot runtime (v1.3 §19)
-    INVOKE_RESULT -- Result of an INVOKE invocation (v1.3 §19)
+    INVOKE             -- Trigger a named skill/behavior on the robot runtime (v1.3 §19)
+    INVOKE_RESULT      -- Result of an INVOKE invocation (v1.3 §19)
+    INVOKE_CANCEL      -- Cancel an in-flight INVOKE by invoke_id (v1.3 §19)
+    REGISTRY_REGISTER  -- Register robot with RRF (v1.3 §21)
+    REGISTRY_RESOLVE   -- Resolve RRN to RURI/metadata (v1.3 §21)
 
 Each message carries a priority (LOW, NORMAL, HIGH, SAFETY) that determines
 queue ordering.  SAFETY priority messages skip the queue entirely
@@ -48,6 +51,9 @@ class MessageType(IntEnum):
     PENDING_AUTH = 10  # Notification that HiTL gate is awaiting authorization (RCAN v1.2)
     INVOKE = 11  # Trigger a named skill/behavior on the robot runtime (RCAN v1.3 §19)
     INVOKE_RESULT = 12  # Result of an INVOKE invocation (RCAN v1.3 §19)
+    REGISTRY_REGISTER = 13  # §21 — register robot with RRF
+    REGISTRY_RESOLVE = 14  # §21 — resolve RRN to RURI/metadata
+    INVOKE_CANCEL = 15  # Cancel an in-flight INVOKE by invoke_id (RCAN v1.3 §19)
 
 
 class Priority(IntEnum):

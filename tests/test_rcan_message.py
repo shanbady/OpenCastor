@@ -174,14 +174,18 @@ class TestMessageTypes:
 
     def test_all_message_types(self):
         # RCAN v1.2 adds AUTHORIZE (9) and PENDING_AUTH (10)
-        # RCAN v1.3 §19 adds INVOKE (11) and INVOKE_RESULT (12)
-        assert len(MessageType) == 12
+        # RCAN v1.3 §19 adds INVOKE (11), INVOKE_RESULT (12), INVOKE_CANCEL (15)
+        # RCAN v1.3 §21 adds REGISTRY_REGISTER (13), REGISTRY_RESOLVE (14)
+        assert len(MessageType) == 15
         assert MessageType.DISCOVER == 1
         assert MessageType.ERROR == 8
         assert MessageType.AUTHORIZE == 9
         assert MessageType.PENDING_AUTH == 10
         assert MessageType.INVOKE == 11
         assert MessageType.INVOKE_RESULT == 12
+        assert MessageType.REGISTRY_REGISTER == 13
+        assert MessageType.REGISTRY_RESOLVE == 14
+        assert MessageType.INVOKE_CANCEL == 15
 
     def test_all_priorities(self):
         assert len(Priority) == 4

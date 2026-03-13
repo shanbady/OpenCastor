@@ -93,7 +93,12 @@ def validate_before_register(config: dict, strict: bool = False) -> tuple[bool, 
     try:
         from rcan.validate import validate_config  # type: ignore[import]
 
-        valid, errors = validate_config(config)
+        result = validate_config(config)
+        # rcan ≥ 0.3.0 returns a ValidationResult object; older versions returned (bool, list)
+        if hasattr(result, "ok"):
+            valid, errors = result.ok, result.issues
+        else:
+            valid, errors = result  # type: ignore[misc]
         if not valid:
             issues.extend([f"Config error: {e}" for e in errors])
             return False, issues

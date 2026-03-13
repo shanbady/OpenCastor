@@ -75,32 +75,41 @@ _VALID_CATEGORIES = {c.value for c in RRNCategory}
 _SEGMENT_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 
+_NUMERIC_RRN_RE: re.Pattern[str] = re.compile(r"^RRN-\d{8,12}$")
+
+
 def _validate_rrn(rrn: str) -> None:
-    """Validate a Robot Registration Number (RRN) URI format.
+    """Validate a Robot Registration Number (RRN).
 
-    Accepts both the legacy flat format and the new structured format::
+    Accepts the numeric format (issued by registries) and both URI formats::
 
-        rrn://[org]/[id]                             # legacy — 2 path segments
-        rrn://[org]/[category]/[id]                  # 3 segments
-        rrn://[org]/[category]/[model]/[id]          # 4 segments (recommended)
+        RRN-000000000001                             # numeric — issued by RRF / rcan.dev
+        rrn://[org]/[id]                             # URI legacy — 2 path segments
+        rrn://[org]/[category]/[id]                  # URI 3-segment
+        rrn://[org]/[category]/[model]/[id]          # URI 4-segment (recommended)
 
-    The ``[category]`` segment, when present, must be one of:
+    The ``[category]`` segment in URI format, when present, must be one of:
     ``robot``, ``component``, ``sensor``, ``assembly``.
 
     Args:
         rrn: The RRN string to validate.
 
     Raises:
-        ValueError: If the RRN does not conform to the expected format.
+        ValueError: If the RRN does not conform to any accepted format.
     """
     if not isinstance(rrn, str):
         raise ValueError(f"RRN must be a string, got {type(rrn).__name__}: {rrn!r}")
     if not rrn:
         raise ValueError("RRN must not be empty")
+
+    # Numeric format: RRN-000000000001 (8–12 digits, issued by registries)
+    if _NUMERIC_RRN_RE.match(rrn):
+        return
+
     if not rrn.startswith(_RRN_SCHEME):
         raise ValueError(
-            f"RRN must start with {_RRN_SCHEME!r} (Robot Registration Number URI scheme), "
-            f"got: {rrn!r}"
+            f"RRN must be a numeric RRN (e.g. 'RRN-000000000001') or a URI starting with "
+            f"{_RRN_SCHEME!r}, got: {rrn!r}"
         )
     rest = rrn[len(_RRN_SCHEME) :]
     parts = rest.split("/")
@@ -156,6 +165,9 @@ def _parse_rrn(rrn: str) -> dict[str, Optional[str]]:
         # {"org": "example.org", "category": None, "model": None, "id": "rover-1"}
     """
     _validate_rrn(rrn)
+    # Numeric RRN (e.g. RRN-000000000001) — no sub-structure to parse
+    if _NUMERIC_RRN_RE.match(rrn):
+        return {"org": None, "category": None, "model": None, "id": rrn}
     parts = rrn[len(_RRN_SCHEME) :].split("/")
     return {
         "org": parts[0],

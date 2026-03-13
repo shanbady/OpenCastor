@@ -16,6 +16,8 @@ const {
   ogUrl,
   canonical,
 } = Astro.props;
+
+const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
 ---
 
 <!DOCTYPE html>
@@ -36,13 +38,12 @@ const {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
-  <!-- Theme init: runs before render to prevent flash -->
+  <!-- Theme init: must run before render to prevent flash -->
   <script is:inline>
     (function(){
       var t = localStorage.getItem('oc-theme');
-      if (t) {
-        document.documentElement.setAttribute('data-theme', t);
-      } else if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      if (t) { document.documentElement.setAttribute('data-theme', t); }
+      else if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
         document.documentElement.setAttribute('data-theme', 'light');
       }
     })();
@@ -51,34 +52,31 @@ const {
 <body>
 
 <!-- ======== NAV ======== -->
-<nav class="site-nav">
+<nav class="site-nav" id="siteNav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <img src="/assets/icon-64.png" alt="OpenCastor icon" class="nav-logo-img" width="28" height="28" />
-      <span>OpenCastor</span>
+      <img src="/assets/icon-64.png" alt="" class="nav-logo-img" width="26" height="26" aria-hidden="true" />
+      <span class="nav-logo-text">OpenCastor</span>
     </a>
-    <div class="nav-links">
-      <a href="/docs">Docs</a>
-      <a href="/hardware">Hardware</a>
-      <a href="/tutorials">Tutorials</a>
-      <a href="/beginners">Get Started</a>
-      <a href="/hub">Hub</a>
-      <a href="/about">About</a>
-      <a href="/changelog">Changelog</a>
+
+    <div class="nav-links" id="navLinks">
+      <a href="/docs" class={currentPath === '/docs' ? 'nav-active' : ''}>Docs</a>
+      <a href="/hardware" class={currentPath === '/hardware' ? 'nav-active' : ''}>Hardware</a>
+      <a href="/tutorials" class={currentPath === '/tutorials' ? 'nav-active' : ''}>Tutorials</a>
+      <a href="/hub" class={currentPath === '/hub' ? 'nav-active' : ''}>Hub</a>
+      <a href="/about" class={currentPath === '/about' ? 'nav-active' : ''}>About</a>
     </div>
+
     <div class="nav-end">
-      <button class="theme-toggle-btn" id="themeToggle" aria-label="Toggle dark/light mode" title="Toggle theme">
-        <!-- Moon = currently dark mode; click to go light -->
-        <span class="theme-icon-dark">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        </span>
-        <!-- Sun = currently light mode; click to go dark -->
-        <span class="theme-icon-light">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        </span>
+      <button class="nav-theme-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle light/dark mode">
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
-      <a href="https://github.com/craigm26/OpenCastor" class="btn-nav">GitHub <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg></a>
-      <button class="mobile-toggle" aria-label="Menu">
+      <a href="https://github.com/craigm26/OpenCastor" class="btn-nav" target="_blank" rel="noopener">
+        GitHub
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11" aria-hidden="true"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+      </a>
+      <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle menu" aria-expanded="false">
         <span></span><span></span><span></span>
       </button>
     </div>
@@ -88,38 +86,68 @@ const {
 <slot />
 
 <script is:inline>
+(function () {
+  // ── Scroll: pin nav ──
+  var nav = document.getElementById('siteNav');
+  if (nav) {
+    window.addEventListener('scroll', function () {
+      nav.classList.toggle('scrolled', window.scrollY > 30);
+    }, { passive: true });
+  }
+
   // ── Theme toggle ──
-  (function() {
-    var btn = document.getElementById('themeToggle');
-    function syncIcons() {
-      var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-      var darkIcon = document.querySelector('.theme-icon-dark');
-      var lightIcon = document.querySelector('.theme-icon-light');
-      if (darkIcon && lightIcon) {
-        darkIcon.style.display = isDark ? 'flex' : 'none';
-        lightIcon.style.display = isDark ? 'none' : 'flex';
-      }
-    }
-    syncIcons();
-    if (btn) {
-      btn.addEventListener('click', function() {
-        var current = document.documentElement.getAttribute('data-theme');
-        var next = current === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('oc-theme', next);
-        syncIcons();
+  var btn = document.getElementById('themeToggle');
+  function syncTheme() {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    // In dark mode show moon; in light mode show sun
+    document.querySelectorAll('.icon-moon').forEach(function(el){ el.style.display = light ? 'none' : 'block'; });
+    document.querySelectorAll('.icon-sun').forEach(function(el){ el.style.display = light ? 'block' : 'none'; });
+  }
+  syncTheme();
+  if (btn) {
+    btn.addEventListener('click', function () {
+      var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('oc-theme', next);
+      syncTheme();
+    });
+  }
+
+  // ── Mobile menu ──
+  var toggle = document.getElementById('mobileToggle');
+  var links = document.getElementById('navLinks');
+  if (toggle && links) {
+    toggle.addEventListener('click', function () {
+      var open = links.classList.toggle('open');
+      toggle.classList.toggle('active', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.style.overflow = open ? 'hidden' : '';
+    });
+    links.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        links.classList.remove('open');
+        toggle.classList.remove('active');
+        toggle.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
       });
-    }
-    // ── Mobile menu ──
-    var mobileToggle = document.querySelector('.mobile-toggle');
-    var navLinks = document.querySelector('.nav-links');
-    if (mobileToggle && navLinks) {
-      mobileToggle.addEventListener('click', function() {
-        navLinks.classList.toggle('open');
-        mobileToggle.classList.toggle('active');
-      });
-    }
-  })();
+    });
+  }
+
+  // ── Scroll spy: active nav link ──
+  var path = window.location.pathname.replace(/\/$/, '') || '/';
+  document.querySelectorAll('.nav-links a').forEach(function (a) {
+    var href = a.getAttribute('href').replace(/\/$/, '') || '/';
+    if (href === path) a.classList.add('nav-active');
+  });
+
+  // ── Reveal animations ──
+  var ro = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('visible'); ro.unobserve(e.target); }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(function (el) { ro.observe(el); });
+})();
 </script>
 
 </body>

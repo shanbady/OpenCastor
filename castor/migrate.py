@@ -18,7 +18,7 @@ import yaml
 logger = logging.getLogger("OpenCastor.Migrate")
 
 # Current RCAN schema version
-CURRENT_VERSION = "1.3"
+CURRENT_VERSION = "1.4"
 
 # Ordered list of migrations: (from_version, to_version, migration_fn)
 # Each migration_fn takes a config dict and returns the modified config.
@@ -73,7 +73,7 @@ def _migrate_0_9_to_1_0(config):
 
 
 # ---------------------------------------------------------------------------
-# Migration chain: 1.0.0-alpha → 1.1 → 1.2 → 1.3
+# Migration chain: 1.0.0-alpha → 1.1 → 1.2 → 1.3 → 1.4
 # ---------------------------------------------------------------------------
 
 
@@ -109,6 +109,19 @@ def _migrate_1_2_to_1_3(config: dict) -> dict:
     INVOKE_CANCEL MessageType=15).  No structural changes required.
     """
     config["rcan_version"] = "1.3"
+    return config
+
+
+@_register_migration("1.3", "1.4")
+def _migrate_1_3_to_1_4(config: dict) -> dict:
+    """Migrate from 1.3 to 1.4.
+
+    v1.4 adds §22 (Capability Advertisement), extends §17 node manifest with
+    ``hw_uid`` and ``trust_level`` fields, and stabilises all L4 registry
+    tests.  No structural changes are required for existing configs — the new
+    fields are optional.
+    """
+    config["rcan_version"] = "1.4"
     return config
 
 

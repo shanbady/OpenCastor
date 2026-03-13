@@ -9,7 +9,7 @@ import json
 import re
 import urllib.request
 
-SPEC_VERSION = "1.3"
+SPEC_VERSION = "1.4"
 RCAN_DEV_COMPAT_URL = "https://rcan.dev/api/v1/compatibility"  # if available
 RCAN_DEV_STATUS_URL = "https://rcan.dev/public/sdk-status.json"
 

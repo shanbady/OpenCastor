@@ -29,7 +29,7 @@ MINIMAL_CONFIG_TEMPLATE = """\
 # Full schema: https://opencastor.com/docs/config/
 # All fields: config/rcan.schema.json
 
-rcan_version: "1.3"
+rcan_version: "1.4"
 
 metadata:
   robot_name: "{robot_name}"

@@ -879,7 +879,7 @@ def cmd_register(args) -> None:
                     device_id=device_id,
                     metadata={
                         "robot_name": meta.get("robot_name", model),
-                        "rcan_version": "1.3",
+                        "rcan_version": "1.4",
                         "opencastor": True,
                     },
                 )
@@ -1000,7 +1000,7 @@ def cmd_compliance(args) -> None:
     if output_json:
         result = {
             "config": config_path,
-            "rcan_version": "1.3",
+            "rcan_version": "1.4",
             "L1": {"pass": l1_pass, "issues": l1},
             "L2": {"pass": l2_pass, "issues": l2},
             "L3": {"pass": l3_pass, "issues": l3},

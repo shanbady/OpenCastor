@@ -6,6 +6,15 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.12.4] — 2026-03-12
+
+### Added
+- **#587** `MessageType.INVOKE = 11` and `MessageType.INVOKE_RESULT = 12` added to `castor/rcan/message.py` per RCAN v1.3 §19 (Behavior/Skill Invocation Protocol)
+- `castor/rcan/invoke.py`: `InvokeRequest.to_message()` and `InvokeResult.to_message()` now use typed `MessageType` enum values instead of bare string literals
+- Tests in `test_rcan_invoke.py` assert `MessageType.INVOKE == 11` and `MessageType.INVOKE_RESULT == 12`; `test_rcan_message.py` updated to expect 12 MessageType members
+
+---
+
 ## [2026.3.12.3] — 2026-03-12
 
 ### Fixed

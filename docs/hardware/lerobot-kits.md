@@ -28,7 +28,7 @@ The `FeetechDriver` communicates with Feetech SCS/STS serial bus servos over USB
 ### Minimal RCAN config
 
 ```yaml
-rcan_version: "1.1.0"
+rcan_version: "1.3"
 metadata:
   robot_name: so-arm101
 agent:
@@ -65,7 +65,7 @@ The Koch arm uses Dynamixel XL430-W250-T (4×) and XL330-M288-T (2×) servos, co
 ### Minimal RCAN config
 
 ```yaml
-rcan_version: "1.1.0"
+rcan_version: "1.3"
 metadata:
   robot_name: koch-arm
 agent:

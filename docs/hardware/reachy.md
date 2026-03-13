@@ -93,7 +93,7 @@ This installs:
 ## Full Example
 
 ```yaml
-rcan_version: "1.1.0"
+rcan_version: "1.3"
 metadata:
   robot_name: reachy-desk
 agent:

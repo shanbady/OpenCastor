@@ -73,13 +73,43 @@ def _migrate_0_9_to_1_0(config):
 
 
 # ---------------------------------------------------------------------------
-# Future migration placeholder
+# Migration chain: 1.0.0-alpha → 1.1 → 1.2 → 1.3
 # ---------------------------------------------------------------------------
-# @_register_migration("1.0.0-alpha", "1.1.0")
-# def _migrate_1_0_to_1_1(config):
-#     """Migrate from 1.0.0-alpha to 1.1.0."""
-#     config["rcan_version"] = "1.1.0"
-#     return config
+
+
+@_register_migration("1.0.0-alpha", "1.1")
+def _migrate_1_0_alpha_to_1_1(config: dict) -> dict:
+    """Migrate from 1.0.0-alpha to 1.1.
+
+    v1.1 introduced the AI Accountability Layer (§16).  No structural changes
+    are required for existing configs — the new section is optional.
+    """
+    config["rcan_version"] = "1.1"
+    return config
+
+
+@_register_migration("1.1", "1.2")
+def _migrate_1_1_to_1_2(config: dict) -> dict:
+    """Migrate from 1.1 to 1.2.
+
+    v1.2 added §17–§20 (Distributed Registry, Capability Advertisement,
+    INVOKE, Telemetry Fields) and Appendix B (WebSocket Transport).
+    All new sections are optional; no structural changes needed.
+    """
+    config["rcan_version"] = "1.2"
+    return config
+
+
+@_register_migration("1.2", "1.3")
+def _migrate_1_2_to_1_3(config: dict) -> dict:
+    """Migrate from 1.2 to 1.3.
+
+    v1.3 stabilises §18–20 + Appendix B and adds §21 (Registry Integration,
+    REGISTRY_REGISTER MessageType=13, REGISTRY_RESOLVE MessageType=14,
+    INVOKE_CANCEL MessageType=15).  No structural changes required.
+    """
+    config["rcan_version"] = "1.3"
+    return config
 
 
 def get_version(config: dict) -> str:

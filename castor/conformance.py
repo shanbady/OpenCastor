@@ -486,7 +486,7 @@ class ConformanceChecker:
                 category="protocol",
                 status="fail",
                 detail="rcan_version field is missing",
-                fix='Add rcan_version: "1.0.0-alpha" to the top of your config',
+                fix='Add rcan_version: "1.3" to the top of your config',
             )
         # Check it looks like a version string
         version_str = str(version).strip()
@@ -496,7 +496,7 @@ class ConformanceChecker:
                 category="protocol",
                 status="warn",
                 detail=f"rcan_version='{version_str}' does not look like a semver string",
-                fix='Use format: rcan_version: "1.0.0-alpha"',
+                fix='Use format: rcan_version: "1.3"',
             )
         return ConformanceResult(
             check_id=cid,

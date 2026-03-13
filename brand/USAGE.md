@@ -27,16 +27,15 @@
 
 | Name | Hex | Use |
 |---|---|---|
-| Brain Blue (light) | `#00c6ff` | Brain gradient start |
-| Brain Blue (deep) | `#0072ff` | Brain gradient end, neural edges |
-| Connector Orange | `#f09819` | Connector port gradient start |
-| Connector Red | `#ff512f` | Connector port gradient end |
-| Dark Navy | `#004e92` | Stroke, compass ring |
-| App Background | `#0d1117` | Icon dark bg |
+| Midnight Blue (Dark) | `#0a0b1e` | Main dark background, dark mode surfaces |
+| Midnight Blue (Light) | `#f8faff` | Main light background (soft indigo tint) |
+| Accent Blue (Primary) | `#0ea5e9` | Primary action buttons, active states, gradients |
+| Accent Teal (Secondary) | `#2dd4bf` | Secondary gradients, glowing effects |
+| Dark Navy | `#12142b` | Card backgrounds, inputs, borders |
 
 ## Usage Guidelines
 
-- Maintain minimum clear space equal to the height of the "O" in OpenCastor on all sides
-- Do not recolor the brain gradient or connector ports
+- Maintain minimum clear space equal to the high of the "O" in OpenCastor on all sides
+- Do not recolor the minimalist robotic arm/castor geometry; stick to the approved Midnight Theme colors.
 - `logo-white.svg` / `icon-dark.svg` for dark backgrounds; `lockup.svg` / `icon.svg` for light backgrounds
 - Do not stretch or distort — always scale proportionally

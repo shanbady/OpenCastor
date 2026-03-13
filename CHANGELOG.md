@@ -6,6 +6,18 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.13.14] — 2026-03-13
+
+### Fixed
+- `castor/compliance.py`: `SPEC_VERSION` updated `1.3` → `1.4` to match current spec release (#652)
+- `castor/migrate.py`: `CURRENT_VERSION` updated `1.3` → `1.4`; added `1.3 → 1.4` migration step covering §22 Capability Advertisement and §17 extended node manifest fields (#652)
+- `castor/wizard.py`, `castor/setup_service.py`, `castor/web_wizard/server.py`: all config template generators now emit `rcan_version: "1.4"` instead of stale `"1.3"` (#653)
+
+### CI
+- `actions/checkout` upgraded from v4.3.1 to v6.0.2 (`de0fac2e`) across all 5 workflow files — Node.js 24 compatible before June 2026 deprecation deadline (#654)
+
+---
+
 ## [2026.3.13.13] — 2026-03-13
 
 ### Fixed

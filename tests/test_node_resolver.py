@@ -37,10 +37,10 @@ def sample_record():
 
 class TestCache:
     def test_cache_miss(self, resolver):
-        assert resolver._cache_get("RRN-12345678") is None
+        assert resolver._cache_get("RRN-000012345678") is None
 
     def test_cache_set_and_fresh_hit(self, resolver, sample_record):
-        rrn = "RRN-12345678"
+        rrn = "RRN-000012345678"
         resolver._cache_set(rrn, sample_record, "https://rcan.example", ttl=3600)
         result = resolver._cache_get(rrn)
         assert result is not None
@@ -50,7 +50,7 @@ class TestCache:
         assert is_stale is False
 
     def test_cache_stale(self, resolver, sample_record):
-        rrn = "RRN-99999999"
+        rrn = "RRN-000099999999"
         # Write with a cached_at in the past (ttl=1 second, cached 10 seconds ago)
         db = resolver._get_db()
         db.execute(
@@ -65,7 +65,7 @@ class TestCache:
         assert is_stale is True
 
     def test_cache_overwrite(self, resolver, sample_record):
-        rrn = "RRN-11111111"
+        rrn = "RRN-000011111111"
         resolver._cache_set(rrn, sample_record, "https://node-a.example")
         updated = {**sample_record, "attestation": "suspended"}
         resolver._cache_set(rrn, updated, "https://node-b.example")
@@ -200,7 +200,7 @@ class TestIsReachable:
 class TestClose:
     def test_close_idempotent(self, resolver, sample_record):
         # Force DB open
-        resolver._cache_set("RRN-11111111", sample_record, "https://x.example")
+        resolver._cache_set("RRN-000011111111", sample_record, "https://x.example")
         resolver.close()
         resolver.close()  # second call must not raise
         assert resolver._db is None

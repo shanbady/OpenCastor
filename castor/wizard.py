@@ -2038,7 +2038,7 @@ def _offer_rcan_registration(rcan_data: dict, robot_name: str, config_filename: 
     Falls back to showing the manual registration URL with pre-filled
     query parameters. Never blocks wizard completion.
 
-    Returns the RRN string (e.g. ``"RRN-00000042"``) on success, or None.
+    Returns the RRN string (e.g. ``"RRN-000000000042"``) on success, or None.
     """
     print(f"\n{Colors.HEADER}--- RCAN REGISTRY ---{Colors.ENDC}")
     print("  Get a globally unique Robot ID (RRN) for your robot at rcan.dev.")

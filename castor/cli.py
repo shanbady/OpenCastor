@@ -2985,7 +2985,7 @@ def main() -> None:
         "fleet",
         help="Manage robot group policies",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Examples:\n  castor fleet list --config bob.rcan.yaml\n  castor fleet resolve RRN-00000042 --config bob.rcan.yaml\n  castor fleet apply-all --config bob.rcan.yaml",
+        epilog="Examples:\n  castor fleet list --config bob.rcan.yaml\n  castor fleet resolve RRN-000000000042 --config bob.rcan.yaml\n  castor fleet apply-all --config bob.rcan.yaml",
     )
     p_fleet.add_argument(
         "--timeout", default="5", help="mDNS scan duration in seconds (default: 5)"
@@ -3030,11 +3030,11 @@ def main() -> None:
     p_inspect = sub.add_parser(
         "inspect",
         help="Query a robot's live RCAN profile, safety state, and telemetry",
-        epilog="Examples:\n  castor inspect RRN-00000042\n  castor inspect --config bob.rcan.yaml",
+        epilog="Examples:\n  castor inspect RRN-000000000042\n  castor inspect --config bob.rcan.yaml",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_inspect.add_argument(
-        "rrn", nargs="?", default=None, help="Robot Registry Number (e.g. RRN-00000042)"
+        "rrn", nargs="?", default=None, help="Robot Registry Number (e.g. RRN-000000000042)"
     )
     p_inspect.add_argument("--config", default=None, help="Local RCAN config file to inspect")
     p_inspect.add_argument(

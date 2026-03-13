@@ -63,7 +63,7 @@ def test_offer_registration_eof(monkeypatch):
 def test_programmatic_register_success(capsys):
     from castor.wizard import _programmatic_register
 
-    mock_result = {"rrn": "RRN-00000042", "uri": "rcan://registry.rcan.dev/acme/arm/v1/x"}
+    mock_result = {"rrn": "RRN-000000000042", "uri": "rcan://registry.rcan.dev/acme/arm/v1/x"}
 
     async def _fake_register(*a, **kw):
         return mock_result
@@ -84,9 +84,9 @@ def test_programmatic_register_success(capsys):
             robot_name="TestBot",
         )
 
-    assert rrn == "RRN-00000042"
+    assert rrn == "RRN-000000000042"
     out = capsys.readouterr().out
-    assert "RRN-00000042" in out
+    assert "RRN-000000000042" in out
 
 
 def test_programmatic_register_network_error(capsys):
@@ -126,7 +126,7 @@ async def test_registry_client_register_returns_rrn():
     from rcan.registry import RegistryClient
 
     result_data = {
-        "rrn": "RRN-00000099",
+        "rrn": "RRN-000000000099",
         "uri": "rcan://registry.rcan.dev/myco/mybot/v2/unit-001",
         "registered_at": "2026-03-05T00:00:00Z",
         "verification_tier": "community",
@@ -152,7 +152,7 @@ async def test_registry_client_register_returns_rrn():
         metadata={"opencastor": True},
     )
 
-    assert result["rrn"] == "RRN-00000099"
+    assert result["rrn"] == "RRN-000000000099"
     assert result["verification_tier"] == "community"
 
 

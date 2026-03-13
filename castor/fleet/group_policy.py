@@ -8,7 +8,7 @@ Config (robot.rcan.yaml):
     fleet:
       groups:
         production:
-          robots: ["RRN-00000001", "RRN-00000002"]
+          robots: ["RRN-000000000001", "RRN-000000000002"]
           policy:
             agent:
               confidence_gates: [{threshold: 0.92}]
@@ -16,7 +16,7 @@ Config (robot.rcan.yaml):
             rcan_protocol:
               jwt_auth: {enabled: true}
         staging:
-          robots: ["RRN-00000003"]
+          robots: ["RRN-000000000003"]
           policy:
             agent:
               confidence_gates: [{threshold: 0.7}]
@@ -25,8 +25,8 @@ Usage:
     from castor.fleet.group_policy import FleetManager
 
     fm = FleetManager.from_config(config)
-    merged = fm.resolve_config("RRN-00000001", base_config)
-    groups = fm.get_robot_groups("RRN-00000001")
+    merged = fm.resolve_config("RRN-000000000001", base_config)
+    groups = fm.get_robot_groups("RRN-000000000001")
 """
 
 from __future__ import annotations

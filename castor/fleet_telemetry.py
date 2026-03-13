@@ -271,8 +271,8 @@ class FleetAggregator:
         try:
             health_raw = self._get(f"{url}/health", token)
             health = json.loads(health_raw) if isinstance(health_raw, str) else health_raw
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Health probe failed for %s: %s", name, e)
 
         latency_ms = (time.monotonic() - t0) * 1000
         return RobotSnapshot(

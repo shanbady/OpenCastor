@@ -205,6 +205,33 @@ class TestToDict:
 
 
 # ---------------------------------------------------------------------------
+# Health probe warning logging (#602)
+# ---------------------------------------------------------------------------
+
+
+class TestHealthProbeWarning:
+    def test_health_failure_logs_warning(self):
+        """Health-check errors must be logged at WARNING, not silently swallowed."""
+        agg = _make_agg()
+
+        def fake_get(url, *args, **kwargs):
+            if "/health" in url:
+                raise ConnectionError("timeout")
+            return _SAMPLE_METRICS
+
+        with patch.object(agg, "_get", side_effect=fake_get):
+            with patch.object(
+                agg._robots.__class__, "__iter__", side_effect=None
+            ) if False else __import__("contextlib").nullcontext():
+                with patch("castor.fleet_telemetry.logger") as mock_log:
+                    agg.fetch_all(force=True)
+                    # At least one warning must be emitted for health probe failure
+                    assert mock_log.warning.called, "Expected logger.warning for health probe failure"
+                    call_args = mock_log.warning.call_args_list
+                    assert any("Health probe failed" in str(c) for c in call_args)
+
+
+# ---------------------------------------------------------------------------
 # Singleton helpers
 # ---------------------------------------------------------------------------
 

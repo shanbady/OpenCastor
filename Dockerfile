@@ -39,11 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user
 RUN groupadd --system castor && \
-    useradd --system --gid castor --no-create-home --shell /usr/sbin/nologin castor
+    useradd --system --gid castor --create-home --home-dir /home/castor --shell /bin/bash castor
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV HOME=/home/castor
+ENV OPENCASTOR_DIR=/home/castor/.opencastor
 ENV CASTOR_CONFIG=/app/config/robot.rcan.yaml
 
 # Copy installed packages from builder
@@ -53,8 +55,9 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /build/castor ./castor
 COPY --from=builder /build/pyproject.toml ./
 
-# Create config mount point
-RUN mkdir -p /app/config && chown castor:castor /app/config
+# Create config mount point and writable home dirs
+RUN mkdir -p /app/config && chown castor:castor /app/config && \
+    mkdir -p /home/castor/.opencastor && chown -R castor:castor /home/castor
 
 # Copy entrypoint script (needs root for chmod)
 COPY docker/entrypoint.sh /entrypoint.sh

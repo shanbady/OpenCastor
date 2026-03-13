@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure ~/.opencastor exists and is writable (needed for wizard token storage)
+mkdir -p "${HOME:-/home/castor}/.opencastor"
+
 CONFIG_PATH="${CASTOR_CONFIG:-/app/config/robot.rcan.yaml}"
 
 # If no config exists, scaffold a minimal one and print clear instructions

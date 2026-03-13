@@ -21,7 +21,7 @@ Examples::
     rrn://opencastor.com/component/hailo8/module-42
     rrn://luxonis.com/sensor/oak-d/cam-007
     rrn://opencastor.com/assembly/perception-stack/asm-003
-    rrn://example.org/robots/rover-1        # legacy 3-segment; still valid
+    rrn://example.org/rover-1               # legacy 2-segment; category=robot assumed
 
 Spec: https://rcan.dev/spec/section-21/
 """

@@ -263,7 +263,7 @@ class TestRegistryResolveResult:
         result = RegistryResolveResult(
             msg_id="rr-003",
             status="not_found",
-            rrn="rrn://example.org/robots/unknown",
+            rrn="rrn://example.org/robot/unknown",
             error="No robot registered with this RRN",
         )
         raw = result.to_message()
@@ -276,7 +276,7 @@ class TestRegistryResolveResult:
         result = RegistryResolveResult(
             msg_id="rr-004",
             status="auth_failure",
-            rrn="rrn://example.org/robots/secure-bot",
+            rrn="rrn://example.org/robot/secure-bot",
             error="Authentication token rejected",
         )
         raw = result.to_message()

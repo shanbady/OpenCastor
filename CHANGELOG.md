@@ -6,6 +6,18 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.12.3] — 2026-03-12
+
+### Fixed
+- **#585** `config/examples/minimal.rcan.yaml`: added missing required top-level fields (`physics`, `network`) and required `metadata` fields (`robot_uuid`, `author`, `license`); fixed `drivers: []` → `drivers: [{protocol: mock}]` (schema requires `minItems: 1`); replaced invalid `rcan_protocol.enabled` with `rcan_protocol.port`
+- **#585** `validate_rcan.py`: added `"1.3"` to `ACCEPTED_RCAN_VERSIONS` — all 19 RCAN configs now pass validation
+
+### Changed
+- **#586** GitHub Actions upgraded to Node.js 24-compatible versions: `actions/checkout@v4.3.1` and `actions/setup-python@v6.2.0` across `ci.yml`, `install-test.yml`, `deploy-pages.yml`, and `validate_rcan.yml`
+- Applied `ruff format` / `ruff check --fix` to `generate_sbom.py`, `setup_catalog.py`, `wizard.py`
+
+---
+
 ## [2026.3.12.2] — 2026-03-12
 
 ### Fixed

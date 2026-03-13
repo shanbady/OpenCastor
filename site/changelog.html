@@ -140,8 +140,105 @@
     <div class="container">
       <div class="changelog-timeline">
 
+        <!-- v2026.3.13.3 -->
+        <div class="changelog-release current reveal" id="v2026.3.13.3">
+          <div class="release-header">
+            <span class="release-version">v2026.3.13.3</span>
+            <span class="release-date">March 13, 2026</span>
+            <span class="release-badge-current">Current</span>
+          </div>
+          <div class="release-items">
+            <div class="release-item">
+              <div class="release-item-icon">🔗</div>
+              <div class="release-item-body">
+                <h4>RCAN v1.3 Migration Chain</h4>
+                <p><code>castor/migrate.py</code>: implements full migration chain <code>1.0.0-alpha → 1.1 → 1.2 → 1.3</code>; configs can now be fully upgraded to CURRENT_VERSION without hitting an empty path. (#619)</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">🔧</div>
+              <div class="release-item-body">
+                <h4>Config Template &amp; Conformance Fixes</h4>
+                <p><code>castor/setup_service.py</code> default new config template now generates <code>rcan_version: "1.3"</code>. <code>castor/conformance.py</code> fix-hint messages updated to reference v1.3. Hardware doc YAML examples (<code>lerobot-kits.md</code>, <code>reachy.md</code>) updated. (#620 #621)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- v2026.3.13.2 -->
+        <div class="changelog-release reveal" id="v2026.3.13.2">
+          <div class="release-header">
+            <span class="release-version">v2026.3.13.2</span>
+            <span class="release-date">March 13, 2026</span>
+          </div>
+          <div class="release-items">
+            <div class="release-item">
+              <div class="release-item-icon">⚡</div>
+              <div class="release-item-body">
+                <h4>INVOKE_CANCEL + ParallelSkillExecutor</h4>
+                <p><code>InvokeCancelRequest</code> dataclass for INVOKE_CANCEL wire messages (§19.4). <code>InvokeResult.status</code> adds <code>"cancelled"</code> variant. <code>SkillRegistry.cancel(msg_id)</code> with <code>threading.Event</code> tracking for best-effort in-flight cancellation. New <code>ParallelSkillExecutor</code> with fan-out and race semantics. (#609 #610 #616)</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">🧪</div>
+              <div class="release-item-body">
+                <h4>TestInvokeFamily Suite</h4>
+                <p>9 tests covering INVOKE routing, INVOKE_CANCEL (found / not-found / missing-msg-id), no-registry error, INVOKE_RESULT type, and routed counter increment. (#611)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- v2026.3.13.1 -->
+        <div class="changelog-release reveal" id="v2026.3.13.1">
+          <div class="release-header">
+            <span class="release-version">v2026.3.13.1</span>
+            <span class="release-date">March 13, 2026</span>
+          </div>
+          <div class="release-items">
+            <div class="release-item">
+              <div class="release-item-icon">🔌</div>
+              <div class="release-item-body">
+                <h4>INVOKE_CANCEL MessageType + Timeout Enforcement</h4>
+                <p><code>MessageType.INVOKE_CANCEL = 15</code> added to RCAN v1.3 §19 compliance. <code>SkillRegistry.invoke()</code> now executes in a <code>ThreadPoolExecutor</code> and enforces <code>timeout_ms</code> via <code>future.result(timeout=...)</code>, returning <code>status="timeout"</code> immediately on deadline expiry. (#607 #608)</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">🧪</div>
+              <div class="release-item-body">
+                <h4>Concurrent + Timeout Invoke Tests</h4>
+                <p><code>TestTimeoutEnforcement</code> and <code>TestConcurrentInvoke</code> suites added to <code>tests/test_rcan_invoke.py</code>. (#605)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- v2026.3.13.0 -->
+        <div class="changelog-release reveal" id="v2026.3.13.0">
+          <div class="release-header">
+            <span class="release-version">v2026.3.13.0</span>
+            <span class="release-date">March 13, 2026</span>
+          </div>
+          <div class="release-items">
+            <div class="release-item">
+              <div class="release-item-icon">🧠</div>
+              <div class="release-item-body">
+                <h4>Episodic Memory + Rolling Compression</h4>
+                <p>SQLite-backed episodic memory with recall and <code>inject_context()</code>. Shared-context <code>ThreadContextBus</code>. Rolling context compression for 24/7 continuous operation (configurable token budget, summary injection). (#613 #614 #615)</p>
+              </div>
+            </div>
+            <div class="release-item">
+              <div class="release-item-icon">📋</div>
+              <div class="release-item-body">
+                <h4>RCAN v1.3 Spec Alignment</h4>
+                <p><code>SPEC_VERSION</code> updated to <code>"1.3"</code>. <code>rcan_version</code> references in CLI, registry, and conformance output updated. Generated config template bumped to <code>"1.3.0"</code>. Health probe exceptions promoted to <code>WARNING</code> level. (#603 #606)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- v2026.3.12.0 -->
-        <div class="changelog-release current reveal" id="v2026.3.12.0">
+        <div class="changelog-release reveal" id="v2026.3.12.0">
           <div class="release-header">
             <span class="release-version">v2026.3.12.0</span>
             <span class="release-date">March 11, 2026</span>

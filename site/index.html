@@ -55,7 +55,7 @@
 <section class="hero">
   <div class="badge reveal">
     <span class="dot"></span>
-    v2026.3.12.0 Released
+    v2026.3.13.3 Released
   </div>
 
   <h1 class="hero-title reveal reveal-d1">
@@ -402,27 +402,27 @@
 <section class="section" id="release">
   <div class="container">
     <div class="section-header center reveal">
-      <p class="section-label">v2026.3.12.0 — March 12, 2026</p>
+      <p class="section-label">v2026.3.13.3 — March 13, 2026</p>
       <h2 class="section-title">What's New</h2>
     </div>
     <div class="feature-grid">
       <div class="card reveal">
-        <div class="card-icon" style="background: var(--green-light);">🔌</div>
-        <h3>v2026.3.12.0 — Smarter Hardware Detection</h3>
-        <p>Five new detectors: Dynamixel U2D2 (explicit VID/PID), RPLidar vs YDLIDAR differentiation, Raspberry Pi AI Camera + IMX500 NPU, SO-ARM101 bimanual auto-profile, expanded I2C sensor table (7 devices).</p>
-        <a href="changelog.html#v2026.3.12.0">Release notes →</a>
+        <div class="card-icon" style="background: var(--green-light);">🔗</div>
+        <h3>v2026.3.13.3 — RCAN v1.3 Migration + Config Fixes</h3>
+        <p>Full migration chain from <code>1.0.0-alpha → 1.3</code> implemented. Default config template, setup service, and conformance output now consistently emit <code>rcan_version: "1.3"</code>. Hardware doc examples updated.</p>
+        <a href="changelog.html#v2026.3.13.3">Release notes →</a>
       </div>
       <div class="card reveal reveal-d1">
-        <div class="card-icon" style="background: var(--purple-light);">🦾</div>
-        <h3>SO-ARM101 — Plug and Play</h3>
-        <p>Connect your LeRobot SO-ARM101. Run <code>castor scan</code> — it auto-detects Feetech boards, counts arms, and suggests follower / leader / bimanual preset. <code>pip install opencastor[lerobot]</code>.</p>
-        <a href="hardware.html#so-arm101">SO-ARM101 guide →</a>
+        <div class="card-icon" style="background: var(--purple-light);">⚡</div>
+        <h3>v2026.3.13.2 — §19 INVOKE_CANCEL + Parallel Skills</h3>
+        <p><code>INVOKE_CANCEL</code> dataclass and dispatch via <code>MessageRouter.route_invoke_cancel()</code>. New <code>ParallelSkillExecutor</code> with fan-out and race semantics. 9-test <code>TestInvokeFamily</code> suite.</p>
+        <a href="changelog.html#v2026.3.13.2">Release notes →</a>
       </div>
       <div class="card reveal reveal-d2">
-        <div class="card-icon" style="background: var(--cyan-light);">🔧</div>
-        <h3>v2026.3.11.1 — Install DX</h3>
-        <p>castor scan, doctor, upgrade, stop commands. Gateway PID file + port guard. Venv-agnostic systemd. OAK-D SR fix. Upgrade docs.</p>
-        <a href="changelog.html#v2026.3.11.1">Release notes →</a>
+        <div class="card-icon" style="background: var(--cyan-light);">🧠</div>
+        <h3>v2026.3.13.0 / .1 — Episodic Memory + Rolling Compression</h3>
+        <p>SQLite-backed episodic memory with recall and context injection. Rolling context compression for 24/7 continuous operation. Shared-context <code>ThreadContextBus</code>. Timeout enforcement for INVOKE.</p>
+        <a href="changelog.html#v2026.3.13.0">Release notes →</a>
       </div>
       <div class="card reveal reveal-d3">
         <div class="card-icon" style="background: var(--orange-light);">📋</div>

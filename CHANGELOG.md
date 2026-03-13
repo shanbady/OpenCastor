@@ -6,6 +6,16 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.13.6] — 2026-03-13
+
+### Fixed
+- `pyproject.toml`: tighten `rcan` dependency constraint from `>=0.1.0` to `>=0.3.0,<1.0` — aligns with minimum SDK version required for RCAN v1.3 §17/§19 features (`INVOKE_CANCEL`, Ed25519 signing). Affects both core deps and `[rcan]` extras group. (#634)
+
+### Docs
+- `site/changelog.html`: add missing v2026.3.13.4 and v2026.3.13.5 entries. Changelog now current. (#633)
+
+---
+
 ## [2026.3.13.5] — 2026-03-13
 
 ### Fixed

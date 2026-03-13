@@ -6,7 +6,7 @@
 # CAN used for high-load shoulder/elbow; USB-C for lighter wrist joint
 # CAN Bus: 1Mbit/s via socketcan (2-pin JST GH connector)
 
-rcan_version: "1.2.0"
+rcan_version: "1.3"
 
 metadata:
   robot_name: acb-arm-3dof

@@ -6,7 +6,7 @@
 # Transport: USB-C serial (newline-delimited JSON)
 # Hardware: STM32G474RET6, 3-phase BLDC, 12V–30V, up to 40A (XT60)
 
-rcan_version: "1.2.0"
+rcan_version: "1.3"
 
 metadata:
   robot_name: acb-single

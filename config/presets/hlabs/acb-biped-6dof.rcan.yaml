@@ -7,7 +7,7 @@
 # All joints connected via CAN Bus @ 1Mbit/s (socketcan)
 # Symmetric PID tuning; adjust per-joint after physical testing
 
-rcan_version: "1.2.0"
+rcan_version: "1.3"
 
 metadata:
   robot_name: acb-biped-6dof

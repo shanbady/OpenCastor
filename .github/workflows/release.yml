@@ -156,6 +156,20 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag version matches pyproject.toml
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PYPROJECT_VERSION=$(python3 -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); print(d['project']['version'])" 2>/dev/null || \
+                              python3 -c "import re; s=open('pyproject.toml').read(); print(re.search(r'version\s*=\s*\"([^\"]+)\"', s).group(1))")
+          echo "Tag version:       $TAG_VERSION"
+          echo "pyproject version: $PYPROJECT_VERSION"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Version mismatch! Tag is v$TAG_VERSION but pyproject.toml has $PYPROJECT_VERSION."
+            echo "::error::Bump the version in pyproject.toml and castor/__init__.py to $TAG_VERSION, commit, then re-push the tag."
+            exit 1
+          fi
+          echo "✅ Versions match: $TAG_VERSION"
+
       - name: Sync version across all touchpoints
         run: |
           python scripts/sync-version.py ${{ steps.version.outputs.VERSION }}

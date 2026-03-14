@@ -348,21 +348,42 @@ _P66_RULES = [
 # Manifest builder
 # ---------------------------------------------------------------------------
 
-def build_manifest(safety_layer: Any = None) -> dict:
+def build_manifest(safety_layer: Any = None, hardware_caps: Optional[dict] = None) -> dict:
     """Build the Protocol 66 conformance manifest.
 
     Args:
         safety_layer: Optional SafetyLayer instance to include live state
                       (e-stop status, active policies, violation counts).
+        hardware_caps: Optional dict of hardware capability flags from the
+                       robot's rcan-config.json ``hardware_safety`` block.
+                       When provided, HARDWARE_001 and HARDWARE_002 rules are
+                       annotated with status="implemented" if the corresponding
+                       capabilities are declared as present.
 
     Returns:
         Dict suitable for JSON serialisation.
     """
-    total = len(_P66_RULES)
+    # Optionally annotate hardware rules based on declared hardware capabilities
+    _hw_caps = hardware_caps or {}
+    _rules_with_hw = []
+    for rule in _P66_RULES:
+        r = dict(rule)
+        if _hw_caps:
+            if r["rule_id"] == "HARDWARE_001" and _hw_caps.get("hardware_watchdog_mcu"):
+                r = {**r, "status": "implemented", "notes": (
+                    r.get("notes", "") + " [Declared implemented via hardware_safety.hardware_watchdog_mcu]"
+                ).strip()}
+            elif r["rule_id"] == "HARDWARE_002" and _hw_caps.get("physical_estop"):
+                r = {**r, "status": "implemented", "notes": (
+                    r.get("notes", "") + " [Declared implemented via hardware_safety.physical_estop]"
+                ).strip()}
+        _rules_with_hw.append(r)
+
+    total = len(_rules_with_hw)
     by_status: dict[str, int] = {}
     by_category: dict[str, list[str]] = {}
 
-    for rule in _P66_RULES:
+    for rule in _rules_with_hw:
         s = rule["status"]
         by_status[s] = by_status.get(s, 0) + 1
         cat = rule["category"]
@@ -407,7 +428,8 @@ def build_manifest(safety_layer: Any = None) -> dict:
             ),
         },
         "by_category": by_category,
-        "rules": _P66_RULES,
+        "hardware_capabilities": _hw_caps if _hw_caps else None,
+        "rules": _rules_with_hw,
         "invariants": {
             "local_safety_always_wins": {
                 "description": (

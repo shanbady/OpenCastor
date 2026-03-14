@@ -80,3 +80,37 @@ def test_empty_enforcer_always_passes():
     e = enforcer()
     assert e.evaluate("any", 0.0) == GateOutcome.PASS
     assert e.evaluate("any", None) == GateOutcome.PASS
+
+
+# ---------------------------------------------------------------------------
+# Per-scope default gates (RCAN spec §16.2)
+# ---------------------------------------------------------------------------
+from castor.confidence_gate import ConfidenceGateManager  # noqa: E402
+
+
+def test_control_scope_blocks_low_confidence():
+    """CONTROL scope default (min=0.75) must block confidence=0.5."""
+    ConfidenceGateManager.reset_default()
+    outcome = ConfidenceGateManager.check("control", 0.5)
+    assert outcome == GateOutcome.BLOCK
+
+
+def test_status_scope_always_passes():
+    """STATUS scope default (min=0.0) must pass even confidence=0.0."""
+    ConfidenceGateManager.reset_default()
+    outcome = ConfidenceGateManager.check("status", 0.0)
+    assert outcome == GateOutcome.PASS
+
+
+def test_none_confidence_control_blocked():
+    """None confidence for CONTROL scope → blocked (fail-safe)."""
+    ConfidenceGateManager.reset_default()
+    outcome = ConfidenceGateManager.check("control", None)
+    assert outcome == GateOutcome.BLOCK
+
+
+def test_none_confidence_status_passes():
+    """None confidence for STATUS scope → passes (reads are safe)."""
+    ConfidenceGateManager.reset_default()
+    outcome = ConfidenceGateManager.check("status", None)
+    assert outcome == GateOutcome.PASS

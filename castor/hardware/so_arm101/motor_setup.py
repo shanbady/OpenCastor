@@ -5,6 +5,14 @@ Replicates the workflow of `lerobot-setup-motors` without requiring LeRobot.
 Each motor starts with factory default ID=1. We connect one motor at a time,
 set its ID (1..6), then set the target baudrate.
 
+.. note::
+    This module handles **one-time hardware configuration** (motor ID and
+    baudrate assignment).  It does NOT go through the SafetyLayer because
+    setup writes happen before the runtime is active.
+
+    For **runtime** motor position/velocity commands, use:
+    ``castor.hardware.so_arm101.safety_bridge.write_arm_command``
+
 Usage:
     from castor.hardware.so_arm101.motor_setup import setup_motors
     result = setup_motors(port="/dev/ttyACM0", arm="follower")

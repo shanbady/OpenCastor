@@ -370,6 +370,64 @@ class SensorMonitor:
 
 
 # ---------------------------------------------------------------------------
+# SafetyLayer wiring
+# ---------------------------------------------------------------------------
+
+
+def wire_safety_layer(monitor: SensorMonitor, safety_layer) -> None:
+    """Wire SensorMonitor critical events to SafetyLayer.estop().
+
+    When SensorMonitor triggers an automatic e-stop (after N consecutive
+    critical readings), it will call ``safety_layer.estop()`` with the
+    snapshot details included in the reason string.
+
+    This also grants the ``"monitor"`` principal CAP_ESTOP so that the call
+    is accepted by the SafetyLayer permission system.
+
+    Args:
+        monitor:      The SensorMonitor instance to wire.
+        safety_layer: A SafetyLayer (or CastorFS.safety) instance.
+    """
+    # Grant the internal "monitor" principal permission to trigger e-stop.
+    try:
+        from castor.fs.permissions import Cap
+
+        safety_layer.perms.grant_cap("monitor", Cap.ESTOP)
+    except Exception:
+        logger.warning("wire_safety_layer: could not grant CAP_ESTOP to 'monitor' principal")
+
+    # Keep a mutable cell so the estop closure can read the last snapshot.
+    _last_snap: list[Optional[MonitorSnapshot]] = [None]
+
+    def _capture_snap(snap: MonitorSnapshot) -> None:
+        _last_snap[0] = snap
+
+    def _do_estop() -> None:
+        snap = _last_snap[0]
+        if snap:
+            readings_summary = ", ".join(
+                f"{r.name}={r.value:.1f}{r.unit}[{r.status}]"
+                for r in snap.readings
+                if r.status in ("critical", "warning")
+            )
+            reason = (
+                f"SensorMonitor auto-estop after consecutive critical readings: "
+                f"{readings_summary or snap.overall_status}"
+            )
+        else:
+            reason = "SensorMonitor auto-estop: consecutive critical sensor readings"
+        logger.critical("Wiring estop to SafetyLayer: %s", reason)
+        try:
+            safety_layer.estop(principal="monitor", reason=reason)
+        except Exception:
+            logger.exception("wire_safety_layer: estop call failed")
+
+    monitor.on_critical(_capture_snap)
+    monitor.set_estop_callback(_do_estop)
+    logger.info("SensorMonitor wired to SafetyLayer.estop()")
+
+
+# ---------------------------------------------------------------------------
 # ProcFS integration
 # ---------------------------------------------------------------------------
 

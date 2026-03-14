@@ -15,6 +15,8 @@ Config example (RCAN YAML):
           on_fail: block
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, Optional
@@ -46,6 +48,9 @@ class ConfidenceGateEnforcer:
         Args:
             scope:      The gate scope name (e.g. ``"control"``).
             confidence: The confidence value from the Thought, or None.
+                        None is treated as 0.0 for threshold comparison:
+                        - CONTROL (min=0.75): None → 0.0 < 0.75 → BLOCK (fail-safe)
+                        - STATUS  (min=0.0):  None → 0.0 < 0.0 → PASS  (reads are safe)
 
         Returns:
             :class:`GateOutcome`.PASS if no gate is configured or threshold met.
@@ -54,7 +59,9 @@ class ConfidenceGateEnforcer:
         gate = self._gates.get(scope)
         if gate is None:
             return GateOutcome.PASS
-        if confidence is None or confidence < gate.min_confidence:
+        # Treat None as 0.0: CONTROL (0.75 min) blocks; STATUS (0.0 min) passes.
+        effective = confidence if confidence is not None else 0.0
+        if effective < gate.min_confidence:
             if gate.on_fail == "escalate":
                 return GateOutcome.ESCALATE
             elif gate.on_fail == "block":
@@ -62,3 +69,46 @@ class ConfidenceGateEnforcer:
             else:  # allow
                 return GateOutcome.BYPASS
         return GateOutcome.PASS
+
+
+# ---------------------------------------------------------------------------
+# Per-scope defaults (RCAN spec §16.2)
+# ---------------------------------------------------------------------------
+#: Default confidence gates indexed by canonical scope name (lowercase).
+#: CONTROL is strictest — motor commands have real-world consequences.
+_DEFAULT_GATES: dict[str, ConfidenceGate] = {
+    "control": ConfidenceGate(scope="control", min_confidence=0.75, on_fail="block"),
+    "config": ConfidenceGate(scope="config", min_confidence=0.65, on_fail="block"),
+    "training": ConfidenceGate(scope="training", min_confidence=0.60, on_fail="block"),
+    "status": ConfidenceGate(scope="status", min_confidence=0.0, on_fail="block"),
+}
+
+
+class ConfidenceGateManager:
+    """Singleton-style manager that holds the active per-scope gate set.
+
+    Usage::
+
+        outcome = ConfidenceGateManager.default().check("control", 0.5)
+        if outcome == GateOutcome.BLOCK:
+            ...
+    """
+
+    _default: ConfidenceGateEnforcer | None = None
+
+    @classmethod
+    def default(cls) -> ConfidenceGateEnforcer:
+        """Return (or create) the default enforcer with RCAN §16.2 thresholds."""
+        if cls._default is None:
+            cls._default = ConfidenceGateEnforcer(list(_DEFAULT_GATES.values()))
+        return cls._default
+
+    @classmethod
+    def reset_default(cls) -> None:
+        """Reset the cached default enforcer (useful in tests)."""
+        cls._default = None
+
+    @classmethod
+    def check(cls, scope: str, confidence: Optional[float]) -> GateOutcome:
+        """Convenience: evaluate *scope* / *confidence* against the default gates."""
+        return cls.default().evaluate(scope, confidence)

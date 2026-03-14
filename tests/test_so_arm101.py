@@ -324,3 +324,61 @@ def test_grasp_hook_no_hailo(capsys):
     assert rc == 1
     captured = capsys.readouterr()
     assert "Hailo not available" in captured.out
+
+
+# ── safety_bridge ─────────────────────────────────────────────────────────────
+
+class TestSafetyBridge:
+    """Tests for castor.hardware.so_arm101.safety_bridge.write_arm_command."""
+
+    def _make_safety_layer(self):
+        """Create a minimal SafetyLayer suitable for testing."""
+        from castor.fs.namespace import Namespace
+        from castor.fs.permissions import PermissionTable
+        from castor.fs.safety import SafetyLayer
+
+        ns = Namespace()
+        perms = PermissionTable()
+        sl = SafetyLayer(ns, perms, limits={"motor_rate_hz": 100.0})
+        # Ensure /dev/arm exists so writes don't fail on missing parent
+        try:
+            ns.mkdir("/dev/arm")
+        except Exception:
+            pass
+        return sl
+
+    def test_safety_bridge_calls_safety_layer(self):
+        """write_arm_command delegates to safety_layer.write() with /dev/arm/<joint>."""
+        from unittest.mock import MagicMock
+        from castor.hardware.so_arm101.safety_bridge import write_arm_command
+
+        mock_sl = MagicMock()
+        mock_sl.is_estopped = False
+        mock_sl.write.return_value = True
+
+        result = write_arm_command(mock_sl, "shoulder_pan", position=0.5, velocity=0.1)
+
+        assert result is True
+        mock_sl.write.assert_called_once()
+        call_args = mock_sl.write.call_args
+        path = call_args[0][0] if call_args[0] else call_args[1].get("path")
+        assert path == "/dev/arm/shoulder_pan"
+
+    def test_safety_bridge_blocked_by_estop(self):
+        """write_arm_command returns False when SafetyLayer is estopped."""
+        from castor.hardware.so_arm101.safety_bridge import write_arm_command
+
+        sl = self._make_safety_layer()
+        sl.estop(principal="root")
+        assert sl.is_estopped
+
+        result = write_arm_command(sl, "shoulder_pan", position=0.5)
+        assert result is False
+
+    def test_safety_bridge_no_safety_layer(self):
+        """write_arm_command with safety_layer=None must not crash (legacy path)."""
+        from castor.hardware.so_arm101.safety_bridge import write_arm_command
+
+        # Should return True and not raise
+        result = write_arm_command(None, "elbow_flex", position=1.0)
+        assert result is True

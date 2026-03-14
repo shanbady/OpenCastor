@@ -15,6 +15,8 @@ The SafetyLayer wraps a :class:`~castor.fs.namespace.Namespace` and a
 read/write/ls API but with enforcement.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import threading
@@ -108,6 +110,9 @@ class SafetyLayer:
         # Emergency stop flag
         self._estop = False
 
+        # Per-principal session-expiry stop flags (separate from full estop)
+        self._session_expired_stops: set[str] = set()
+
         # Last write denial reason (set on every return False in write())
         self._last_write_denial: str = ""
 
@@ -185,7 +190,14 @@ class SafetyLayer:
                     principal, path, "lockout", f"Locked out after {count} violations"
                 )
 
-    def _audit_action(self, principal: str, path: str, operation: str, data: Any = None):
+    def _audit_action(
+        self,
+        principal: str,
+        path: str,
+        operation: str,
+        data: Any = None,
+        source: str = "local",
+    ):
         """Append to /var/log/actions."""
         if not POLICIES["audit_writes"]["enabled"]:
             return
@@ -194,6 +206,7 @@ class SafetyLayer:
             "who": principal,
             "op": operation,
             "path": path,
+            "source": source,
         }
         if data is not None:
             entry["data"] = repr(data)[:200]
@@ -269,6 +282,8 @@ class SafetyLayer:
         """Check if a principal's session has expired (Safety Invariant 5).
 
         Returns True if the session is still valid.
+        When a CONTROL-scoped principal's session expires, triggers a
+        session-expiry stop (RCAN spec §6).
         """
         try:
             from castor.rcan.rbac import RCANPrincipal
@@ -288,15 +303,49 @@ class SafetyLayer:
                     self._audit_safety(
                         principal, "/", "session_timeout", f"Session expired after {timeout}s"
                     )
+                    # Trigger controlled stop for CONTROL-capable principals (RCAN §6)
+                    try:
+                        from castor.rcan.rbac import Scope
+
+                        if p.scopes & Scope.CONTROL:
+                            self._trigger_session_expiry_stop(principal)
+                    except Exception:
+                        pass
                     return False
             return True
         except Exception:
             return True  # Graceful fallback
 
     def reset_session(self, principal: str):
-        """Reset the session timer for a principal (e.g. after re-auth)."""
+        """Reset the session timer for a principal (e.g. after re-auth).
+
+        Also clears any session-expiry stop so the re-authenticated principal
+        can issue CONTROL commands again.
+        """
         with self._lock:
             self._session_starts[principal] = time.time()
+            self._session_expired_stops.discard(principal)
+
+    def _trigger_session_expiry_stop(self, principal: str) -> None:
+        """Flag a session-expiry stop for *principal* (RCAN spec §6).
+
+        Less severe than estop(): self._estop is NOT set, so a re-authenticated
+        principal can immediately resume.  The flag is cleared by reset_session().
+        """
+        self._session_expired_stops.add(principal)
+        try:
+            self.ns.write("/proc/status", "session_stop")
+        except Exception:
+            pass
+        self._audit_safety(
+            principal,
+            "/",
+            "session_expiry_stop",
+            f"Session expired for CONTROL principal '{principal}' — motor commands blocked until re-auth",
+        )
+        logger.warning(
+            "SESSION EXPIRY STOP for %s — motor commands blocked until re-auth", principal
+        )
 
     def _check_motor_rate(self) -> bool:
         """Enforce motor command rate limiting."""
@@ -365,7 +414,12 @@ class SafetyLayer:
         return self.ns.read(path)
 
     def write(
-        self, path: str, data: Any, principal: str = "root", meta: Optional[dict] = None
+        self,
+        path: str,
+        data: Any,
+        principal: str = "root",
+        meta: Optional[dict] = None,
+        source: str = "local",
     ) -> bool:
         """Write to a file node, checking permissions and safety."""
         if self._estop and path.startswith("/dev/motor"):
@@ -420,6 +474,36 @@ class SafetyLayer:
                 )
                 self._last_write_denial = "Invalid or expired capability lease."
                 return False
+
+        # Confidence gate check for AI-generated /dev/ writes (RCAN spec §16.2)
+        if path.startswith("/dev/") and meta and "confidence" in meta:
+            try:
+                from castor.confidence_gate import ConfidenceGateManager, GateOutcome
+
+                scope_name = self._required_scope_for_path(path).name.lower()
+                gate_outcome = ConfidenceGateManager.check(scope_name, meta.get("confidence"))
+                if gate_outcome == GateOutcome.BLOCK:
+                    confidence_val = meta.get("confidence")
+                    self._audit_safety(
+                        principal,
+                        path,
+                        "confidence_gate_block",
+                        f"confidence={confidence_val} below threshold for scope={scope_name}",
+                    )
+                    self._last_write_denial = (
+                        f"Confidence gate blocked: confidence={confidence_val} "
+                        f"is below the required threshold for scope={scope_name}."
+                    )
+                    return False
+                elif gate_outcome == GateOutcome.ESCALATE:
+                    self._audit_safety(
+                        principal,
+                        path,
+                        "confidence_gate_escalate",
+                        f"confidence={meta.get('confidence')} escalated for scope={scope_name}",
+                    )
+            except Exception as exc:
+                logger.error("Confidence gate check failed (allowing write): %s", exc)
 
         # Anti-subversion scan for AI-generated /dev/ writes
         if path.startswith("/dev/"):
@@ -494,7 +578,7 @@ class SafetyLayer:
                 return False
             data = self._clamp_motor_data(data)
 
-        self._audit_action(principal, path, "w", data)
+        self._audit_action(principal, path, "w", data, source=source)
         self._audit_access(principal, path, "w", True)
         return self.ns.write(path, data, meta=meta)
 
@@ -600,20 +684,14 @@ class SafetyLayer:
 
         This exists to make it architecturally explicit that remote commands
         are NOT trusted more than local ones. All SafetyLayer checks run
-        identically; the only difference is the 'source=rcan' audit tag.
+        identically; the only difference is the ``source='rcan'`` audit tag.
 
         RCAN §6 invariant: local safety always wins — no remote command can
         bypass bounds checking, e-stop state, or protocol rules.
         """
-        # Re-use the standard write() path — every check runs
-        result = self.write(path, data, principal=principal, meta=meta)
-        if result:
-            # Re-tag the last audit entry with source=rcan
-            log = self.ns.read("/var/log/actions")
-            if isinstance(log, list) and log:
-                log[-1]["source"] = "rcan"
-                self.ns.write("/var/log/actions", log)
-        else:
+        # Re-use the standard write() path with source="rcan" — every check runs
+        result = self.write(path, data, principal=principal, meta=meta, source="rcan")
+        if not result:
             self._audit_safety(
                 principal,
                 path,

@@ -1689,3 +1689,27 @@ class TestSetupV2Endpoints:
         payload = resp.json()
         assert "total_runs" in payload
         assert "first_run_success_rate" in payload
+
+
+# =====================================================================
+# GET /api/safety/manifest
+# =====================================================================
+class TestSafetyManifestEndpoint:
+    """Tests for the Protocol 66 conformance manifest endpoint."""
+
+    def test_safety_manifest_endpoint(self, client):
+        """GET /api/safety/manifest must return 200 with expected top-level keys."""
+        resp = client.get("/api/safety/manifest")
+        assert resp.status_code == 200
+        body = resp.json()
+        for key in ("manifest_version", "summary", "rules", "invariants"):
+            assert key in body, f"Expected key '{key}' in manifest response"
+
+    def test_safety_manifest_has_conformance_pct(self, client):
+        """summary.conformance_pct must be a float between 0 and 100."""
+        resp = client.get("/api/safety/manifest")
+        assert resp.status_code == 200
+        body = resp.json()
+        pct = body["summary"]["conformance_pct"]
+        assert isinstance(pct, (int, float)), "conformance_pct must be numeric"
+        assert 0 <= pct <= 100, f"conformance_pct must be 0-100, got {pct}"

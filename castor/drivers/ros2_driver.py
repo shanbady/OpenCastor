@@ -127,7 +127,7 @@ class ROS2Driver(DriverBase):
     # DriverBase interface
     # ------------------------------------------------------------------
 
-    def move(self, linear: float = 0.0, angular: float = 0.0) -> None:
+    def _move(self, linear: float = 0.0, angular: float = 0.0) -> None:
         """Publish a Twist message to /cmd_vel.
 
         Args:

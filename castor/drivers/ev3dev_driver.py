@@ -226,7 +226,7 @@ class EV3DevDriver(DriverBase):
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.strip() or "remote drive command failed")
 
-    def move(self, linear: float = 0.0, angular: float = 0.0) -> None:
+    def _move(self, linear: float = 0.0, angular: float = 0.0) -> None:
         linear, angular = self._coerce_motion(linear, angular)
         left = self._clamp(linear - angular, -1.0, 1.0) * self._left_mult
         right = self._clamp(linear + angular, -1.0, 1.0) * self._right_mult

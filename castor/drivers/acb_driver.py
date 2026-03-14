@@ -404,7 +404,7 @@ class AcbDriver(DriverBase):
 
     # ── DriverBase interface ──────────────────────────────────────────────────
 
-    def move(self, linear: float = 0.0, angular: float = 0.0) -> None:
+    def _move(self, linear: float = 0.0, angular: float = 0.0) -> None:
         """Map linear speed to velocity setpoint.
 
         For a single-axis ACB joint, ``linear`` scales to the velocity setpoint;

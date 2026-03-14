@@ -382,3 +382,81 @@ class TestSafetyBridge:
         # Should return True and not raise
         result = write_arm_command(None, "elbow_flex", position=1.0)
         assert result is True
+
+
+# ── vision.py (camera ROI) ────────────────────────────────────────────────────
+
+def test_get_camera_frame_roi_no_camera():
+    """Returns None gracefully when cv2 is unavailable."""
+    import sys
+    from unittest.mock import patch
+
+    # Hide cv2 so the import fails
+    with patch.dict(sys.modules, {"cv2": None}):
+        from castor.hardware.so_arm101.vision import get_camera_frame_roi
+
+        result = get_camera_frame_roi("/dev/video_nonexistent")
+    assert result is None
+
+
+def test_get_camera_frame_roi_returns_none_on_bad_device():
+    """Returns None when cv2 is present but the device cannot be opened."""
+    try:
+        import cv2  # noqa: F401
+    except ImportError:
+        import pytest
+        pytest.skip("cv2 not installed")
+
+    from unittest.mock import patch, MagicMock
+    from castor.hardware.so_arm101.vision import get_camera_frame_roi
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = False
+
+    with patch("cv2.VideoCapture", return_value=mock_cap):
+        result = get_camera_frame_roi("/dev/video99")
+
+    assert result is None
+
+
+# ── rcan_bridge.py ────────────────────────────────────────────────────────────
+
+def test_send_arm_pose_rcan_no_config():
+    """Returns True (graceful) even without rcan.yaml and without yaml installed."""
+    import sys
+    from unittest.mock import patch
+    from castor.hardware.so_arm101.rcan_bridge import send_arm_pose_rcan
+
+    # Ensure yaml is importable (it usually is); rcan config file won't exist
+    result = send_arm_pose_rcan(
+        {"shoulder_pan": 0.0},
+        rcan_config_path="/nonexistent/path/bob.rcan.yaml",
+    )
+    assert result is True
+
+
+def test_send_arm_pose_rcan_builds_message():
+    """Verify the built message has message_type=1 and action='arm_pose'."""
+    import json
+    from unittest.mock import patch, MagicMock
+    from castor.hardware.so_arm101.rcan_bridge import send_arm_pose_rcan
+
+    captured_msgs = []
+
+    # Patch logger.info on the already-imported module to capture log output
+    with patch(
+        "castor.hardware.so_arm101.rcan_bridge.logger"
+    ) as mock_logger:
+        mock_logger.info.side_effect = lambda fmt, msg: captured_msgs.append(msg)
+
+        result = send_arm_pose_rcan(
+            {"shoulder_pan": 0.5, "elbow_flex": 1.0},
+            rcan_config_path="/nonexistent/bob.rcan.yaml",  # no file → default ruri
+        )
+
+    assert result is True
+    assert len(captured_msgs) >= 1
+    raw = captured_msgs[0]
+    parsed = json.loads(raw) if isinstance(raw, str) else raw
+    assert parsed.get("message_type") == 1
+    assert parsed.get("action") == "arm_pose"

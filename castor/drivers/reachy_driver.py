@@ -105,7 +105,7 @@ class ReachyDriver(DriverBase):
     # DriverBase interface
     # ------------------------------------------------------------------
 
-    def move(self, linear: float = 0.0, angular: float = 0.0) -> None:
+    def _move(self, linear: float = 0.0, angular: float = 0.0) -> None:
         """Send a velocity command.
 
         For Reachy 2 with a mobile base, maps *linear* and *angular* to base

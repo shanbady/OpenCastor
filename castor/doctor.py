@@ -248,7 +248,40 @@ def run_doctor(full: bool = False) -> DoctorReport:
     return report
 
 
-def print_report(report: DoctorReport) -> None:
+def print_report(report) -> None:
+    """Print a doctor report.
+
+    Accepts either a :class:`DoctorReport` instance or a ``list`` of
+    ``(ok_or_status, name, detail)`` tuples as returned by
+    :func:`run_all_checks` — both forms are normalised internally so that
+    callers don't have to convert manually.
+    """
+    # ── Normalise list-of-tuples → DoctorReport ────────────────────────────
+    if isinstance(report, list):
+        _dr = DoctorReport()
+        for _r in report:
+            if not (isinstance(_r, (list, tuple)) and len(_r) >= 3):
+                continue
+            _ok_or_status, _name, _detail = _r[0], _r[1], _r[2]
+            if isinstance(_ok_or_status, bool):
+                _status = "ok" if _ok_or_status else "fail"
+            else:
+                _s = str(_ok_or_status).upper()
+                if _s in ("PASS", "OK"):
+                    _status = "ok"
+                elif _s in ("WARN", "WARNING"):
+                    _status = "warn"
+                elif _s in ("FAIL", "ERROR"):
+                    _status = "fail"
+                elif _s in ("SKIP",):
+                    _status = "skip"
+                else:
+                    _status = "warn"
+            _dr.checks.append(
+                CheckResult(name=str(_name), status=_status, detail=str(_detail))
+            )
+        report = _dr
+    # ── Render ──────────────────────────────────────────────────────────────
     STATUS_ICON = {"ok": "✅", "warn": "⚠️ ", "fail": "❌", "skip": "⏭️ "}
     STATUS_COLOR = {"ok": "green", "warn": "yellow", "fail": "red", "skip": "dim"}
 

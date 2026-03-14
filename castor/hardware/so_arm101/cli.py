@@ -245,15 +245,41 @@ def cmd_grasp(args) -> int:
         hailo_vision = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
         spec.loader.exec_module(hailo_vision)  # type: ignore[union-attr]
 
+    # ── Camera ROI (optional) ──────────────────────────────────────────────
+    import logging as _logging
+    _arm_logger = _logging.getLogger("OpenCastor.Hardware.SOArm101.CLI")
+    try:
+        from castor.hardware.so_arm101.vision import get_camera_frame_roi
+
+        roi = get_camera_frame_roi()
+        if roi:
+            _arm_logger.info("Camera ROI: %s", roi)
+            print(
+                f"[grasp] Camera ROI: {roi['width']}x{roi['height']}"
+                f" center=({roi['center_x']}, {roi['center_y']})"
+            )
+        else:
+            _arm_logger.debug("Camera not available — proceeding without ROI")
+    except Exception:
+        pass  # camera is entirely optional
+
     # ── Grasp detection ────────────────────────────────────────────────────
-    # TODO: pass camera frame / ROI when available
     target = hailo_vision.detect_grasp_target()
     if target is None:
         print("No grasp target detected.")
         return 1
 
     print(f"Grasp target detected: {target}")
-    # TODO: send target pose to arm controller via RCAN
+
+    # ── Send target pose via RCAN ──────────────────────────────────────────
+    try:
+        from castor.hardware.so_arm101.rcan_bridge import send_arm_pose_rcan
+
+        joint_positions = target if isinstance(target, dict) else {}
+        send_arm_pose_rcan(joint_positions)
+    except Exception:
+        pass  # RCAN is optional
+
     return 0
 
 

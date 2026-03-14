@@ -156,3 +156,20 @@ def test_run_doctor_full_returns_more_checks():
 def test_print_report_no_crash():
     report = run_doctor()
     print_report(report)  # should not raise
+
+
+def test_doctor_run_does_not_crash():
+    """Regression test for #672 — run_doctor({}) must not raise AttributeError."""
+    # run_doctor accepts a bool; passing {} is falsy and should work silently.
+    result = run_doctor({})  # type: ignore[arg-type]
+    assert isinstance(result, DoctorReport), "run_doctor must return a DoctorReport"
+    assert result.checks, "DoctorReport should contain at least one check"
+
+
+def test_print_report_accepts_list_of_tuples():
+    """Regression test for #672 — print_report must not crash on list input from run_all_checks."""
+    from castor.doctor import run_all_checks
+
+    results = run_all_checks()
+    # Should NOT raise AttributeError: 'list' object has no attribute 'checks'
+    print_report(results)

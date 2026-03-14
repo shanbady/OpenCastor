@@ -318,33 +318,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     </div>
   </footer>
 
-  <script>
-    const toggle = document.querySelector('.mobile-toggle');
-    const navLinks = document.querySelector('.nav-links');
-    toggle.addEventListener('click', function () { navLinks.classList.toggle('open'); toggle.classList.toggle('active'); document.body.style.overflow = navLinks.classList.contains('open') ? 'hidden' : ''; });
-    document.querySelectorAll('.nav-links a').forEach(a => { a.addEventListener('click', () => { navLinks.classList.remove('open'); toggle.classList.remove('active'); document.body.style.overflow = ''; }); });
-    const nav = document.querySelector('.site-nav');
-    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 20), { passive: true });
-    nav.classList.toggle('scrolled', window.scrollY > 20);
-    const ro = new IntersectionObserver((entries) => { entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); ro.unobserve(e.target); } }); }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => ro.observe(el));
-    document.querySelectorAll('a[href^="#"]').forEach(a => {
-      a.addEventListener('click', e => {
-        e.preventDefault();
-        const t = document.querySelector(a.getAttribute('href'));
-        if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    function copyInstallBeginner() {
-      const cmd = document.getElementById('install-cmd-beginner').textContent;
-      navigator.clipboard.writeText(cmd).then(() => {
-        const btn = event.target;
-        const orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = orig, 2000);
-      });
-    }
-  </script>
+  
 <script>
   // Theme pill — clicking ☀ or 🌙 sets that theme directly; clicking pill body toggles
   (function() {

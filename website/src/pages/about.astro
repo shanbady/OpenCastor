@@ -267,17 +267,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     </div>
   </footer>
 
-  <script>
-    const toggle = document.querySelector('.mobile-toggle');
-    const navLinks = document.querySelector('.nav-links');
-    toggle.addEventListener('click', function () { navLinks.classList.toggle('open'); toggle.classList.toggle('active'); document.body.style.overflow = navLinks.classList.contains('open') ? 'hidden' : ''; });
-    document.querySelectorAll('.nav-links a').forEach(a => { a.addEventListener('click', () => { navLinks.classList.remove('open'); toggle.classList.remove('active'); document.body.style.overflow = ''; }); });
-    const nav = document.querySelector('.site-nav');
-    window.addEventListener('scroll', () => nav.classList.toggle('scrolled', window.scrollY > 20), { passive: true });
-    nav.classList.toggle('scrolled', window.scrollY > 20);
-    const ro = new IntersectionObserver((entries) => { entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); ro.unobserve(e.target); } }); }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => ro.observe(el));
-  </script>
+  
 <script>
   // Theme pill — clicking ☀ or 🌙 sets that theme directly; clicking pill body toggles
   (function() {

@@ -94,9 +94,7 @@ def interactive_port_identify(
     removed = before - after_unplug
 
     if not removed:
-        print_fn(
-            "  ⚠  No port disappeared. Check cable connections and try again."
-        )
+        print_fn("  ⚠  No port disappeared. Check cable connections and try again.")
         return None
 
     port = sorted(removed)[0]
@@ -147,7 +145,7 @@ def auto_assign_ports(print_fn=print, input_fn=input) -> dict[str, str]:
     if lerobot_available():
         print_fn("\n[SO-ARM101] LeRobot detected — using lerobot-find-port for port identification")
         result = {}
-        for arm in (["follower", "leader"] if True else ["follower"]):
+        for arm in ["follower", "leader"] if True else ["follower"]:
             ans = input_fn(f"\n  Identify {arm} arm port? [Y/n]: ").strip().lower()
             if ans != "n":
                 port = lerobot_find_port(label=arm, print_fn=print_fn, input_fn=input_fn)
@@ -163,7 +161,7 @@ def auto_assign_ports(print_fn=print, input_fn=input) -> dict[str, str]:
     if len(ports) >= 2:
         print_fn("\n[SO-ARM101] Found 2 controller boards:")
         for i, p in enumerate(ports[:2]):
-            print_fn(f"  [{i+1}] {p['port']}  ({p['description']})")
+            print_fn(f"  [{i + 1}] {p['port']}  ({p['description']})")
         ans = input_fn("\n  Which port is the FOLLOWER arm? [1/2]: ").strip()
         if ans == "2":
             follower, leader = ports[1]["port"], ports[0]["port"]
@@ -178,7 +176,9 @@ def auto_assign_ports(print_fn=print, input_fn=input) -> dict[str, str]:
         return {key: ports[0]["port"]}
 
     # Nothing found — fall back to interactive
-    print_fn("\n[SO-ARM101] No Feetech boards auto-detected. Starting interactive port identification...")
+    print_fn(
+        "\n[SO-ARM101] No Feetech boards auto-detected. Starting interactive port identification..."
+    )
     result = {}
     for arm in ("follower", "leader"):
         ans = input_fn(f"\n  Set up {arm} arm port? [y/N]: ").strip().lower()

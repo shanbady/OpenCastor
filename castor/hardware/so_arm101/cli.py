@@ -145,6 +145,7 @@ def cmd_calibrate(args) -> None:
     port = args.port
     if not port:
         from castor.hardware.so_arm101.port_finder import detect_feetech_ports
+
         ports = detect_feetech_ports()
         port = ports[0]["port"] if ports else "/dev/ttyACM0"
 
@@ -204,6 +205,7 @@ def cmd_record(args) -> int:
         cmd.append("--dataset.push_to_hub=true")
 
     import subprocess
+
     result = subprocess.run(bridge._prefix_cmd(cmd))
     return result.returncode
 
@@ -226,15 +228,12 @@ def cmd_grasp(args) -> int:
     hailo_spec = importlib.util.find_spec("castor.hailo_vision")
 
     # Also accept a local file next to this package (development installs)
-    _local_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "hailo_vision.py"
-    )
+    _local_path = os.path.join(os.path.dirname(__file__), "..", "..", "hailo_vision.py")
     _local_path = os.path.normpath(_local_path)
 
     if hailo_spec is None and not os.path.exists(_local_path):
         print(
-            "Hailo not available. "
-            "Ensure opencastor[hailo] is installed and Hailo NPU is connected."
+            "Hailo not available. Ensure opencastor[hailo] is installed and Hailo NPU is connected."
         )
         return 1
 
@@ -285,7 +284,9 @@ def build_parser(subparsers=None) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(prog="castor arm", description="SO-ARM101 setup tools")
         subparsers = parser.add_subparsers(dest="arm_cmd")
     else:
-        parser = subparsers.add_parser("arm", help="SO-ARM101 assembly, port detection, motor setup")
+        parser = subparsers.add_parser(
+            "arm", help="SO-ARM101 assembly, port detection, motor setup"
+        )
         subparsers = parser.add_subparsers(dest="arm_cmd")
 
     # assemble
@@ -301,7 +302,9 @@ def build_parser(subparsers=None) -> argparse.ArgumentParser:
     p_setup = subparsers.add_parser("setup", help="Configure motor IDs and baudrates")
     p_setup.add_argument("--arm", choices=["follower", "leader", "bimanual"], default="follower")
     p_setup.add_argument("--port", help="Serial port (auto-detected if not specified)")
-    p_setup.add_argument("--dry-run", action="store_true", help="Simulate without writing to motors")
+    p_setup.add_argument(
+        "--dry-run", action="store_true", help="Simulate without writing to motors"
+    )
     p_setup.set_defaults(func=cmd_setup)
 
     # verify

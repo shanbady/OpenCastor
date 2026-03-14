@@ -14,28 +14,28 @@ from dataclasses import dataclass, field
 
 # Follower arm: all 6 use STS3215 with 1/345 gearing
 FOLLOWER_MOTORS = [
-    {"id": 1, "joint": "shoulder_pan",   "gear": "1/345", "model": "STS3215"},
-    {"id": 2, "joint": "shoulder_lift",  "gear": "1/345", "model": "STS3215"},
-    {"id": 3, "joint": "elbow_flex",     "gear": "1/345", "model": "STS3215"},
-    {"id": 4, "joint": "wrist_flex",     "gear": "1/345", "model": "STS3215"},
-    {"id": 5, "joint": "wrist_roll",     "gear": "1/345", "model": "STS3215"},
-    {"id": 6, "joint": "gripper",        "gear": "1/345", "model": "STS3215"},
+    {"id": 1, "joint": "shoulder_pan", "gear": "1/345", "model": "STS3215"},
+    {"id": 2, "joint": "shoulder_lift", "gear": "1/345", "model": "STS3215"},
+    {"id": 3, "joint": "elbow_flex", "gear": "1/345", "model": "STS3215"},
+    {"id": 4, "joint": "wrist_flex", "gear": "1/345", "model": "STS3215"},
+    {"id": 5, "joint": "wrist_roll", "gear": "1/345", "model": "STS3215"},
+    {"id": 6, "joint": "gripper", "gear": "1/345", "model": "STS3215"},
 ]
 
 # Leader arm: mixed gear ratios per joint for backdrivability
 LEADER_MOTORS = [
-    {"id": 1, "joint": "shoulder_pan",   "gear": "1/191", "model": "STS3215"},
-    {"id": 2, "joint": "shoulder_lift",  "gear": "1/345", "model": "STS3215"},
-    {"id": 3, "joint": "elbow_flex",     "gear": "1/191", "model": "STS3215"},
-    {"id": 4, "joint": "wrist_flex",     "gear": "1/147", "model": "STS3215"},
-    {"id": 5, "joint": "wrist_roll",     "gear": "1/147", "model": "STS3215"},
-    {"id": 6, "joint": "gripper",        "gear": "1/147", "model": "STS3215"},
+    {"id": 1, "joint": "shoulder_pan", "gear": "1/191", "model": "STS3215"},
+    {"id": 2, "joint": "shoulder_lift", "gear": "1/345", "model": "STS3215"},
+    {"id": 3, "joint": "elbow_flex", "gear": "1/191", "model": "STS3215"},
+    {"id": 4, "joint": "wrist_flex", "gear": "1/147", "model": "STS3215"},
+    {"id": 5, "joint": "wrist_roll", "gear": "1/147", "model": "STS3215"},
+    {"id": 6, "joint": "gripper", "gear": "1/147", "model": "STS3215"},
 ]
 
 JOINT_NAMES = [m["joint"] for m in FOLLOWER_MOTORS]
 
 DEFAULT_BAUD = 1_000_000
-DEFAULT_MOTOR_ID = 1   # factory default for all new STS3215
+DEFAULT_MOTOR_ID = 1  # factory default for all new STS3215
 
 # Feetech USB VID:PID combos
 FEETECH_USB_IDS = {
@@ -46,6 +46,7 @@ FEETECH_USB_IDS = {
 
 # ── Assembly steps ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class AssemblyStep:
     step: int
@@ -55,6 +56,7 @@ class AssemblyStep:
     screws: list[str] = field(default_factory=list)
     tips: list[str] = field(default_factory=list)
     motor_id: int | None = None
+
 
 FOLLOWER_ASSEMBLY_STEPS: list[AssemblyStep] = [
     AssemblyStep(

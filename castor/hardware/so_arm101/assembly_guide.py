@@ -42,11 +42,13 @@ def run_assembly_guide(
     print_fn(f"  🤖 SO-ARM101 Assembly Guide — {arm.upper()} arm")
     print_fn(f"  {len(steps)} steps  |  Keep your screwdriver handy")
     print_fn(_hr("═"))
-    print_fn(_wrap(
-        "This guide walks you through physically assembling the arm. "
-        "After assembly, run 'castor arm setup' to configure the motors.",
-        indent=2,
-    ))
+    print_fn(
+        _wrap(
+            "This guide walks you through physically assembling the arm. "
+            "After assembly, run 'castor arm setup' to configure the motors.",
+            indent=2,
+        )
+    )
     print_fn("")
 
     for i, step in enumerate(steps):
@@ -73,7 +75,13 @@ def run_assembly_guide(
             print_fn("  📌 Reference: https://huggingface.co/docs/lerobot/so101")
 
         print_fn("")
-        resp = input_fn(f"  [Step {i + 1}/{len(steps)}] Done? Press Enter to continue, or 'q' to quit: ").strip().lower()
+        resp = (
+            input_fn(
+                f"  [Step {i + 1}/{len(steps)}] Done? Press Enter to continue, or 'q' to quit: "
+            )
+            .strip()
+            .lower()
+        )
         if resp == "q":
             print_fn("\n  Assembly paused. Run 'castor arm assemble' to resume.")
             return
@@ -81,11 +89,12 @@ def run_assembly_guide(
     print_fn("\n" + _hr("═"))
     print_fn("  ✅ Assembly complete!")
     print_fn(_hr("═"))
-    print_fn(_wrap(
-        "Next step: configure the motor IDs. "
-        "Run: castor arm setup --arm follower",
-        indent=2,
-    ))
+    print_fn(
+        _wrap(
+            "Next step: configure the motor IDs. Run: castor arm setup --arm follower",
+            indent=2,
+        )
+    )
     print_fn("")
 
 

@@ -51,7 +51,9 @@ class MotorSetupError(Exception):
     pass
 
 
-def _write_register(port_handler, packet_handler, motor_id: int, addr: int, value: int, size: int = 1):
+def _write_register(
+    port_handler, packet_handler, motor_id: int, addr: int, value: int, size: int = 1
+):
     """Write a value to a motor register; raise on error."""
     if size == 1:
         result, err = packet_handler.write1ByteTxRx(port_handler, motor_id, addr, value)
@@ -95,6 +97,7 @@ def setup_motors(
         from castor.hardware.so_arm101.lerobot_bridge import (
             run_setup_motors as _lr_setup,
         )
+
         if lerobot_available():
             print_fn("\n[SO-ARM101] LeRobot detected — delegating to lerobot-setup-motors")
             ok = _lr_setup(port=port, arm=arm, print_fn=print_fn)
@@ -140,7 +143,9 @@ def setup_motors(
             break
 
     if not connected:
-        logger.warning("No motor found at default ID=1. Make sure one motor is connected and powered.")
+        logger.warning(
+            "No motor found at default ID=1. Make sure one motor is connected and powered."
+        )
 
     for motor in motor_list:
         mid = motor["id"]

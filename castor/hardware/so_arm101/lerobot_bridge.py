@@ -80,6 +80,7 @@ def lerobot_venv_path() -> Optional[Path]:
 
 # ── LeRobot tool wrappers ─────────────────────────────────────────────────────
 
+
 def run_find_port(print_fn=print, input_fn=input) -> Optional[str]:
     """
     Run lerobot-find-port interactively to identify a port.
@@ -176,6 +177,7 @@ def run_calibrate(
 
 # ── LeRobotBridge class ───────────────────────────────────────────────────────
 
+
 class LeRobotBridge:
     """
     Thin wrapper around the LeRobot CLI tools for SO-ARM101.
@@ -216,6 +218,7 @@ class LeRobotBridge:
 
 
 # ── Status summary ────────────────────────────────────────────────────────────
+
 
 def status() -> dict:
     """Return a dict summarising LeRobot tool availability."""

@@ -341,7 +341,8 @@ class SafetyLayer:
             principal,
             "/",
             "session_expiry_stop",
-            f"Session expired for CONTROL principal '{principal}' — motor commands blocked until re-auth",
+            f"Session expired for CONTROL principal '{principal}'"
+            " — motor commands blocked until re-auth",
         )
         logger.warning(
             "SESSION EXPIRY STOP for %s — motor commands blocked until re-auth", principal

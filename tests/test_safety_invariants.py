@@ -443,3 +443,123 @@ class TestSensorMonitorEstopWiring:
 
         result = write_arm_command(sl, "wrist_roll", position=0.3, velocity=0.05)
         assert result is False
+
+
+# =====================================================================
+# Phase 2: Session expiry → controlled stop (RCAN §6)
+# =====================================================================
+class TestSessionExpiryStop(_Base):
+    """Session expiry must trigger a controlled stop for CONTROL principals."""
+
+    def test_session_expiry_triggers_stop_for_control_principal(self):
+        """Expiring a CONTROL principal session must audit session_expiry_stop."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/proc/uptime", 1)
+        # 'brain' maps to OWNER role → has CONTROL scope
+        sl.read("/proc/uptime", principal="brain")
+        with sl._lock:
+            sl._session_starts["brain"] = time.time() - 99999  # force expiry
+
+        # Trigger check — should return False and fire session expiry stop
+        result = sl.check_session_timeout("brain")
+        assert result is False
+
+        safety_log = ns.read("/var/log/safety")
+        stop_events = [e for e in safety_log if e.get("event") == "session_expiry_stop"]
+        assert len(stop_events) >= 1, "session_expiry_stop must be audited for CONTROL principal"
+
+    def test_session_expiry_no_stop_for_status_principal(self):
+        """A STATUS-only principal (driver/GUEST has CONTROL too; use a custom one)."""
+        # driver is GUEST which includes CONTROL scope per Scope.for_role(GUEST)
+        # We test that when a session expires and principal has NO control scope,
+        # no session_expiry_stop event is produced.
+        # We simulate by temporarily patching the principal to have STATUS only.
+        sl, ns, _ = self._make_safety()
+        ns.write("/proc/uptime", 1)
+
+        # Read to initialise session for 'driver'
+        sl.read("/proc/uptime", principal="driver")
+        with sl._lock:
+            sl._session_starts["driver"] = time.time() - 99999
+
+        # Count stop events before
+        safety_log_before = ns.read("/var/log/safety") or []
+        stop_before = [e for e in safety_log_before if e.get("event") == "session_expiry_stop"]
+
+        # Patch Scope so GUEST has STATUS-only for this test
+        from castor.rcan.rbac import Scope, RCANRole
+        original_for_role = Scope.for_role
+
+        def status_only(role: RCANRole) -> Scope:
+            return Scope.STATUS
+
+        Scope.for_role = classmethod(lambda cls, r: Scope.STATUS)
+        try:
+            result = sl.check_session_timeout("driver")
+        finally:
+            Scope.for_role = original_for_role
+
+        assert result is False
+        safety_log_after = ns.read("/var/log/safety") or []
+        stop_after = [e for e in safety_log_after if e.get("event") == "session_expiry_stop"]
+        assert len(stop_after) == len(stop_before), (
+            "STATUS-only principal must NOT trigger session_expiry_stop"
+        )
+
+    def test_session_expiry_stop_does_not_set_estop(self):
+        """Session expiry stop must NOT set the global estop flag."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/proc/uptime", 1)
+        sl.read("/proc/uptime", principal="brain")
+        with sl._lock:
+            sl._session_starts["brain"] = time.time() - 99999
+        sl.check_session_timeout("brain")
+        assert not sl.is_estopped, "Session expiry stop must not set global estop"
+
+    def test_reset_session_clears_expiry_stop(self):
+        """reset_session() must clear the session_expired_stop flag for the principal."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/proc/uptime", 1)
+        sl.read("/proc/uptime", principal="brain")
+        with sl._lock:
+            sl._session_starts["brain"] = time.time() - 99999
+        sl.check_session_timeout("brain")
+        assert "brain" in sl._session_expired_stops
+
+        sl.reset_session("brain")
+        assert "brain" not in sl._session_expired_stops
+
+
+# =====================================================================
+# Phase 2: write_remote audit source tagging (RCAN §6)
+# =====================================================================
+class TestWriteRemoteAuditSource(_Base):
+    """write_remote() must tag audit entries with source='rcan'."""
+
+    def test_write_remote_tags_audit_source_rcan(self):
+        """write_remote() must produce an audit entry with source='rcan'."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/tmp/remote_test", None)
+        sl.write_remote("/tmp/remote_test", "from_rcan", principal="root")
+        actions_log = ns.read("/var/log/actions")
+        rcan_entries = [e for e in actions_log if e.get("source") == "rcan"]
+        assert len(rcan_entries) >= 1, "write_remote must produce source='rcan' in audit log"
+
+    def test_write_local_tags_audit_source_local(self):
+        """write() without source kwarg must produce source='local' in audit."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/tmp/local_test", None)
+        sl.write("/tmp/local_test", "from_local", principal="root")
+        actions_log = ns.read("/var/log/actions")
+        local_entries = [e for e in actions_log if e.get("source") == "local"]
+        assert len(local_entries) >= 1, "write() must produce source='local' in audit log"
+
+    def test_write_remote_denied_audits_safety_log(self):
+        """write_remote() on estopped motor must audit remote_write_denied."""
+        sl, ns, _ = self._make_safety()
+        ns.write("/dev/motor", {"linear": 0.0})
+        sl.estop(principal="root")
+        sl.write_remote("/dev/motor", {"linear": 0.3}, principal="root")
+        safety_log = ns.read("/var/log/safety")
+        denied = [e for e in safety_log if e.get("event") == "remote_write_denied"]
+        assert len(denied) >= 1, "Denied write_remote must produce remote_write_denied audit entry"

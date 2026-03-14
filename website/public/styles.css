@@ -268,6 +268,7 @@ code, pre { font-family: var(--font-mono); }
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255,255,255,0.18);
 }
+.btn-nav:visited { color: var(--text); }
 [data-theme="light"] .btn-nav {
   background: rgba(0,0,0,0.04);
   border-color: rgba(0,0,0,0.1);
@@ -606,8 +607,11 @@ code, pre { font-family: var(--font-mono); }
   [data-theme="light"] .nav-links { background: #fff; }
   .nav-links.open { display: flex; }
   .nav-links a { font-size: 0.9375rem; padding: 12px 14px; width: 100%; border-radius: 8px; }
-  .nav-end { gap: 6px; }
-  .mobile-toggle { display: flex; }
+  .nav-end { gap: 6px; flex-wrap: nowrap; align-items: center; }
+  .mobile-toggle { display: flex; flex-shrink: 0; }
+  /* Shrink GitHub button to icon-only on mobile */
+  .btn-nav .btn-label { display: none; }
+  .btn-nav { padding: 7px 10px; gap: 0; color: var(--text) !important; }
 
   .hero { min-height: auto; padding: 120px var(--gutter) 64px; }
   .hero-title { font-size: clamp(2.25rem, 10vw, 3.75rem); }

@@ -1,0 +1,126 @@
+rcan_version: "1.3"
+
+metadata:
+  robot_name: "SunFounder_PiCar-X"
+  robot_uuid: "00000000-0000-0000-0000-000000000020"
+  manufacturer: "SunFounder"
+  model: "PiCar-X"
+  author: "OpenCastor Default"
+  license: "Apache-2.0"
+  tags:
+    - ackermann
+    - stem
+    - raspberry-pi
+    - beginner
+  description: >
+    SunFounder PiCar-X — a Raspberry Pi-based Ackermann-steering robot car for
+    STEM learning. Features front-wheel servo steering, rear-wheel DC motor drive,
+    servo-mounted Pi Camera for pan/tilt vision, and HC-SR04 ultrasonic sensor.
+    Controlled via SunFounder's picar-x Python library over GPIO/I2C.
+
+agent:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5"
+  vision_enabled: true
+  latency_budget_ms: 120
+  safety_stop: true
+
+physics:
+  type: "ackermann"
+  dof: 2
+  chassis:
+    wheelbase_mm: 141
+    track_width_mm: 120
+    wheel_radius_mm: 33
+
+camera:
+  type: "picam"
+  resolution: [640, 480]
+  framerate: 30
+  depth_enabled: false
+
+drivers:
+  - id: "motor_driver"
+    protocol: "gpio"
+    # SunFounder Robot HAT I2C motor controller
+    interface: "i2c"
+    address: "0x14"
+    # Rear-wheel DC motors (channel 0 = left, channel 1 = right)
+    left_motor_channel: 0
+    right_motor_channel: 1
+    max_speed: 100
+
+  - id: "steering_servo"
+    protocol: "gpio"
+    interface: "i2c"
+    address: "0x14"
+    sensor_type: "servo"
+    channel: 0
+    # Front wheel steering servo
+    center_angle_deg: 0
+    min_angle_deg: -30
+    max_angle_deg: 30
+
+  - id: "camera_pan_servo"
+    protocol: "gpio"
+    interface: "i2c"
+    address: "0x14"
+    sensor_type: "servo"
+    channel: 1
+    center_angle_deg: 0
+    min_angle_deg: -90
+    max_angle_deg: 90
+
+  - id: "camera_tilt_servo"
+    protocol: "gpio"
+    interface: "i2c"
+    address: "0x14"
+    sensor_type: "servo"
+    channel: 2
+    center_angle_deg: 0
+    min_angle_deg: -35
+    max_angle_deg: 65
+
+  - id: "ultrasonic_sensor"
+    protocol: "gpio"
+    sensor_type: "hcsr04"
+    trigger_gpio: 27
+    echo_gpio: 22
+    max_range_m: 4.0
+
+  - id: "camera"
+    protocol: "picam"
+    enabled: true
+    url: "http://localhost:8080/stream"
+
+connection:
+  type: "local"
+
+network:
+  telemetry_stream: true
+  sim_to_real_sync: false
+  allow_remote_override: true
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, nav, teleop, chat, vision]
+  enable_mdns: true
+  enable_jwt: false
+
+safety:
+  obstacle_stop_cm: 20
+  estop_on_startup: false
+  max_linear_speed_mps: 1.0
+
+notes:
+  setup: >
+    Install picar-x library: pip3 install picar-x
+    Enable I2C on Pi: sudo raspi-config → Interfaces → I2C → Enable
+    Run calibration: cd /opt/picar-x && python3 calibration.py
+    Library docs: https://docs.sunfounder.com/projects/picar-x
+  hardware:
+    compute: "Raspberry Pi 4 or 3B+"
+    camera: "Raspberry Pi Camera Module v2 (5MP)"
+    ultrasonic: "HC-SR04 (4m range)"
+    battery: "7.4V Li-ion 2000mAh"
+    motor_hat: "SunFounder Robot HAT (I2C, PCA9685)"

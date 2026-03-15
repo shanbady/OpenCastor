@@ -1,0 +1,96 @@
+rcan_version: "1.3"
+
+metadata:
+  robot_name: "TurtleBot3_Burger"
+  robot_uuid: "00000000-0000-0000-0000-000000000017"
+  manufacturer: "ROBOTIS"
+  model: "TurtleBot3 Burger"
+  author: "OpenCastor Default"
+  license: "Apache-2.0"
+  tags:
+    - ros2
+    - turtlebot
+    - educational
+    - indoor
+    - lidar
+  description: >
+    TurtleBot3 Burger by ROBOTIS — the canonical entry-level ROS2 mobile robot.
+    Differential drive on two wheels, Raspberry Pi 4 running ROS2, OpenCR MCU
+    for motor/sensor control, LDS-01 360° lidar, and an IMU. Used worldwide in
+    robotics courses and research labs.
+
+agent:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5"
+  vision_enabled: false
+  latency_budget_ms: 150
+  safety_stop: true
+
+physics:
+  type: "differential_drive"
+  dof: 2
+  chassis:
+    wheel_base_mm: 160
+    wheel_radius_mm: 33
+
+drivers:
+  - id: "opencr_ros2_bridge"
+    protocol: "ros2_bridge"
+    # ROS2 topic: /cmd_vel (geometry_msgs/Twist)
+    # OpenCR board handles motor PWM and odometry
+    topics:
+      cmd_vel: "/cmd_vel"
+      odom: "/odom"
+      battery: "/battery_state"
+
+  - id: "lidar_lds01"
+    protocol: "ros2_bridge"
+    sensor_type: "lidar"
+    model: "LDS-01"
+    topics:
+      scan: "/scan"
+    scan_range_m: 3.5
+    angular_resolution_deg: 1.0
+
+  - id: "imu"
+    protocol: "ros2_bridge"
+    sensor_type: "imu"
+    topics:
+      imu: "/imu"
+
+ros2:
+  enabled: true
+  namespace: "/tb3"
+  domain_id: 0
+
+connection:
+  type: "local"
+
+network:
+  telemetry_stream: true
+  sim_to_real_sync: false
+  allow_remote_override: false
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, nav, teleop, chat]
+  enable_mdns: true
+  enable_jwt: false
+
+safety:
+  obstacle_stop_cm: 20
+  estop_on_startup: false
+  max_linear_speed_mps: 0.22
+  max_angular_speed_radps: 2.84
+
+notes:
+  setup: >
+    Requires ROS2 Humble or later on the Raspberry Pi 4.
+    Flash OpenCR with the TurtleBot3 firmware from ROBOTIS.
+    Source the ROS2 workspace before launching: source /opt/ros/humble/setup.bash
+    Launch: ros2 launch turtlebot3_bringup robot.launch.py
+  hardware:
+    compute: "Raspberry Pi 4 (2GB+ recommended)"
+    mcu: "OpenCR 1.0 (STM32F746)"
+    lidar: "ROBOTIS LDS-01 (360° 2D, 3.5m range)"
+    battery: "Li-Po 11.1V 1800mAh"

@@ -1,0 +1,175 @@
+rcan_version: "1.3"
+
+metadata:
+  robot_name: "SO-ARM101_Leader"
+  robot_uuid: "00000000-0000-0000-0000-000000000022"
+  manufacturer: "The Robot Studio / SO-ARM"
+  model: "SO-ARM101 Leader"
+  author: "OpenCastor Default"
+  license: "Apache-2.0"
+  tags:
+    - arm
+    - teleop
+    - leader-follower
+    - so-arm101
+    - lerobot
+  description: >
+    SO-ARM101 Leader Arm — the leader (input) unit in a leader-follower
+    teleoperation pair using Feetech STS3215 serial bus servos. The operator
+    physically moves this arm; joint positions are streamed to a follower arm
+    for imitation learning and teleoperation (e.g., HuggingFace LeRobot,
+    ACT, Diffusion Policy). 6-DOF: shoulder_pan, shoulder_lift, elbow_flex,
+    wrist_flex, wrist_roll, gripper. No independent locomotion.
+    Motor IDs: shoulder_pan=1, shoulder_lift=2, elbow_flex=3,
+    wrist_flex=4, wrist_roll=5, gripper=6.
+
+agent:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5"
+  vision_enabled: false
+  latency_budget_ms: 50
+  safety_stop: true
+
+physics:
+  type: "serial_manipulator"
+  dof: 6
+  kinematics:
+    - id: "shoulder_pan"
+      length_mm: 50
+      mass_g: 180
+      axis: "z"
+      limits_deg: [-180, 180]
+    - id: "shoulder_lift"
+      length_mm: 130
+      mass_g: 220
+      axis: "y"
+      limits_deg: [-120, 120]
+    - id: "elbow_flex"
+      length_mm: 125
+      mass_g: 180
+      axis: "y"
+      limits_deg: [-120, 120]
+    - id: "wrist_flex"
+      length_mm: 60
+      mass_g: 100
+      axis: "y"
+      limits_deg: [-90, 90]
+    - id: "wrist_roll"
+      length_mm: 40
+      mass_g: 80
+      axis: "z"
+      limits_deg: [-180, 180]
+    - id: "gripper"
+      length_mm: 60
+      mass_g: 120
+      axis: "y"
+      limits_deg: [0, 90]
+
+drivers:
+  # Feetech STS3215 serial bus servos — all on one RS-485 half-duplex bus
+  - link_id: "shoulder_pan"
+    id: "servo_1"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 1
+    max_velocity_dps: 180
+    torque_limit_pct: 60
+
+  - link_id: "shoulder_lift"
+    id: "servo_2"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 2
+    max_velocity_dps: 120
+    torque_limit_pct: 80
+
+  - link_id: "elbow_flex"
+    id: "servo_3"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 3
+    max_velocity_dps: 150
+    torque_limit_pct: 70
+
+  - link_id: "wrist_flex"
+    id: "servo_4"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 4
+    max_velocity_dps: 200
+    torque_limit_pct: 60
+
+  - link_id: "wrist_roll"
+    id: "servo_5"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 5
+    max_velocity_dps: 200
+    torque_limit_pct: 60
+
+  - link_id: "gripper"
+    id: "servo_6"
+    protocol: "feetech"
+    model: "STS3215"
+    port: "/dev/ttyUSB0"
+    baud_rate: 1000000
+    hardware_id: 6
+    max_velocity_dps: 180
+    torque_limit_pct: 50
+
+connection:
+  type: "serial"
+  port: "/dev/ttyUSB0"
+  baud_rate: 1000000
+  reconnect_interval_ms: 500
+
+network:
+  telemetry_stream: true
+  sim_to_real_sync: false
+  allow_remote_override: false
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, arm, teleop, chat]
+  enable_mdns: false
+  enable_jwt: false
+
+safety:
+  physical_estop: false
+  force_torque_sensors: false
+  sil_level: "none"
+  payload_kg: 0.1
+  max_joint_velocity_dps: 200
+  estop_on_startup: false
+
+notes:
+  motor_ids: >
+    shoulder_pan=1, shoulder_lift=2, elbow_flex=3,
+    wrist_flex=4, wrist_roll=5, gripper=6
+  role: >
+    LEADER arm only — this config is for the human-operated input arm.
+    Deploy a separate so_arm101_follower.rcan.yaml on the follower unit.
+    Teleoperation stream: joint positions broadcast at ~50Hz to follower.
+  lerobot_setup: >
+    Compatible with HuggingFace LeRobot for data collection and policy training.
+    Install: pip install lerobot
+    Calibrate servos before first use:
+      python -m lerobot.scripts.control_robot calibrate --robot-path so_arm101
+    Record dataset:
+      python -m lerobot.scripts.control_robot record --robot-path so_arm101 \
+        --repo-id my_dataset --num-episodes 50
+  hardware:
+    servos: "6× Feetech STS3215 (30kg·cm, magnetic encoder, RS-485)"
+    interface: "Feetech USB-RS485 adapter or SCServo SDK board"
+    supply: "12V 3A (regulated) for all servos"
+    build_guide: "https://github.com/TheRobotStudio/SO-ARM100"

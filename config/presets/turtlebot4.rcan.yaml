@@ -1,0 +1,113 @@
+rcan_version: "1.3"
+
+metadata:
+  robot_name: "TurtleBot4"
+  robot_uuid: "00000000-0000-0000-0000-000000000018"
+  manufacturer: "iRobot + ROBOTIS"
+  model: "TurtleBot4"
+  author: "OpenCastor Default"
+  license: "Apache-2.0"
+  tags:
+    - ros2
+    - turtlebot4
+    - research
+    - indoor
+    - oak-d
+  description: >
+    TurtleBot4 — co-developed by iRobot and ROBOTIS. Built on the iRobot Create3
+    mobile base with a Raspberry Pi 4 and OAK-D Lite stereo depth camera + 360°
+    lidar. The flagship ROS2 research and teaching platform with integrated
+    autonomous charging via the Create3 home base.
+
+agent:
+  provider: "anthropic"
+  model: "claude-sonnet-4-5"
+  vision_enabled: true
+  latency_budget_ms: 200
+  safety_stop: true
+
+physics:
+  type: "differential_drive"
+  dof: 2
+  chassis:
+    wheel_base_mm: 233
+    wheel_radius_mm: 36
+
+camera:
+  type: "oakd"
+  resolution: [1280, 720]
+  framerate: 30
+  depth_enabled: true
+
+drivers:
+  - id: "create3_ros2_bridge"
+    protocol: "ros2_bridge"
+    # iRobot Create3 exposes standard ROS2 navigation topics
+    topics:
+      cmd_vel: "/cmd_vel"
+      odom: "/odom"
+      battery: "/battery_state"
+      dock: "/dock_status"
+      hazards: "/hazard_detection"
+
+  - id: "lidar"
+    protocol: "ros2_bridge"
+    sensor_type: "lidar"
+    model: "RPLIDAR A1M8"
+    topics:
+      scan: "/scan"
+    scan_range_m: 12.0
+    angular_resolution_deg: 1.0
+
+  - id: "oak_d_lite"
+    protocol: "ros2_bridge"
+    sensor_type: "depth_camera"
+    model: "OAK-D Lite"
+    topics:
+      rgb: "/oakd/rgb/image_raw"
+      depth: "/oakd/stereo/image_raw"
+      point_cloud: "/oakd/stereo/points"
+    depth_range_m: [0.4, 8.0]
+
+  - id: "imu"
+    protocol: "ros2_bridge"
+    sensor_type: "imu"
+    topics:
+      imu: "/imu"
+
+ros2:
+  enabled: true
+  namespace: "/tb4"
+  domain_id: 0
+
+connection:
+  type: "local"
+
+network:
+  telemetry_stream: true
+  sim_to_real_sync: false
+  allow_remote_override: false
+
+rcan_protocol:
+  port: 8000
+  capabilities: [status, nav, teleop, chat, vision]
+  enable_mdns: true
+  enable_jwt: false
+
+safety:
+  obstacle_stop_cm: 25
+  estop_on_startup: false
+  max_linear_speed_mps: 0.31
+  max_angular_speed_radps: 1.90
+
+notes:
+  setup: >
+    Requires ROS2 Humble on Raspberry Pi 4.
+    Create3 firmware must be ≥ G.4.1 for full ROS2 support.
+    Install turtlebot4 packages: sudo apt install ros-humble-turtlebot4-robot
+    Launch: ros2 launch turtlebot4_bringup standard.launch.py
+  hardware:
+    compute: "Raspberry Pi 4 (4GB recommended)"
+    base: "iRobot Create3 (autonomous charging)"
+    camera: "Luxonis OAK-D Lite (RGB + stereo depth)"
+    lidar: "RPLIDAR A1M8 (360°, 12m range)"

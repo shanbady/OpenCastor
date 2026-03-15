@@ -13,6 +13,7 @@ within that section.
 
 from castor.rcan import telemetry_fields
 from castor.rcan.capabilities import Capability, CapabilityRegistry
+from castor.rcan.http_transport import discover_robot, send_message
 from castor.rcan.invoke import InvokeCancelRequest, InvokeRequest, InvokeResult, SkillRegistry
 from castor.rcan.message import MessageType, Priority, RCANMessage
 from castor.rcan.rbac import CapabilityBroker, CapabilityLease, RCANPrincipal, RCANRole, Scope
@@ -54,6 +55,9 @@ __all__ = [
     "SkillRegistry",
     # §20 Telemetry fields
     "telemetry_fields",
+    # HTTP Transport (federation)
+    "send_message",
+    "discover_robot",
     # SDK Bridge (rcan-py interoperability)
     "ruri_to_robot_uri",
     "robot_uri_to_ruri",

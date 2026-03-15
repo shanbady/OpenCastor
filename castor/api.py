@@ -1362,6 +1362,62 @@ async def get_peers():
     return {"peers": [], "note": "mDNS not enabled"}
 
 
+@app.post("/api/rcan/message")
+async def rcan_receive_message(request: Request):
+    """Receive an inbound RCAN message from a remote robot (federation endpoint).
+
+    This endpoint is intentionally unauthenticated so peer robots can reach it
+    without sharing API tokens.  It accepts both the OpenCastor internal dict
+    format and the RCAN v1.2 spec format.
+
+    For outbound sends, use ``castor.rcan.http_transport.send_message()``.
+    """
+    import castor as _castor_pkg
+
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+
+    if not data:
+        return JSONResponse({"error": "empty body"}, status_code=400)
+
+    # Determine message type and source from either format
+    msg_type = data.get("type") or data.get("msg_type")
+    source = data.get("source") or data.get("source_ruri", "unknown")
+
+    logger.info("RCAN inbound from %s: type=%s", source, msg_type)
+
+    # If the RCAN router is available, dispatch through it
+    if state.rcan_router:
+        try:
+            from castor.rcan.sdk_bridge import parse_inbound
+
+            msg = parse_inbound(data)
+            principal = None
+            response = state.rcan_router.route(msg, principal)
+            return response.to_dict()
+        except Exception as e:
+            logger.warning("RCAN router dispatch failed, returning lightweight ack: %s", e)
+
+    # Lightweight ack when router not available (e.g. API started standalone)
+    response_payload: dict = {"status": "received", "type": msg_type, "source": source}
+
+    # MessageType.DISCOVER = 1 — respond with capabilities
+    if msg_type == 1:
+        response_payload["capabilities"] = ["status", "teleop", "safety", "registry"]
+        response_payload["ruri"] = state.ruri or "rcan://opencastor.unknown.00000000"
+
+    # MessageType.STATUS = 2 — respond with robot info
+    elif msg_type == 2:
+        response_payload["robot_name"] = (state.config or {}).get("robot_name", "opencastor")
+        response_payload["version"] = _castor_pkg.__version__
+        response_payload["rcan_version"] = "1.4"
+        response_payload["ruri"] = state.ruri
+
+    return JSONResponse(response_payload, status_code=200)
+
+
 # ---------------------------------------------------------------------------
 # RCAN Protocol endpoints
 # ---------------------------------------------------------------------------

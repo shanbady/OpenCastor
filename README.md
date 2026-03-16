@@ -12,6 +12,8 @@
   <a href="https://pypi.org/project/opencastor/"><img src="https://img.shields.io/pypi/pyversions/opencastor" alt="Python"></a>
   <a href="https://discord.gg/jMjA8B26Bq"><img src="https://img.shields.io/badge/Discord-join%20server-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
   <a href="./sbom/"><img src="https://img.shields.io/badge/SBOM-CycloneDX-blue" alt="SBOM"></a>
+  <a href="https://app.opencastor.com"><img src="https://img.shields.io/badge/Fleet%20UI-app.opencastor.com-orange" alt="Fleet UI"></a>
+  <a href="https://rcan.dev/spec/"><img src="https://img.shields.io/badge/RCAN-v1.4-brightgreen" alt="RCAN v1.4"></a>
 </p>
 
 <p align="center">
@@ -437,6 +439,39 @@ Five new hardware detectors and an expanded I2C lookup table:
 - **HLabs ACB v2.0 hardware support** — first-class driver for the HLaboratories Actuator Control Board v2.0 (STM32G474, 3-phase BLDC, 12V–30V, 40A). USB-C serial + CAN Bus (1Mbit/s, 11-bit ARB ID) dual transport; `port: auto` VID/PID auto-detection; motor calibration flow (pole pairs → zero electrical angle → PID); real-time encoder telemetry at 50Hz; firmware flash via DFU mode (`castor flash`); three RCAN profiles (`hlabs/acb-single`, `hlabs/acb-arm-3dof`, `hlabs/acb-biped-6dof`). Install with `pip install opencastor[hlabs]`.
 
 **Full changelog:** [CHANGELOG.md](CHANGELOG.md) · [Release notes](https://opencastor.com/changelog)
+
+## Ecosystem
+
+OpenCastor is part of a broader open robotics ecosystem:
+
+| Project | Description | Link |
+|---|---|---|
+| **OpenCastor** | Robot runtime (this repo) | [github.com/craigm26/OpenCastor](https://github.com/craigm26/OpenCastor) |
+| **OpenCastor Fleet UI** | Flutter web app — manage your robots remotely | [app.opencastor.com](https://app.opencastor.com) · [source (private)](https://github.com/craigm26/opencastor-client) |
+| **RCAN Protocol** | Open spec for robot addressing & auth (v1.4) | [rcan.dev](https://rcan.dev) · [spec](https://rcan.dev/spec/) |
+| **rcan-py** | Python RCAN SDK | [PyPI](https://pypi.org/project/rcan/) · [github](https://github.com/continuonai/rcan-py) |
+| **rcan-ts** | TypeScript RCAN SDK | [npm](https://www.npmjs.com/package/@continuonai/rcan) · [github](https://github.com/continuonai/rcan-ts) |
+| **Robot Registry Foundation** | Global robot identity registry (like ICANN for robots) | [robotregistryfoundation.org](https://robotregistryfoundation.org) |
+
+### castor bridge — Remote Fleet Management
+
+Run `castor bridge` alongside `castor gateway` to connect your robot to the OpenCastor cloud fleet:
+
+```bash
+pip install opencastor[cloud]
+
+# Add to your .rcan.yaml:
+# cloud:
+#   provider: firebase
+#   project_id: opencastor
+#   service_account_key: ~/.config/opencastor/firebase-sa-key.json
+
+castor bridge --config robot.rcan.yaml
+```
+
+The bridge establishes an **outbound-only** Firestore connection — your robot never listens on a public port. Commands are queued via Cloud Functions, validated by R2RAM scope rules, and executed locally. Protocol 66 safety layer remains enforced regardless of cloud command source.
+
+View and control your fleet at **[app.opencastor.com](https://app.opencastor.com)**.
 
 ## Contributing
 

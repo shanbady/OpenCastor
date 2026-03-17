@@ -1,0 +1,9 @@
+{
+  "_comment": "User-configurable defaults for navigate-to skill. Edit to match your robot.",
+  "step_size_m": 0.3,
+  "max_speed_m_s": 0.3,
+  "min_clearance_m": 0.3,
+  "obstacle_stop_m": 0.4,
+  "battery_min_pct": 10,
+  "named_locations": {}
+}

@@ -12,9 +12,28 @@ Search paths (in priority order):
   2. ~/.config/opencastor/skills/   — user-installed
   3. Paths listed in agent.skills RCAN config
 
+Skill folder structure::
+
+    my-skill/
+      SKILL.md          — frontmatter + instructions (required)
+      config.json       — user-configurable defaults (optional)
+      scripts/          — executable helpers Claude can invoke (optional)
+        *.py, *.sh
+      references/       — progressive-disclosure deep-docs (optional)
+        *.md
+      assets/           — templates, prompts, static data (optional)
+      tests/
+        eval.json       — evaluation cases
+
+Persistent per-skill data storage::
+
+    CASTOR_SKILL_DATA env var → ~/.config/opencastor/skill-data/<skill-name>/
+    Skills use this path to store logs, learned state, SQLite DBs, etc.
+    This directory is NOT cleared on skill upgrades (unlike the skill folder).
+
 Usage::
 
-    from castor.skills.loader import SkillLoader, SkillSelector
+    from castor.skills.loader import SkillLoader, SkillSelector, get_skill_data_dir
 
     loader = SkillLoader()
     skills = loader.load_all()
@@ -22,22 +41,107 @@ Usage::
     selector = SkillSelector()
     skill = selector.select("pick up the red brick", skills)
     # skill["name"] == "arm-manipulate"
+    # skill["scripts"] == ["scripts/check_workspace.py"]
+    # skill["references"] == ["references/grasp-patterns.md"]
+    # skill["config"] == {"max_reach_m": 0.55}  (from config.json)
+
+    data_dir = get_skill_data_dir("arm-manipulate")
+    # → ~/.config/opencastor/skill-data/arm-manipulate/
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("OpenCastor.Skills")
 
-__all__ = ["SkillLoader", "SkillSelector", "Skill"]
+__all__ = ["SkillLoader", "SkillSelector", "Skill", "get_skill_data_dir"]
 
 # Built-in skills directory (alongside this file)
 _BUILTIN_DIR = Path(__file__).parent / "builtin"
 _USER_DIR = Path.home() / ".config" / "opencastor" / "skills"
+# Persistent per-skill data directory (survives upgrades)
+_SKILL_DATA_BASE = Path.home() / ".config" / "opencastor" / "skill-data"
+
+
+def log_skill_trigger(skill_name: str, instruction: str, session_id: str = "") -> None:
+    """Append a skill trigger event to the skill's usage log.
+
+    Usage log lives in the skill's persistent data dir::
+
+        ~/.config/opencastor/skill-data/<name>/usage.log
+
+    Each line is tab-separated: timestamp\\tsession_id\\tinstruction_preview
+
+    This is the OpenCastor equivalent of Claude Code's PreToolUse hook for
+    skill analytics — lets you see which skills trigger frequently or undertrigger.
+    """
+    import datetime
+
+    data_dir = get_skill_data_dir(skill_name)
+    log_path = data_dir / "usage.log"
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    preview = instruction[:120].replace("\t", " ").replace("\n", " ")
+    try:
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(f"{ts}\t{session_id}\t{preview}\n")
+    except Exception as exc:
+        logger.debug("Failed to write skill usage log: %s", exc)
+
+
+def get_skill_usage_stats(skill_name: str) -> dict:
+    """Return basic usage statistics for a skill.
+
+    Returns::
+
+        {
+            "skill": "arm-manipulate",
+            "total_triggers": 42,
+            "last_triggered": "2026-03-17T10:30:00+00:00",
+            "recent_10": ["pick up the red brick", ...]
+        }
+    """
+    data_dir = _SKILL_DATA_BASE / skill_name
+    log_path = data_dir / "usage.log"
+    if not log_path.exists():
+        return {"skill": skill_name, "total_triggers": 0, "last_triggered": None, "recent_10": []}
+
+    lines = [ln.strip() for ln in log_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    total = len(lines)
+    last = lines[-1].split("\t")[0] if lines else None
+    recent = [ln.split("\t")[2] if len(ln.split("\t")) >= 3 else "" for ln in lines[-10:]]
+    return {
+        "skill": skill_name,
+        "total_triggers": total,
+        "last_triggered": last,
+        "recent_10": list(reversed(recent)),
+    }
+
+
+def get_skill_data_dir(skill_name: str) -> Path:
+    """Return (and create) the persistent data directory for a skill.
+
+    This directory is NOT inside the skill folder — it survives skill upgrades.
+    Set via CASTOR_SKILL_DATA env var (useful for testing)::
+
+        CASTOR_SKILL_DATA=/tmp/skill-data castor run ...
+
+    Args:
+        skill_name: The skill's ``name`` from SKILL.md frontmatter.
+
+    Returns:
+        Path to the data directory (guaranteed to exist after this call).
+    """
+    base = Path(os.environ.get("CASTOR_SKILL_DATA", str(_SKILL_DATA_BASE)))
+    data_dir = base / skill_name
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
 
 # Minimum keyword overlap for a skill match (fallback mode)
 _KEYWORD_THRESHOLD = 1
@@ -116,6 +220,20 @@ class SkillLoader:
         if isinstance(description, str):
             description = " ".join(description.split())
 
+        skill_dir = skill_md.parent
+
+        # Discover scripts/ — executable helpers Claude can run
+        scripts = _discover_files(skill_dir / "scripts", suffixes={".py", ".sh"})
+
+        # Discover references/ — deep-docs for progressive disclosure
+        references = _discover_files(skill_dir / "references", suffixes={".md", ".txt"})
+
+        # Discover assets/ — templates, prompts, static data
+        assets = _discover_files(skill_dir / "assets", suffixes=None)
+
+        # Load config.json — user-configurable skill defaults
+        config = _load_config(skill_dir / "config.json")
+
         return {
             "name": name,
             "description": description,
@@ -125,7 +243,14 @@ class SkillLoader:
             "tools": _to_list(parsed.get("tools", [])),
             "max_iterations": int(parsed.get("max_iterations", 6)),
             "body": body.strip(),
-            "path": str(skill_md.parent),
+            "path": str(skill_dir),
+            # Folder structure metadata
+            "scripts": scripts,
+            "references": references,
+            "assets": assets,
+            "config": config,
+            # Resolved persistent data dir (lazy — only created when accessed)
+            "data_dir": str(get_skill_data_dir(name)),
         }
 
 
@@ -144,6 +269,7 @@ class SkillSelector:
         instruction: str,
         skills: dict[str, Skill],
         robot_capabilities: Optional[list[str]] = None,
+        session_id: str = "",
     ) -> Optional[Skill]:
         """Return best matching skill or None."""
         if not skills or not instruction.strip():
@@ -154,6 +280,7 @@ class SkillSelector:
             name = instruction.split()[0][1:]
             if name in skills:
                 logger.debug("Explicit skill trigger: %s", name)
+                log_skill_trigger(name, instruction, session_id)
                 return skills[name]
             return None  # explicit trigger with unknown name → no match
 
@@ -167,10 +294,14 @@ class SkillSelector:
         # 3. Try embedding similarity
         best = self._select_by_embedding(instruction, available)
         if best is not None:
+            log_skill_trigger(best["name"], instruction, session_id)
             return best
 
         # 4. Keyword fallback
-        return self._select_by_keywords(instruction, available)
+        best = self._select_by_keywords(instruction, available)
+        if best is not None:
+            log_skill_trigger(best["name"], instruction, session_id)
+        return best
 
     def _has_capabilities(self, skill: Skill, robot_caps: list[str]) -> bool:
         """Return True if robot has all required capabilities for this skill."""
@@ -244,6 +375,37 @@ class SkillSelector:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _discover_files(directory: Path, suffixes: Optional[set[str]]) -> list[str]:
+    """Return relative file paths inside *directory*, optionally filtered by suffix.
+
+    Paths are relative to the skill root (e.g. ``"scripts/check_workspace.py"``).
+    Returns an empty list if the directory does not exist.
+    """
+    if not directory.is_dir():
+        return []
+    skill_root = directory.parent
+    results = []
+    for f in sorted(directory.iterdir()):
+        if f.is_file():
+            if suffixes is None or f.suffix.lower() in suffixes:
+                results.append(str(f.relative_to(skill_root)))
+    return results
+
+
+def _load_config(config_path: Path) -> dict:
+    """Load config.json from a skill directory.
+
+    Returns an empty dict if the file does not exist or cannot be parsed.
+    """
+    if not config_path.is_file():
+        return {}
+    try:
+        return json.loads(config_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        logger.warning("Failed to load skill config at %s: %s", config_path, exc)
+        return {}
 
 
 def _split_frontmatter(content: str) -> tuple[Optional[str], str]:

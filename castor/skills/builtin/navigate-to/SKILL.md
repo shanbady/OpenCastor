@@ -4,8 +4,9 @@ description: >
   Use when the user asks the robot to move, go somewhere, drive to a location,
   come closer, back up, or navigate to a named place or person. Triggers on
   "go to", "move to", "drive to", "navigate to", "come here", "back up",
-  "turn around", "follow me".
-version: "1.0"
+  "turn around", "follow me", "move forward", "turn left", "turn right",
+  "move back", "approach the", "get closer to".
+version: "1.1"
 requires:
   - control
   - drive
@@ -54,6 +55,20 @@ Report final position and any obstacles encountered.
 - NEVER exceed speed 0.3 m/s unless explicitly asked
 - ALWAYS stop on any sensor error — do not assume path is clear
 - If unsure about surroundings: ask for camera confirm before moving
+
+## References
+
+See `references/named-locations.md` for pre-mapped location names.
+See `references/movement-primitives.md` for move() parameter patterns.
+
+## Gotchas
+
+- **Distance sensor dead angle** — most ultrasonic/ToF sensors have a ±15° cone; objects at a sharp angle to the sensor may be missed; when navigating near shelving or walls, use visual confirmation too
+- **"Come here" is ambiguous** — don't guess the user's position; ask "Where are you relative to me?" or use camera to locate them
+- **Carpet/rug transitions** — wheel encoders can slip on soft surfaces; reported position may drift; recalibrate against a visible landmark after each room transition
+- **"Turn around" ≠ 180° spin** — on narrow paths a 3-point turn may be safer than an in-place rotation; check lateral clearance before spinning
+- **Battery warning at 15%** — navigation tasks can be battery-intensive; report low battery before starting a long movement, not in the middle of it
+- **Overshoot** — incremental 0.3m steps reduce overshoot, but on smooth floors the robot may coast a few cm past the target; this is normal, not an error
 
 ## Example
 

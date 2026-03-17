@@ -1,0 +1,8 @@
+{
+  "_comment": "User-configurable defaults for peer-coordinate skill.",
+  "message_timeout_s": 10,
+  "robot_names": {
+    "bob": "RRN-000000000001",
+    "alex": "RRN-000000000005"
+  }
+}

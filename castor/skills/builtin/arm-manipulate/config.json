@@ -1,0 +1,10 @@
+{
+  "_comment": "User-configurable defaults for arm-manipulate skill. Edit to match your robot.",
+  "max_reach_m": 0.55,
+  "min_distance_m": 0.05,
+  "approach_speed_pct": 15,
+  "transport_speed_pct": 30,
+  "grasp_confirmation": true,
+  "consent_timeout_s": 60,
+  "workspace": "default"
+}

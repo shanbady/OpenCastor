@@ -221,12 +221,50 @@ class ContextBuilder:
         )
 
     def _format_skill(self, skill: dict) -> str:
-        """Format a matched skill for injection."""
+        """Format a matched skill for injection.
+
+        Includes the SKILL.md body plus progressive disclosure hints:
+        - references/ files are listed so Claude knows to read them for deep detail
+        - scripts/ files are listed so Claude knows runnable helpers exist
+        - config values are inlined if present (they're small and always relevant)
+        """
         body = skill.get("body", "")
         name = skill.get("name", "skill")
         if not body:
             return ""
-        return f"[SKILL: {name}]\n{body}"
+
+        lines = [f"[SKILL: {name}]", body]
+
+        # Inline config values — small, always relevant
+        config = skill.get("config", {})
+        if config:
+            non_comment = {k: v for k, v in config.items() if not k.startswith("_")}
+            if non_comment:
+                import json as _json
+
+                lines.append(
+                    "\n[SKILL CONFIG]\n"
+                    + _json.dumps(non_comment, indent=2)
+                    + "\n(These are user-configurable defaults. Adapt your behaviour accordingly.)"
+                )
+
+        # List references/ for progressive disclosure
+        references = skill.get("references", [])
+        if references:
+            ref_list = "\n".join(f"  - {r}" for r in references)
+            lines.append(
+                f"\n[SKILL REFERENCES — read these files for deeper detail when needed]\n{ref_list}"
+            )
+
+        # List scripts/ so Claude knows runnable helpers exist
+        scripts = skill.get("scripts", [])
+        if scripts:
+            scr_list = "\n".join(f"  - {s}" for s in scripts)
+            lines.append(
+                f"\n[SKILL SCRIPTS — executable helpers available in the skill directory]\n{scr_list}"
+            )
+
+        return "\n".join(lines)
 
     def _format_memory(self, chunks: list[dict]) -> str:
         """Format episodic memory chunks for injection."""
@@ -310,24 +348,21 @@ class ContextBuilder:
         return {}
 
     async def _select_skill(self, instruction: str) -> Optional[dict]:
-        """Use skill loader to find a matching skill for this instruction."""
+        """Use SkillSelector to find the best matching skill for this instruction."""
         try:
+            from castor.skills.loader import SkillSelector
+
             skills = self._skill_loader.load_all()
             if not skills:
                 return None
-            # Simple keyword match until SkillSelector is available
-            instr_lower = instruction.lower()
-            best: Optional[dict] = None
-            for skill in skills.values():
-                desc = skill.get("description", "").lower()
-                # Basic overlap score
-                words = set(instr_lower.split())
-                desc_words = set(desc.split())
-                overlap = len(words & desc_words)
-                if overlap >= 2:
-                    best = skill
-                    break
-            return best
+            selector = SkillSelector()
+            session_id = getattr(self, "_session_id", "")
+            return selector.select(
+                instruction,
+                skills,
+                robot_capabilities=getattr(self, "_robot_capabilities", None),
+                session_id=session_id,
+            )
         except Exception as exc:
             logger.debug("Skill selection failed: %s", exc)
             return None

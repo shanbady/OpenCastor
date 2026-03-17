@@ -116,7 +116,7 @@ class TrajectoryRecord:
 def _now_iso() -> str:
     import datetime
 
-    return datetime.datetime.utcnow().isoformat() + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
 class TrajectoryLogger:

@@ -3645,6 +3645,143 @@ def _cmd_install(args) -> None:
     print("    castor explore              # see what's available")
 
 
+def _cmd_optimize(args) -> None:
+    """castor optimize — run the per-robot runtime optimizer."""
+    import asyncio
+    from pathlib import Path
+
+    from castor.optimizer import run_optimizer
+
+    dry_run = getattr(args, "dry_run", False)
+    show_report = getattr(args, "show_report", False)
+    config_file = getattr(args, "config", None)
+
+    if show_report:
+        # Show last optimization report
+        history_path = Path.home() / ".config" / "opencastor" / "optimizer-history.json"
+        if not history_path.exists():
+            print("  No optimizer history found. Run: castor optimize")
+            return
+        import json as _json
+
+        history = _json.loads(history_path.read_text())
+        if not history:
+            print("  Optimizer history is empty.")
+            return
+        last = history[-1]
+        print()
+        print(f"  Last run: {last['timestamp']}")
+        print(f"  Config: {last['config_path']}")
+        print(f"  Changes applied: {last['changes_applied']}  Reverted: {last['changes_reverted']}")
+        for ch in last.get("changes_proposed", []):
+            status = "✓" if ch["applied"] else ("↩" if ch["reverted"] else "·")
+            print(
+                f"  {status} [{ch['change_type']}] {ch['description']} "
+                f"({ch['metric_name']}: Δ{ch['metric_delta']:+.3f})"
+            )
+        print()
+        return
+
+    # Find config file
+    if config_file:
+        cfg = Path(config_file)
+    else:
+        # Try common locations
+        candidates = [
+            Path("robot.rcan.yaml"),
+            Path("config/robot.rcan.yaml"),
+            Path.home() / ".config" / "opencastor" / "robot.rcan.yaml",
+        ]
+        cfg = next((p for p in candidates if p.exists()), candidates[0])
+
+    if not cfg.exists() and not dry_run:
+        print(f"  Config not found at {cfg}. Pass --config <path> or use --dry-run.")
+        return
+
+    mode_str = " [DRY RUN]" if dry_run else ""
+    print(f"\n  Running optimizer{mode_str}...")
+    print(f"  Config: {cfg}")
+
+    report = asyncio.run(run_optimizer(cfg, dry_run=dry_run))
+
+    print()
+    print(report.summary())
+
+    if report.skipped_active_session:
+        print("\n  ⚠ Optimizer skipped — active session in progress. Try again during idle hours.")
+    elif not report.changes_proposed:
+        print("\n  ✓ No optimizations needed — robot config already well-tuned.")
+    elif dry_run:
+        print(
+            f"\n  {len(report.changes_proposed)} change(s) proposed. Run without --dry-run to apply."
+        )
+    else:
+        print(
+            f"\n  ✓ {report.changes_applied} change(s) applied, {report.changes_reverted} reverted."
+        )
+    print()
+
+
+def _cmd_skills(args) -> None:
+    """castor skills — list loaded skills with folder structure and usage stats."""
+    import json as _json
+
+    from castor.skills.loader import SkillLoader, get_skill_usage_stats
+
+    loader = SkillLoader()
+    skills = loader.load_all()
+
+    show_stats = getattr(args, "stats", False)
+    filter_name = getattr(args, "name", None)
+    as_json = getattr(args, "skills_json", False)
+
+    if filter_name:
+        if filter_name not in skills:
+            print(f"  Skill '{filter_name}' not found. Try: castor skills")
+            return
+        skills = {filter_name: skills[filter_name]}
+
+    if as_json:
+        out = {}
+        for name, sk in skills.items():
+            entry = {k: v for k, v in sk.items() if k != "body"}
+            if show_stats:
+                entry["usage"] = get_skill_usage_stats(name)
+            out[name] = entry
+        print(_json.dumps(out, indent=2))
+        return
+
+    print()
+    print(f"  {'NAME':<24} {'VER':<6} {'CONSENT':<10} {'SCRIPTS':<8} {'REFS':<6} {'TOOLS'}")
+    print(f"  {'─' * 24} {'─' * 6} {'─' * 10} {'─' * 8} {'─' * 6} {'─' * 30}")
+
+    for name, sk in sorted(skills.items()):
+        scripts_count = len(sk.get("scripts", []))
+        refs_count = len(sk.get("references", []))
+        tools = ", ".join(sk.get("tools", [])) or "—"
+        consent = sk.get("consent", "none")
+        version = sk.get("version", "?")
+        print(f"  {name:<24} {version:<6} {consent:<10} {scripts_count:<8} {refs_count:<6} {tools}")
+
+    print()
+    if show_stats:
+        print("  ── Usage Statistics ─────────────────────────────────────")
+        for name in sorted(skills):
+            stats = get_skill_usage_stats(name)
+            total = stats["total_triggers"]
+            last = stats["last_triggered"] or "never"
+            print(f"  {name:<24} {total:>4} triggers   last: {last}")
+            if stats["recent_10"]:
+                sample = stats["recent_10"][0][:60]
+                print(f'    {"":24} recent: "{sample}"')
+        print()
+
+    print(
+        f"  {len(skills)} skills loaded  ·  castor skills --stats for usage  ·  castor explore --type skill for hub"
+    )
+    print()
+
+
 def _cmd_explore(args) -> None:
     """castor explore — browse available presets, skills, and harnesses."""
     from pathlib import Path
@@ -5209,6 +5346,24 @@ def main() -> None:
     p_explore.add_argument("--hardware", help="Filter by hardware tag")
     p_explore.add_argument("--categories", action="store_true", help="List categories only")
 
+    # castor skills
+    p_skills = sub.add_parser("skills", help="List loaded skills with usage stats and folder info")
+    p_skills.add_argument("--stats", action="store_true", help="Show usage statistics")
+    p_skills.add_argument("--name", "-n", metavar="SKILL_NAME", help="Show details for one skill")
+    p_skills.add_argument("--json", action="store_true", dest="skills_json", help="Output JSON")
+
+    # castor optimize
+    p_optimize = sub.add_parser(
+        "optimize", help="Run per-robot runtime optimizer (reads trajectories, tunes config)"
+    )
+    p_optimize.add_argument(
+        "--dry-run", action="store_true", help="Show proposed changes without applying them"
+    )
+    p_optimize.add_argument(
+        "--report", action="store_true", dest="show_report", help="Show last optimization report"
+    )
+    p_optimize.add_argument("--config", "-c", metavar="PATH", help="Path to RCAN yaml config")
+
     args = parser.parse_args()
 
     commands = {
@@ -5306,6 +5461,8 @@ def main() -> None:
         "share": _cmd_share,
         "install": _cmd_install,
         "explore": _cmd_explore,
+        "skills": _cmd_skills,
+        "optimize": _cmd_optimize,
     }
 
     # castor eval — skill evaluation harness

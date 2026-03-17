@@ -4,8 +4,9 @@ description: >
   Use when the user asks the robot to pick up, grab, grasp, place, move, hand
   over, or manipulate a physical object using the robotic arm or gripper.
   Triggers on "pick up", "grab", "pick", "place", "put X on Y", "hand me",
-  "move the X", "get the X", "assemble", "sort".
-version: "1.0"
+  "move the X", "get the X", "assemble", "sort", "stack", "lift", "drop",
+  "set down", "give me", "bring me".
+version: "1.1"
 requires:
   - control
   - vision
@@ -68,11 +69,25 @@ Describe what you see and your intended approach:
 - If grasp fails (camera shows object not held): stop and report
 - Never move arm at high speed near humans
 
+## References
+
+See `references/grasp-patterns.md` for object-type-specific grasp strategies.
+See `references/workspace-bounds.md` for joint limits and reachable zones.
+
+## Gotchas
+
+- **Gripper already closed** — if `grip("close")` is called when gripper is already holding something, it's a no-op; always `grip("open")` first to reset
+- **SO-ARM101 joint 3 (shoulder_lift) is sensitive** — move in small increments (< 10° per step); large moves trigger the voltage error watchdog
+- **Camera parallax** — the arm camera and the description camera may not be the same; an object that looks "at 0.4m" in the wide camera may be at 0.35m from the gripper; close the last 5cm slowly
+- **Grasp confirmation** — `get_camera_frame()` after closing gripper: if the object is missing from its original position AND in the gripper zone → success; if still on table → grasp failed, retry with better positioning
+- **"Sort" tasks** — don't try to plan the full sort upfront; pick one object, place it, confirm, then ask if user wants to continue; don't do multi-step fully autonomous runs without re-confirming
+- **Feetech STS3215 max torque** — the default gripper uses around 30% torque for soft objects; increasing force to grab something that won't grip is usually the wrong move — check for object geometry issues instead
+
 ## Example
 
 User: "Pick up the red Lego brick"
 → `get_camera_frame()` → see brick at 0.4m
 → `get_distance()` → 0.38m clear
-→ "I can see a red 2x4 Lego brick about 0.4m away on the table. I plan to approach, open the gripper, grasp it, and lift it. Shall I proceed?"
+→ "I can see a red 2×4 Lego brick about 0.4m away on the table. I plan to approach, open the gripper, grasp it, and lift it. Shall I proceed?"
 → User: "yes"
 → `grip("open")` → `move(approach)` → `grip("close")` → `get_camera_frame()` → confirm → report

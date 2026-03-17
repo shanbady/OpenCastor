@@ -3,8 +3,9 @@ name: camera-describe
 description: >
   Use when the user asks what the robot sees, requests a photo or snapshot,
   wants a description of the surroundings, asks about objects in view, or
-  says "look at X", "what's in front of you", "describe your environment".
-version: "1.0"
+  says "look at X", "what's in front of you", "describe your environment",
+  "take a picture", "scan the area", "can you see X", "show me what you see".
+version: "1.1"
 requires:
   - vision
 consent: none
@@ -36,6 +37,19 @@ Return: "My camera is not currently available. I can describe my sensor readings
 - Mention spatial relationships: "to the left", "in the centre", "in the background"
 - If asked about a specific object, focus your description on finding it
 - Do not fabricate visual content if the frame is blank or unavailable
+- For object identification questions ("is there a cup?"), scan carefully before answering
+
+## References
+
+See `references/scene-description-guide.md` for spatial vocabulary and lighting callouts.
+
+## Gotchas
+
+- **Blank/black frame ≠ nothing there** — camera may need a moment to warm up; retry once before reporting unavailable
+- **Depth sensor returns 0.0** — means out-of-range (> sensor max), not "right in front of you"; treat 0.0 as "no valid reading"
+- **OAK-D proxy latency** — first frame after startup can take 2–3s; if `get_camera_frame()` is slow, still wait for it rather than aborting
+- **Confusing left/right** — camera's left is the user's right if facing the robot; always describe from the camera's perspective, not the user's
+- **Low light** — if the description would be "dark room, can't see much", also report any distance readings as supplementary info
 
 ## Example
 

@@ -4,8 +4,9 @@ description: >
   Use when the user asks to consult, communicate with, or delegate to another
   robot in the fleet. Triggers on "ask Alex", "ask Bob", "check with [robot]",
   "what does [robot name] think", "coordinate with", "tell [robot] to",
-  "split the task with", "collaborate with".
-version: "1.0"
+  "split the task with", "collaborate with", "get Bob's opinion", "loop in Alex",
+  "let Alex handle", "what can Bob do", "relay this to".
+version: "1.1"
 requires: []
 consent: none
 tools:
@@ -42,6 +43,19 @@ to the user. Attribute clearly: "Alex says: ..."
 This skill only sends `scope: chat` messages. Physical actions on the peer
 robot are governed by that robot's own P66 layer — you cannot override them.
 Do NOT attempt to command a peer robot to perform physical actions through chat.
+
+## References
+
+See `references/fleet-roster.md` for current fleet members and their capabilities.
+
+## Gotchas
+
+- **Peer offline** — `send_rcan_message` timeout doesn't mean the robot is broken; it may be busy, low-battery, or in a non-chat mode; always report "I couldn't reach Alex — she may be occupied" rather than "Alex is offline"
+- **Scope = chat only** — you can ASK a peer to do something, but the peer's own P66 layer controls whether it acts; never phrase a peer message as a command you expect to be auto-executed ("do X now") — ask instead ("would you be able to X?")
+- **RRN format** — must use full `RRN-000000000001` format; short names ("Bob") are NOT valid RRN values; always resolve before calling `send_rcan_message`
+- **Message length** — keep peer messages concise (< 300 chars); long context dumps are expensive and the peer's model may truncate them; summarise what you need
+- **Cascading delegation** — if you ask Alex to ask Bob, this creates a chain that can timeout; for three-robot coordination, the user should coordinate directly rather than daisy-chaining messages
+- **Gemini ADC on Alex** — Alex's brain uses Google OAuth; she may occasionally have slower cold-start responses on the first message of a session
 
 ## Example
 

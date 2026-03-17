@@ -714,7 +714,8 @@ class TestV15SafetyInvariants:
         )
         with open(pyproject) as f:
             content = f.read()
-        # v1.6 bump: version changed from 2026.3.17.0 to 2026.3.17.1
-        assert "2026.3.17.1" in content or "2026.3.17.0" in content, (
-            "pyproject.toml must declare version=2026.3.17.1 (or 2026.3.17.0 pre-bump)"
+        # version must be 2026.3.17.x (any patch)
+        import re as _re
+        assert _re.search(r"2026\.3\.17\.\d+", content), (
+            "pyproject.toml must declare a 2026.3.17.x version"
         )

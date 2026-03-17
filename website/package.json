@@ -8,7 +8,6 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
     "astro": "^5.0.0",
     "js-yaml": "^4.1.1"
   },

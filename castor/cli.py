@@ -3543,20 +3543,110 @@ def _cmd_share(args) -> None:
     bundle_zip = Path(f"/tmp/castor-share-{Path(source).stem}.zip")
     shutil.make_archive(str(bundle_zip.with_suffix("")), "zip", bundle_dir)
 
+    publish = getattr(args, "publish", False)
+
     print(f"\n  ✓ Bundle ready: {bundle_zip}")
     if redaction_count:
         print(f"  ⚠  Redacted {redaction_count} secret(s)")
-    print()
-    print("  To share this config publicly, open a PR:")
-    print("  https://github.com/craigm26/OpenCastor/issues/new")
-    print(f"  → Attach {bundle_zip.name} or paste the contents")
-    print()
-    print("  Or contribute directly:")
-    print(f"  cp {bundle_zip} ~/OpenCastor/config/community/")
-    print('  git add . && git commit -m "community: add ' + title + '"')
-    print("  git push && gh pr create")
-    print()
-    print("  ℹ  Firebase-based instant sharing coming in Phase 2 (issue #700)")
+
+    if publish:
+        # Phase 2: upload to Firebase
+        _share_publish_firebase(content_type, title, tags, scrubbed, bundle_dir)
+    else:
+        print()
+        print("  To share publicly, use --publish:")
+        print(f"    castor share {content_type} {source} --title '{title}' --publish")
+        print()
+        print("  Or contribute via GitHub PR:")
+        print(f"  cp {bundle_zip} ~/OpenCastor/config/community/")
+        print('  git add . && git commit -m "community: add ' + title + '"')
+        print("  git push && gh pr create")
+        print()
+
+
+def _share_publish_firebase(
+    content_type: str,
+    title: str,
+    tags: str,
+    scrubbed: dict,
+    bundle_dir,
+) -> None:
+    """Upload a bundle to the OpenCastor Hub via Firebase Cloud Function."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from pathlib import Path
+
+    # Find the main config file
+    main_file = next((f for f in scrubbed if f.endswith(".rcan.yaml") or f == "SKILL.md"), None)
+    if not main_file:
+        print("  ✗ No .rcan.yaml or SKILL.md found in bundle")
+        return
+
+    content = scrubbed[main_file]
+    tag_list = (
+        [t.strip() for t in tags.split(",") if t.strip()] if isinstance(tags, str) else (tags or [])
+    )
+
+    # Check for Firebase auth token
+    token_file = Path.home() / ".config" / "opencastor" / "hub-token.json"
+    if not token_file.exists():
+        print("\n  ✗ Not authenticated for Hub. Run:")
+        print("    castor login hub")
+        print("  (Firebase Auth required to publish configs)")
+        return
+
+    try:
+        token_data = _json.loads(token_file.read_text())
+        id_token = token_data.get("idToken")
+        if not id_token:
+            raise ValueError("No idToken in hub-token.json")
+    except Exception as exc:
+        print(f"  ✗ Failed to read Hub token: {exc}")
+        print("  Run: castor login hub")
+        return
+
+    payload = _json.dumps(
+        {
+            "data": {
+                "type": content_type,
+                "title": title,
+                "tags": tag_list,
+                "content": content,
+                "filename": main_file,
+                "public": True,
+            }
+        }
+    ).encode()
+
+    url = "https://us-central1-opencastor.cloudfunctions.net/uploadConfig"
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {id_token}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = _json.loads(resp.read())
+            data = result.get("result", result)
+            config_id = data.get("id", "?")
+            config_url = data.get("url", f"https://opencastor.com/config/{config_id}")
+            install_cmd = data.get(
+                "install_cmd", f"castor install opencastor.com/config/{config_id}"
+            )
+            print(f"\n  ✓ Published! Config ID: {config_id}")
+            print(f"  🔗 {config_url}")
+            print(f"  📦 Install: {install_cmd}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        print(f"  ✗ Upload failed (HTTP {e.code}): {body[:200]}")
+    except Exception as exc:
+        print(f"  ✗ Upload failed: {exc}")
 
 
 def _cmd_install(args) -> None:
@@ -3636,13 +3726,62 @@ def _cmd_install(args) -> None:
         print("  For now: https://github.com/craigm26/OpenCastor/tree/main/config/community")
         return
 
-    # Generic ID (Phase 2: fetch from Firebase)
-    print(f"  Looking up {target!r} on opencastor.com...")
-    print("  ℹ  Firebase-based hub install coming in Phase 2 (issue #700)")
-    print("  For now, browse presets with:")
-    print("    ls config/presets/          # built-in presets")
-    print("    castor install skill:<name> # built-in skills")
-    print("    castor explore              # see what's available")
+    # Generic ID or opencastor.com/config/<id> URL — Phase 2: fetch from Firebase
+    config_id = target
+    if "opencastor.com/config/" in target or "opencastor.com/explore/" in target:
+        config_id = target.rstrip("/").split("/")[-1]
+
+    print(f"  Fetching '{config_id}' from opencastor.com hub...")
+    _install_from_hub(config_id, dest_dir, dry_run)
+
+
+def _install_from_hub(config_id: str, dest_dir, dry_run: bool) -> None:
+    """Fetch and install a config from the OpenCastor Hub (Phase 2 Firebase)."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from pathlib import Path
+
+    url = "https://us-central1-opencastor.cloudfunctions.net/getConfig"
+    payload = _json.dumps({"data": {"id": config_id}}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = _json.loads(resp.read())
+            data = result.get("result", result)
+            content = data.get("content", "")
+            filename = data.get("filename", f"{config_id}.rcan.yaml")
+            title = data.get("title", config_id)
+
+            if not content:
+                print(f"  ✗ No content in response for '{config_id}'")
+                return
+
+            dest = Path(dest_dir) / filename
+            if dry_run:
+                print(f"  [dry-run] Would install '{title}' → {dest}")
+                return
+
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+            print(f"  ✓ Installed '{title}' → {dest}")
+            print(f"  Start with: castor run --config {dest}")
+
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print(f"  ✗ Config '{config_id}' not found on the hub")
+            print("  Browse available configs: castor explore")
+        else:
+            print(f"  ✗ Hub fetch failed (HTTP {e.code})")
+    except Exception as exc:
+        print(f"  ✗ Could not reach hub: {exc}")
+        print(f"  Try browsing manually: https://opencastor.com/config/{config_id}")
 
 
 def _cmd_optimize(args) -> None:
@@ -5348,6 +5487,11 @@ def main() -> None:
         "--tags", default="", help="Comma-separated tags (hardware, provider, etc.)"
     )
     p_share.add_argument("--dry-run", action="store_true", help="Preview without writing files")
+    p_share.add_argument(
+        "--publish",
+        action="store_true",
+        help="Upload to OpenCastor Hub (requires: castor login hub)",
+    )
 
     # castor install
     p_install2 = sub.add_parser("install", help="Install a preset, skill, or harness from the hub")

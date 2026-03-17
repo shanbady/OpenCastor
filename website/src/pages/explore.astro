@@ -1,0 +1,260 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+// Community configs loaded from config/community/ at build time
+// Phase 2: these will also be loaded from Firestore
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import yaml from 'js-yaml';
+
+const communityDir = resolve(process.cwd(), '../config/community');
+const presetsDir = resolve(process.cwd(), '../config/presets');
+
+function loadConfigs(dir: string, limit = 20) {
+  try {
+    return readdirSync(dir)
+      .filter(f => f.endsWith('.rcan.yaml'))
+      .slice(0, limit)
+      .map(filename => {
+        const content = readFileSync(`${dir}/${filename}`, 'utf8');
+        let parsed: any = {};
+        try { parsed = yaml.load(content) as any; } catch {}
+        return {
+          id: filename.replace('.rcan.yaml', ''),
+          filename,
+          title: parsed?.metadata?.robot_name || filename.replace('.rcan.yaml', '').replace(/-/g, ' '),
+          description: parsed?.metadata?.description || '',
+          rcan_version: parsed?.rcan_version || '?',
+          provider: parsed?.agent?.provider || 'unknown',
+          physics: parsed?.physics?.type || 'unknown',
+          tags: [
+            parsed?.physics?.type,
+            parsed?.agent?.provider,
+            `rcan-${parsed?.rcan_version}`,
+          ].filter(Boolean),
+          hardware: parsed?.metadata?.description || '',
+          content: content.slice(0, 500),
+          type: 'preset',
+          source: 'community',
+        };
+      });
+  } catch { return []; }
+}
+
+const communityConfigs = loadConfigs(communityDir);
+const presetConfigs = loadConfigs(presetsDir, 12);
+const allConfigs = [...communityConfigs, ...presetConfigs];
+---
+
+<BaseLayout
+  title="Explore Configs — OpenCastor"
+  description="Browse community-tested RCAN configs for Raspberry Pi robots, robotic arms, and more. Install any config with one command."
+  ogUrl="https://opencastor.com/explore"
+>
+
+<main>
+  <section class="page-hero" style="padding-bottom:40px">
+    <p class="section-label reveal">Explore</p>
+    <h1 class="reveal reveal-d1">Robot <span class="gradient-text">Configs</span></h1>
+    <p class="reveal reveal-d2" style="font-size:1.15rem;max-width:520px;margin:0 auto 28px">
+      Community-tested RCAN configs. Browse, install, and remix.</p>
+    <div class="hero-actions reveal reveal-d3">
+      <a href="/hub#submit" class="btn btn-secondary">Share your config →</a>
+    </div>
+  </section>
+
+  <!-- Filter bar -->
+  <section style="padding:0 0 16px;max-width:900px;margin:0 auto;padding-left:24px;padding-right:24px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:.85rem;color:var(--text-muted)">Filter:</span>
+      <button class="explore-filter active" onclick="filterExplore('all')" data-filter="all">All</button>
+      <button class="explore-filter" onclick="filterExplore('preset')" data-filter="preset">Presets</button>
+      <button class="explore-filter" onclick="filterExplore('skill')" data-filter="skill">Skills</button>
+      <button class="explore-filter" onclick="filterExplore('harness')" data-filter="harness">Harnesses</button>
+      <span style="margin-left:auto;font-size:.85rem;color:var(--text-muted)" id="config-count">{allConfigs.length} configs</span>
+    </div>
+  </section>
+
+  <!-- Config grid -->
+  <section style="max-width:900px;margin:0 auto;padding:0 24px 80px">
+    <div class="explore-grid" id="explore-grid">
+      {allConfigs.map(cfg => (
+        <div class="explore-card" data-type={cfg.type}>
+          <div class="explore-card-header">
+            <span class="explore-badge">{cfg.type}</span>
+            <span class="explore-rcan">RCAN {cfg.rcan_version}</span>
+          </div>
+          <h3 class="explore-card-title">{cfg.title}</h3>
+          {cfg.description && <p class="explore-card-desc">{cfg.description.slice(0, 100)}{cfg.description.length > 100 ? '…' : ''}</p>}
+          <div class="explore-tags">
+            {cfg.tags.map(tag => (
+              <span class="explore-tag">{tag}</span>
+            ))}
+          </div>
+          <div class="explore-card-footer">
+            <code class="explore-install">castor install opencastor.com/explore/{cfg.id}</code>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn btn-sm" onclick={`copyInstall('opencastor.com/explore/${cfg.id}', this)`}>Copy</button>
+              <a class="btn btn-sm btn-secondary" href={`/config/${cfg.id}`}>Details →</a>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- Phase 2 placeholder: Firebase-loaded configs append here -->
+    <div id="firebase-configs" style="margin-top:32px"></div>
+
+    <!-- Upload CTA -->
+    <div class="explore-upload-cta" style="margin-top:48px;text-align:center;padding:32px;background:var(--surface-2);border-radius:12px;border:1px solid var(--border-color)">
+      <h3 style="margin:0 0 8px">Share your robot config</h3>
+      <p style="color:var(--text-muted);margin:0 0 16px;font-size:.95rem">
+        Phase 2: instant upload via <code>castor share</code> coming soon.<br>
+        For now, open a PR to <code>config/community/</code>.
+      </p>
+      <a href="https://github.com/craigm26/OpenCastor/tree/main/config/community" class="btn btn-primary" target="_blank">
+        Submit via GitHub →
+      </a>
+    </div>
+  </section>
+</main>
+
+<style>
+.explore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+.explore-card {
+  background: var(--surface-2, #1a1a2e);
+  border: 1px solid var(--border-color, rgba(255,255,255,.1));
+  border-radius: 12px;
+  padding: 20px;
+  transition: border-color .2s, transform .2s;
+}
+.explore-card:hover {
+  border-color: var(--accent, #0ea5e9);
+  transform: translateY(-2px);
+}
+.explore-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.explore-badge {
+  background: var(--accent, #0ea5e9);
+  color: #fff;
+  font-size: .7rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.explore-rcan {
+  font-size: .75rem;
+  color: var(--text-muted, #aaa);
+}
+.explore-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.explore-card-desc {
+  font-size: .85rem;
+  color: var(--text-muted, #aaa);
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.explore-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.explore-tag {
+  background: rgba(14,165,233,.15);
+  color: var(--accent, #0ea5e9);
+  font-size: .72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.explore-install {
+  display: block;
+  font-size: .72rem;
+  background: var(--surface-3, rgba(0,0,0,.3));
+  padding: 6px 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.explore-card-footer { margin-top: 12px; }
+.explore-filter {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255,255,255,.15));
+  color: var(--text-muted, #aaa);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all .15s;
+}
+.explore-filter.active,
+.explore-filter:hover {
+  background: var(--accent, #0ea5e9);
+  color: #fff;
+  border-color: transparent;
+}
+.btn-sm {
+  padding: 4px 12px;
+  font-size: .78rem;
+}
+</style>
+
+<script>
+function filterExplore(type) {
+  document.querySelectorAll('.explore-filter').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-filter="${type}"]`).classList.add('active');
+  const cards = document.querySelectorAll('.explore-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const show = type === 'all' || card.dataset.type === type;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('config-count').textContent = `${visible} configs`;
+}
+
+async function copyInstall(cmd, btn) {
+  try {
+    await navigator.clipboard.writeText(`castor install ${cmd}`);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  } catch {}
+}
+
+// Phase 2: Load dynamic configs from Firebase
+// Uncomment when hub.ts Cloud Functions are deployed
+/*
+async function loadFirebaseConfigs() {
+  try {
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10/firebase-app.js');
+    const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10/firebase-functions.js');
+    const app = initializeApp({ projectId: 'opencastor' });
+    const fns = getFunctions(app);
+    const search = httpsCallable(fns, 'searchConfigs');
+    const result = await search({ limit: 10 });
+    const container = document.getElementById('firebase-configs');
+    if (result.data.results.length > 0) {
+      container.innerHTML = '<h3 style="margin:0 0 16px">Recently Shared</h3><div class="explore-grid">' +
+        result.data.results.map(renderCard).join('') + '</div>';
+    }
+  } catch (e) { console.debug('Firebase configs not loaded:', e); }
+}
+loadFirebaseConfigs();
+*/
+</script>
+
+</BaseLayout>

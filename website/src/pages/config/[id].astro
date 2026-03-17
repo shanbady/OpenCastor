@@ -1,0 +1,158 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import yaml from 'js-yaml';
+
+// Generate static paths from community/ and presets/ at build time
+export async function getStaticPaths() {
+  const dirs = [
+    resolve(process.cwd(), '../config/community'),
+    resolve(process.cwd(), '../config/presets'),
+  ];
+
+  const paths = [];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    const files = readdirSync(dir).filter(f => f.endsWith('.rcan.yaml'));
+    for (const filename of files) {
+      const id = filename.replace('.rcan.yaml', '');
+      const content = readFileSync(`${dir}/${filename}`, 'utf8');
+      let parsed: any = {};
+      try { parsed = yaml.load(content) as any; } catch {}
+      paths.push({
+        params: { id },
+        props: { filename, content, parsed, dir: dir.includes('community') ? 'community' : 'presets' }
+      });
+    }
+  }
+  return paths;
+}
+
+const { id } = Astro.params;
+const { filename, content, parsed, dir } = Astro.props;
+
+const title = parsed?.metadata?.robot_name || id?.replace(/-/g, ' ') || 'Config';
+const description = parsed?.metadata?.description || `RCAN v${parsed?.rcan_version || '?'} robot configuration`;
+const rcanVersion = parsed?.rcan_version || '?';
+const provider = parsed?.agent?.provider || 'unknown';
+const physicsType = parsed?.physics?.type || 'unknown';
+const rrn = parsed?.metadata?.rrn || '';
+const tags = [physicsType, provider, `rcan-${rcanVersion}`, dir].filter(Boolean);
+const installCmd = `castor install opencastor.com/config/${id}`;
+---
+
+<BaseLayout
+  title={`${title} — OpenCastor Config`}
+  description={description}
+  ogUrl={`https://opencastor.com/config/${id}`}
+>
+
+<main>
+  <section style="max-width:860px;margin:0 auto;padding:60px 24px 80px">
+
+    <!-- Breadcrumb -->
+    <nav style="font-size:.82rem;color:var(--text-muted);margin-bottom:28px">
+      <a href="/explore" style="color:var(--accent)">← Explore</a>
+      <span style="margin:0 8px">/</span>
+      <span>{title}</span>
+    </nav>
+
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:28px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span class="explore-badge" style="background:var(--accent,#0ea5e9);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:20px;text-transform:uppercase">preset</span>
+          <span style="font-size:.8rem;color:var(--text-muted)">RCAN {rcanVersion}</span>
+          {rrn && <span style="font-size:.8rem;color:var(--text-muted);font-family:monospace">{rrn}</span>}
+        </div>
+        <h1 style="margin:0 0 8px;font-size:1.8rem">{title}</h1>
+        <p style="color:var(--text-muted);margin:0;font-size:.95rem">{description}</p>
+      </div>
+
+      <!-- QR Code -->
+      <div id="qr-container" style="text-align:center">
+        <canvas id="qr-canvas" width="120" height="120" style="border-radius:8px;background:#fff;padding:8px"></canvas>
+        <p style="font-size:.72rem;color:var(--text-muted);margin:4px 0 0">Scan to install</p>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px">
+      {tags.map(tag => (
+        <span style="background:rgba(14,165,233,.15);color:var(--accent,#0ea5e9);font-size:.75rem;padding:3px 10px;border-radius:4px">{tag}</span>
+      ))}
+    </div>
+
+    <!-- Install command -->
+    <div style="background:var(--surface-2,#1a1a2e);border:1px solid var(--border-color,rgba(255,255,255,.1));border-radius:10px;padding:16px;margin-bottom:28px">
+      <p style="font-size:.8rem;color:var(--text-muted);margin:0 0 8px">Install with one command:</p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <code style="font-size:.9rem;color:var(--accent,#0ea5e9);flex:1;min-width:200px">{installCmd}</code>
+        <button class="btn btn-sm btn-primary" id="copy-btn" onclick="copyCmd()">Copy</button>
+      </div>
+    </div>
+
+    <!-- Metadata table -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:32px">
+      {[
+        { label: 'Provider', value: provider },
+        { label: 'Physics', value: physicsType },
+        { label: 'RCAN Version', value: rcanVersion },
+        { label: 'Source', value: dir },
+      ].map(({ label, value }) => (
+        <div style="background:var(--surface-2,#1a1a2e);border:1px solid var(--border-color,rgba(255,255,255,.1));border-radius:8px;padding:12px">
+          <div style="font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">{label}</div>
+          <div style="font-weight:600;font-size:.9rem">{value}</div>
+        </div>
+      ))}
+    </div>
+
+    <!-- YAML content with syntax highlight -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0;font-size:1rem">Config ({filename})</h3>
+        <button class="btn btn-sm btn-secondary" onclick="copyYaml()">Copy YAML</button>
+      </div>
+      <pre id="yaml-content" style="background:var(--surface-2,#1a1a2e);border:1px solid var(--border-color,rgba(255,255,255,.08));border-radius:10px;padding:20px;overflow-x:auto;font-size:.8rem;line-height:1.6;max-height:500px;overflow-y:auto"><code id="yaml-code">{content}</code></pre>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap">
+      <a href={`https://github.com/craigm26/OpenCastor/blob/main/config/${dir}/${filename}`}
+         class="btn btn-secondary" target="_blank">View on GitHub →</a>
+      <a href="/explore" class="btn btn-secondary">← Back to Explore</a>
+    </div>
+
+  </section>
+</main>
+
+<!-- QR code generation (qrcode.js from CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script define:vars={{ installCmd, id }}>
+  // Generate QR code
+  document.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('qr-canvas');
+    if (canvas && window.QRCode) {
+      QRCode.toCanvas(canvas, `castor install opencastor.com/config/${id}`, {
+        width: 120, margin: 1,
+        color: { dark: '#0f172a', light: '#ffffff' }
+      });
+    }
+  });
+</script>
+
+<script define:vars={{ installCmd, content }}>
+  function copyCmd() {
+    navigator.clipboard.writeText(installCmd).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+  function copyYaml() {
+    navigator.clipboard.writeText(content);
+  }
+</script>
+
+</BaseLayout>

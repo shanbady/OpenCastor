@@ -187,7 +187,8 @@ def rotate_key(config: dict[str, Any], new_key_id: str) -> dict[str, Any]:
         security["previous_key_id"] = old_key_id
         log.info(
             "key_rotation: rotating key_id %s → %s (previous_key_id retained in window)",
-            old_key_id, new_key_id,
+            old_key_id,
+            new_key_id,
         )
     security["key_id"] = new_key_id
     security["rotated_at"] = int(time.time())

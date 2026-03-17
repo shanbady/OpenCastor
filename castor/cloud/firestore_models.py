@@ -24,6 +24,7 @@ def _utcnow() -> str:
 # Robot document  /robots/{rrn}
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RobotStatus:
     online: bool
@@ -37,11 +38,11 @@ class RobotDoc:
 
     rrn: str
     name: str
-    owner: str                        # RRN owner prefix, e.g. "rrn://craigm26"
-    firebase_uid: str                 # Firebase Auth UID of the owner
-    ruri: str                         # RCAN RURI
-    capabilities: list[str]           # ["chat", "nav", "control", "vision"]
-    version: str                      # OpenCastor version
+    owner: str  # RRN owner prefix, e.g. "rrn://craigm26"
+    firebase_uid: str  # Firebase Auth UID of the owner
+    ruri: str  # RCAN RURI
+    capabilities: list[str]  # ["chat", "nav", "control", "vision"]
+    version: str  # OpenCastor version
     bridge_version: str
     registered_at: str = field(default_factory=_utcnow)
     status: dict[str, Any] = field(default_factory=dict)
@@ -55,6 +56,7 @@ class RobotDoc:
 # ---------------------------------------------------------------------------
 # Command document  /robots/{rrn}/commands/{cmd_id}
 # ---------------------------------------------------------------------------
+
 
 class CommandStatus:
     PENDING = "pending"
@@ -70,11 +72,11 @@ class CommandDoc:
     """Remote command queued for a robot."""
 
     instruction: str
-    scope: str                         # discover | status | chat | control | safety
-    issued_by_uid: str                 # Firebase Auth UID
-    issued_by_owner: str               # RRN owner prefix of issuer
+    scope: str  # discover | status | chat | control | safety
+    issued_by_uid: str  # Firebase Auth UID
+    issued_by_owner: str  # RRN owner prefix of issuer
     issued_at: str = field(default_factory=_utcnow)
-    message_type: str = "command"      # "command" | "consent_request" | "estop"
+    message_type: str = "command"  # "command" | "consent_request" | "estop"
     status: str = CommandStatus.PENDING
     # R2RAM
     granted_scopes: list[str] = field(default_factory=list)
@@ -94,6 +96,7 @@ class CommandDoc:
 # ---------------------------------------------------------------------------
 # Consent request  /robots/{rrn}/consent_requests/{id}
 # ---------------------------------------------------------------------------
+
 
 class ConsentStatus:
     PENDING = "pending"
@@ -129,6 +132,7 @@ class ConsentRequestDoc:
 # Consent peer record  /robots/{rrn}/consent_peers/{peer_owner}
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ConsentPeerDoc:
     """Established consent relationship with another owner's robots."""
@@ -140,7 +144,7 @@ class ConsentPeerDoc:
     established_at: str = field(default_factory=_utcnow)
     expires_at: str | None = None
     consent_id: str | None = None
-    direction: str = "inbound"         # "inbound" | "outbound" | "mutual"
+    direction: str = "inbound"  # "inbound" | "outbound" | "mutual"
     status: str = ConsentStatus.APPROVED
 
     def to_dict(self) -> dict[str, Any]:

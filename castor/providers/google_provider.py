@@ -116,8 +116,15 @@ class GoogleProvider(BaseProvider):
             return safety_block
 
         is_blank = not image_bytes or image_bytes == b"\x00" * len(image_bytes)
-        _MESSAGING_SURFACES = {"whatsapp", "terminal", "dashboard", "voice",
-                               "opencastor_app", "opencastor_fleet_ui", "rcan"}
+        _MESSAGING_SURFACES = {
+            "whatsapp",
+            "terminal",
+            "dashboard",
+            "voice",
+            "opencastor_app",
+            "opencastor_fleet_ui",
+            "rcan",
+        }
         is_messaging = surface in _MESSAGING_SURFACES
 
         try:

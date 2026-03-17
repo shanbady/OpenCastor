@@ -329,6 +329,9 @@ class CommandRequest(BaseModel):
     # Values: "whatsapp" | "terminal" | "dashboard" | "opencastor_app" | "rcan" | "voice"
     channel: Optional[str] = None
     context: Optional[str] = None  # alias for channel (bridge sends both)
+    # v1.6 RCAN fields
+    transport: str = "http"  # GAP-17: transport encoding ("http" | "compact")
+    media_chunks: list[dict] = []  # GAP-18: multi-modal payload chunks
 
 
 class ActionRequest(BaseModel):
@@ -1360,6 +1363,39 @@ async def mjpeg_stream():
     )
 
 
+@app.get("/api/v1/transports")
+async def get_transports():
+    """GET /api/v1/transports — Return supported RCAN transport encodings (v1.6).
+
+    Returns:
+        JSON dict with ``supported`` list and ``preferred`` transport name.
+    """
+    return {"supported": ["http", "compact"], "preferred": "http"}
+
+
+# v1.6: In-memory media chunk cache (5-minute TTL)
+_media_cache: dict[str, tuple[dict, float]] = {}
+_MEDIA_TTL_S: float = 300.0
+
+
+@app.get("/api/v1/media/{chunk_id}")
+async def get_media_chunk(chunk_id: str):
+    """GET /api/v1/media/{chunk_id} — Serve a stored media chunk (v1.6 multi-modal).
+
+    Currently returns 404 — media storage not yet implemented (stub for v1.6).
+    """
+    # Check in-memory cache with TTL
+    entry = _media_cache.get(chunk_id)
+    if entry is not None:
+        chunk_data, stored_at = entry
+        if time.time() - stored_at < _MEDIA_TTL_S:
+            return JSONResponse(chunk_data)
+        else:
+            del _media_cache[chunk_id]
+
+    raise HTTPException(status_code=404, detail="media storage not yet implemented")
+
+
 @app.get("/api/rcan/peers", dependencies=[Depends(verify_token)])
 async def get_peers():
     """List discovered RCAN peers on the local network."""
@@ -1413,12 +1449,18 @@ async def rcan_receive_message(request: Request):
     if msg_type == 1:
         response_payload["capabilities"] = ["status", "teleop", "safety", "registry"]
         response_payload["ruri"] = state.ruri or "rcan://opencastor.unknown.00000000"
+        # v1.6 DISCOVER fields
+        response_payload["supported_transports"] = ["http", "compact"]
+        response_payload["rcan_version"] = "1.6"
+        response_payload["loa_enforcement"] = False
+        response_payload["min_loa_for_control"] = 1
+        response_payload["federation_enabled"] = False
 
     # MessageType.STATUS = 2 — respond with robot info
     elif msg_type == 2:
         response_payload["robot_name"] = (state.config or {}).get("robot_name", "opencastor")
         response_payload["version"] = _castor_pkg.__version__
-        response_payload["rcan_version"] = "1.4"
+        response_payload["rcan_version"] = "1.6"
         response_payload["ruri"] = state.ruri
 
     return JSONResponse(response_payload, status_code=200)

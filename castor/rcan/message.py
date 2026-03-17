@@ -70,8 +70,8 @@ class MessageType(IntEnum):
     TRANSPARENCY = 18  # EU AI Act Art. 13 transparency disclosure
     HANDOFF = 19  # Transfer control between principals
     CONSENT_REQUEST = 20  # R2RAM §5: request cross-owner robot-to-robot authorization
-    CONSENT_GRANT = 21   # R2RAM §5: grant cross-owner authorization with scopes
-    CONSENT_DENY = 22    # R2RAM §5: deny cross-owner authorization request
+    CONSENT_GRANT = 21  # R2RAM §5: grant cross-owner authorization with scopes
+    CONSENT_DENY = 22  # R2RAM §5: deny cross-owner authorization request
 
 
 class Priority(IntEnum):
@@ -311,13 +311,15 @@ class RCANMessage:
                     log.warning(
                         "Received RCAN message with incompatible MAJOR version "
                         "%s (ours: %s) — proceeding with caution",
-                        incoming_version, RCAN_SPEC_VERSION,
+                        incoming_version,
+                        RCAN_SPEC_VERSION,
                     )
                 else:
                     log.warning(
                         "Received RCAN message with version %s (ours: %s) — "
                         "unknown fields will be ignored",
-                        incoming_version, RCAN_SPEC_VERSION,
+                        incoming_version,
+                        RCAN_SPEC_VERSION,
                     )
             except (ValueError, IndexError):
                 log.warning(
@@ -334,6 +336,7 @@ class RCANMessage:
 
         # Strip unknown fields not in the dataclass (forward-compat)
         import dataclasses as _dc
+
         known = {f.name for f in _dc.fields(cls)}
         d = {k: v for k, v in d.items() if k in known}
 

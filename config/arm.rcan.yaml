@@ -1,43 +1,49 @@
-rcan_version: "1.4"
-
+rcan_version: '1.4'
 metadata:
-  robot_name: "Alex"
-  robot_uuid: "00000000-0000-0000-0000-000000000005"
-  description: "Pi5 + OAK-D depth camera, Ackermann steering"
-  author: "craigm26"
-  ruri: "rcan://craigm26.opencastor-rpi5-ackermann.alex-001"
-
+  robot_name: Alex
+  robot_uuid: 00000000-0000-0000-0000-000000000005
+  description: Pi5 + OAK-D depth camera, Ackermann steering
+  author: craigm26
+  ruri: rcan://craigm26.opencastor-rpi5-ackermann.alex-001
+  name: Alex
+  rrn: RRN-000000000005
+  rrn_uri: rrn://craigm26/robot/opencastor-rpi5-ackermann/alex-001
+  version: 2026.3.16.1
 agent:
-  provider: "huggingface"
-  model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  provider: google
+  model: gemini-2.5-pro
+  use_oauth: true
   vision_enabled: true
   safety_stop: true
-
 physics:
-  type: "ackermann"
+  type: ackermann
   dof: 2
-
 drivers:
-  - id: main_drive
-    protocol: gpio
-
+- id: main_drive
+  protocol: gpio
 network:
   allow_remote_override: false
-
 rcan_protocol:
   port: 8000
   capabilities:
-    - status
-    - nav
-    - teleop
-    - vision
-    - chat
+  - status
+  - nav
+  - teleop
+  - vision
+  - chat
   enable_mdns: true
-  enable_jwt: true
-  ruri: "rcan://craigm26.opencastor-rpi5-ackermann.alex-001"
-
+  enable_jwt: false
+  ruri: rcan://craigm26.opencastor-rpi5-ackermann.alex-001
 safety:
   local_safety_wins: true
   emergency_stop_distance: 0.4
   watchdog:
     timeout_s: 10
+owner: rrn://craigm26/robot/opencastor-rpi5-ackermann/alex-001
+firebase_uid: '104403823389784903319'
+cloud:
+  firebase_project: opencastor
+  gateway_url: http://127.0.0.1:8000
+  credentials: /home/craigm26/.config/opencastor/firebase-sa-key.json
+  telemetry_interval_s: 30
+  poll_interval_s: 5

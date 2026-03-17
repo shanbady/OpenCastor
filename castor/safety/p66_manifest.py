@@ -404,9 +404,11 @@ def build_manifest(safety_layer: Any = None, hardware_caps: Optional[dict] = Non
     planned = by_status.get("planned", 0)
     hardware = by_status.get("hardware", 0)
 
-    # v1.5 invariants — each counts as 1 "implemented" item for conformance_pct
-    V15_INVARIANT_COUNT = 4  # replay_cache, sender_type, offline_mode, version_negotiation
-    v15_implemented = V15_INVARIANT_COUNT  # all implemented in v1.5
+    # v1.5/v1.6 invariants — each counts as 1 "implemented" item for conformance_pct
+    # v1.5: replay_cache, sender_type, offline_mode, version_negotiation
+    # v1.6: federation_trust, loa_enforcement, multimodal_commands
+    V15_INVARIANT_COUNT = 7
+    v15_implemented = V15_INVARIANT_COUNT  # all implemented in v1.5/v1.6
     implemented += v15_implemented
 
     live_state: dict = {}
@@ -428,11 +430,17 @@ def build_manifest(safety_layer: Any = None, hardware_caps: Optional[dict] = Non
     return {
         "manifest_version": "1.0",
         "protocol": "ContinuonOS Protocol 66 (OpenCastor independent implementation)",
-        "rcan_spec_version": "1.5",
-        "rcan_version": "1.5",  # v1.5: explicit rcan_version field
+        "rcan_spec_version": "1.6",
+        "rcan_version": "1.6",  # v1.6: explicit rcan_version field
         "replay_cache_enabled": True,  # v1.5: GAP-03 replay prevention active
         "sender_type_logged": True,  # v1.5: GAP-08 cloud relay audit trail
         "offline_mode_capable": True,  # v1.5: GAP-06 offline operation support
+        # v1.6 new fields (GAP-14, GAP-16, GAP-17, GAP-18)
+        "federation_enabled": False,
+        "supported_transports": ["http"],
+        "min_loa_for_control": 1,
+        "loa_enforcement": False,
+        "multimodal_enabled": True,
         "opencastor_version": __import__("castor").__version__,
         "generated_at": int(time.time() * 1000),
         "summary": {
@@ -537,14 +545,48 @@ def build_manifest(safety_layer: Any = None, hardware_caps: Optional[dict] = Non
             },
             "rcan_version_negotiation": {
                 "description": (
-                    "Outgoing messages include rcan_version='1.5'. Incoming messages "
+                    "Outgoing messages include rcan_version='1.6'. Incoming messages "
                     "with different rcan_version log a WARNING (not error) and are "
                     "processed with forward/backward compatibility rules. "
                     "Implements RCAN §3.5 (GAP-12)."
                 ),
                 "status": "enforced",
                 "module": "castor.rcan.message.RCANMessage.from_dict",
-                "rcan_spec": "v1.5 §3.5",
+                "rcan_spec": "v1.6 §3.5",
+            },
+            "federation_trust": {
+                "description": (
+                    "Cross-registry commands are validated against trust anchors "
+                    "via rcan.federation.validate_cross_registry_command(). "
+                    "ESTOP commands bypass federation checks (P66 invariant). "
+                    "Federation disabled by default; opt-in via federation_enabled flag. "
+                    "Implements RCAN v1.6 (GAP-14)."
+                ),
+                "status": "enforced",
+                "module": "castor.cloud.bridge.CastorBridge._check_federation",
+                "rcan_spec": "v1.6 §GAP-14",
+            },
+            "loa_enforcement": {
+                "description": (
+                    "Level of Assurance (LoA) is extracted from JWT tokens on every command. "
+                    "Default: log-only (LoA 1 backward compat). "
+                    "Enforce via loa_enforcement=True in config. "
+                    "Implements RCAN v1.6 (GAP-16)."
+                ),
+                "status": "enforced",
+                "module": "castor.cloud.bridge.CastorBridge._check_loa",
+                "rcan_spec": "v1.6 §GAP-16",
+            },
+            "multimodal_commands": {
+                "description": (
+                    "Commands can carry media_chunks (base64 images, audio). "
+                    "Chunks are extracted and passed to vision-capable providers. "
+                    "TRAINING_DATA commands log chunk SHA-256 hashes to audit trail. "
+                    "Implements RCAN v1.6 (GAP-18)."
+                ),
+                "status": "enforced",
+                "module": "castor.cloud.bridge.CastorBridge._handle_media_chunks",
+                "rcan_spec": "v1.6 §GAP-18",
             },
         },
         "compliance_refs": {

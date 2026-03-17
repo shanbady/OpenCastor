@@ -24,7 +24,7 @@ SCOPE_HIERARCHY: dict[str, int] = {
     "status": 1,
     "chat": 2,
     "control": 3,
-    "safety": 99,    # safety is special — always allowed for ESTOP, never for RESUME
+    "safety": 99,  # safety is special — always allowed for ESTOP, never for RESUME
     "transparency": 0,
 }
 
@@ -91,14 +91,13 @@ class ConsentManager:
 
     def _is_same_owner(self, requester_owner: str) -> bool:
         """Compare owner prefixes, normalizing for formatting differences."""
+
         def _normalize(o: str) -> str:
             return o.rstrip("/").lower().replace("rrn://", "")
 
         return _normalize(requester_owner) == _normalize(self.owner)
 
-    def _check_consent(
-        self, requester_owner: str, requested_scope: str
-    ) -> tuple[bool, str]:
+    def _check_consent(self, requester_owner: str, requested_scope: str) -> tuple[bool, str]:
         """Check Firestore consent records for a cross-owner peer."""
         record = self._get_consent_record(requester_owner)
         if not record:
@@ -129,13 +128,17 @@ class ConsentManager:
             if granted_level >= req_level:
                 log.debug(
                     "Scope %s authorized for %s via granted scope %s",
-                    requested_scope, requester_owner, granted,
+                    requested_scope,
+                    requester_owner,
+                    granted,
                 )
                 return True, f"granted_via_{granted}"
 
         log.info(
             "Scope %s not in granted scopes %s for %s",
-            requested_scope, granted_scopes, requester_owner,
+            requested_scope,
+            granted_scopes,
+            requester_owner,
         )
         return False, "scope_not_granted"
 
@@ -218,7 +221,9 @@ class ConsentManager:
                 ref.set(record, merge=True)
                 log.info(
                     "Consent granted to %s, scopes=%s, expires=%s",
-                    peer_owner, granted_scopes, expires_at,
+                    peer_owner,
+                    granted_scopes,
+                    expires_at,
                 )
             except Exception as e:
                 log.error("Failed to persist consent grant: %s", e)

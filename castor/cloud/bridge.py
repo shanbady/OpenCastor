@@ -51,7 +51,7 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-BRIDGE_VERSION = "1.5.0"
+BRIDGE_VERSION = "1.6.0"
 
 # Offline mode threshold — if we haven't connected for this long, enter offline mode
 OFFLINE_THRESHOLD_S: int = 300  # 5 minutes per spec GAP-06
@@ -109,6 +109,131 @@ def _make_replay_cache(window_s: int = 30) -> Any:
     if ReplayCacheCls is not None:
         return ReplayCacheCls(window_s=window_s)
     return _ReplayCacheStub(window_s=window_s)
+
+
+# ---------------------------------------------------------------------------
+# v1.6: Federation trust helpers (GAP-14)
+# ---------------------------------------------------------------------------
+
+
+def _try_import_federation() -> tuple[Any, Any]:
+    """Import validate_cross_registry_command and TrustAnchorCache from rcan.federation.
+
+    Returns (validate_fn, TrustAnchorCacheCls) — stubs if unavailable.
+    """
+    try:
+        import os as _os
+        import sys as _sys
+
+        _rcan_path = _os.path.expanduser("~/rcan-py/src")
+        if _rcan_path not in _sys.path:
+            _sys.path.insert(0, _rcan_path)
+        from rcan.federation import TrustAnchorCache, validate_cross_registry_command
+
+        return validate_cross_registry_command, TrustAnchorCache
+    except ImportError:
+        log.warning(
+            "rcan.federation not available — cross-registry validation is STUBBED. "
+            "Install rcan-py v0.6.0+ for full federation support."
+        )
+        return _validate_cross_registry_stub, _TrustAnchorCacheStub
+
+
+def _validate_cross_registry_stub(
+    command: dict[str, Any],
+    trust_cache: Any,
+    **kwargs: Any,
+) -> tuple[bool, str]:
+    """Stub: allows all cross-registry commands, logs a warning."""
+    log.warning(
+        "rcan.federation unavailable — cross-registry validation BYPASSED "
+        "(stub allows all). command_id=%s",
+        command.get("id", "unknown"),
+    )
+    return (True, "stub_allowed")
+
+
+class _TrustAnchorCacheStub:
+    """Fallback trust anchor cache stub when rcan.federation is not available."""
+
+    def __init__(self) -> None:
+        log.warning("TrustAnchorCache stub active — no real federation trust anchors loaded.")
+
+    def get(self, registry_url: str) -> None:
+        return None
+
+    def refresh(self, registry_url: str) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# v1.6: LoA identity helpers (GAP-16)
+# ---------------------------------------------------------------------------
+
+
+def _try_import_loa() -> tuple[Any, Any]:
+    """Import LoA helpers from rcan.identity.
+
+    Returns (extract_loa_from_jwt, validate_loa_for_scope) — stubs if unavailable.
+    """
+    try:
+        import os as _os
+        import sys as _sys
+
+        _rcan_path = _os.path.expanduser("~/rcan-py/src")
+        if _rcan_path not in _sys.path:
+            _sys.path.insert(0, _rcan_path)
+        from rcan.identity import extract_loa_from_jwt, validate_loa_for_scope
+
+        return extract_loa_from_jwt, validate_loa_for_scope
+    except ImportError:
+        log.warning(
+            "rcan.identity not available — LoA extraction is STUBBED (defaults to LoA 1). "
+            "Install rcan-py v0.6.0+ for full LoA support."
+        )
+        return _extract_loa_stub, _validate_loa_stub
+
+
+def _extract_loa_stub(token: str, **kwargs: Any) -> int:
+    """Stub: always returns LoA 1 (email-verified baseline)."""
+    return 1
+
+
+def _validate_loa_stub(loa: int, scope: str, required: int = 1, **kwargs: Any) -> bool:
+    """Stub: always returns True (backward-compat, do not enforce)."""
+    return True
+
+
+# ---------------------------------------------------------------------------
+# v1.6: Transport encoding helpers (GAP-17)
+# ---------------------------------------------------------------------------
+
+
+def _try_decode_compact_transport(payload: bytes) -> dict[str, Any]:
+    """Attempt to decode a compact-transport-encoded command payload.
+
+    Returns decoded dict, or raises ValueError if rcan.transport is unavailable.
+    """
+    try:
+        import os as _os
+        import sys as _sys
+
+        _rcan_path = _os.path.expanduser("~/rcan-py/src")
+        if _rcan_path not in _sys.path:
+            _sys.path.insert(0, _rcan_path)
+        from rcan.transport import decode_compact
+
+        return decode_compact(payload)
+    except ImportError as exc:
+        raise ValueError(
+            "rcan.transport not available — cannot decode compact-transport command. "
+            "Install rcan-py v0.6.0+ for compact transport support."
+        ) from exc
+
+
+# Pre-load v1.6 module references
+_validate_cross_registry_command, _TrustAnchorCacheCls = _try_import_federation()
+_extract_loa_from_jwt, _validate_loa_for_scope = _try_import_loa()
 
 
 class CastorBridge:
@@ -187,6 +312,16 @@ class CastorBridge:
         self._last_firestore_success: float = time.time()
         self._offline_mode: bool = False
         self._offline_since: Optional[float] = None
+
+        # v1.6: Federation trust (GAP-14)
+        self.trust_anchor_cache: Any = _TrustAnchorCacheCls()
+        # Extract own registry from ruri: "rcan://<registry>/<path>"
+        _own_ruri = self.ruri
+        self._own_registry: str = _own_ruri.split("/")[2] if "//" in _own_ruri else "local"
+
+        # v1.6: LoA enforcement policy (GAP-16)
+        self.min_loa_for_control: int = int(config.get("min_loa_for_control", 1))
+        self.loa_enforcement: bool = bool(config.get("loa_enforcement", False))
 
     # ------------------------------------------------------------------
     # v1.5 Offline mode helpers (GAP-06)
@@ -303,6 +438,193 @@ class CastorBridge:
             return False
 
     # ------------------------------------------------------------------
+    # v1.6: Federation trust (GAP-14)
+    # ------------------------------------------------------------------
+
+    def _check_federation(self, cmd_id: str, doc: dict[str, Any], scope: str) -> bool:
+        """Validate cross-registry commands using federation trust anchors.
+
+        ESTOP is NEVER subject to federation checks (P66 invariant).
+
+        Returns True if the command should be allowed to proceed.
+        """
+        from_rrn: str = doc.get("from_rrn", doc.get("issued_by_rrn", ""))
+        # Extract registry from from_rrn: "rrn://<registry>/..." or "rcan://<registry>/..."
+        from_registry: str = ""
+        if "://" in from_rrn:
+            from_registry = from_rrn.split("://")[1].split("/")[0]
+
+        # No cross-registry check needed if same registry or no registry info
+        if not from_registry or from_registry == self._own_registry:
+            return True
+
+        # GAP-14 v1.6 invariant: ESTOP bypasses federation check
+        is_estop = scope == "safety" and "estop" in doc.get("instruction", "").lower()
+        if is_estop:
+            log.debug(
+                "federation_check: ESTOP bypasses federation check "
+                "(P66 invariant) cmd_id=%s from_registry=%s",
+                cmd_id,
+                from_registry,
+            )
+            return True
+
+        # Extract LoA from JWT token for logging
+        token: str = doc.get("token", doc.get("auth_token", ""))
+        loa: int = _extract_loa_from_jwt(token) if token else 1
+        log.info(
+            "Cross-registry command from %s — LoA=%d cmd_id=%s",
+            from_registry,
+            loa,
+            cmd_id,
+        )
+
+        allowed, reason = _validate_cross_registry_command(
+            command=doc,
+            trust_cache=self.trust_anchor_cache,
+        )
+        if not allowed:
+            log.warning(
+                "federation_check: REJECTED cross-registry cmd from %s reason=%s cmd_id=%s",
+                from_registry,
+                reason,
+                cmd_id,
+            )
+        return allowed
+
+    # ------------------------------------------------------------------
+    # v1.6: LoA enforcement (GAP-16)
+    # ------------------------------------------------------------------
+
+    def _check_loa(self, cmd_id: str, doc: dict[str, Any], scope: str) -> bool:
+        """Extract and log LoA from JWT. Optionally enforce if loa_enforcement is True.
+
+        Default policy: LoA 1 (backward compat). Log-only unless enforcement is on.
+
+        Returns True if allowed, False if enforcement is on and LoA is insufficient.
+        """
+        token: str = doc.get("token", doc.get("auth_token", ""))
+        loa: int = _extract_loa_from_jwt(token) if token else 1
+        required: int = self.min_loa_for_control if scope == "control" else 1
+
+        log.info(
+            "LoA check: scope=%s loa=%d required=%d enforcement=%s",
+            scope,
+            loa,
+            required,
+            "on" if self.loa_enforcement else "off (log-only)",
+        )
+
+        if self.loa_enforcement:
+            ok = _validate_loa_for_scope(loa=loa, scope=scope, required=required)
+            if not ok:
+                log.warning(
+                    "LoA enforcement: REJECTED cmd_id=%s scope=%s loa=%d required=%d",
+                    cmd_id,
+                    scope,
+                    loa,
+                    required,
+                )
+                return False
+        return True
+
+    # ------------------------------------------------------------------
+    # v1.6: Transport encoding detection (GAP-17)
+    # ------------------------------------------------------------------
+
+    def _check_transport_encoding(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Detect and handle transport_encoding field in Firestore doc.
+
+        Returns the (potentially decoded) doc dict.
+        """
+        transport_encoding: str = doc.get("transport_encoding", "http")
+        if transport_encoding == "minimal":
+            log.warning(
+                "Minimal encoding command received via cloud — upgrading to HTTP acknowledgment"
+            )
+            # Minimal encoding just logs — no structural decode needed
+        elif transport_encoding == "compact":
+            # Try to decode compact payload
+            compact_payload = doc.get("compact_payload")
+            if compact_payload is not None:
+                try:
+                    if isinstance(compact_payload, str):
+                        import base64
+
+                        payload_bytes = base64.b64decode(compact_payload)
+                    else:
+                        payload_bytes = bytes(compact_payload)
+                    decoded = _try_decode_compact_transport(payload_bytes)
+                    log.debug("compact transport decoded: %s", list(decoded.keys()))
+                    # Merge decoded fields into doc (compact can override instruction etc.)
+                    doc = {**doc, **decoded}
+                except Exception as exc:
+                    log.warning(
+                        "compact transport decode failed: %s — falling back to raw doc", exc
+                    )
+        return doc
+
+    # ------------------------------------------------------------------
+    # v1.6: Multi-modal media chunk handling (GAP-18)
+    # ------------------------------------------------------------------
+
+    def _handle_media_chunks(
+        self, cmd_id: str, doc: dict[str, Any], scope: str
+    ) -> list[dict[str, Any]]:
+        """Extract and log media_chunks from a command doc.
+
+        TRAINING_DATA commands: logs hashes to audit trail.
+        Returns the list of media chunks (possibly empty).
+        """
+        chunks: list[dict[str, Any]] = doc.get("media_chunks", [])
+        if not chunks:
+            return chunks
+
+        import hashlib
+
+        total_bytes = 0
+        for chunk in chunks:
+            data_b64 = chunk.get("data", "")
+            if data_b64:
+                try:
+                    import base64
+
+                    raw = base64.b64decode(data_b64)
+                    total_bytes += len(raw)
+                except Exception:
+                    pass
+
+        log.info(
+            "Command has %d media chunks (%d bytes) cmd_id=%s",
+            len(chunks),
+            total_bytes,
+            cmd_id,
+        )
+
+        # TRAINING_DATA scope: log chunk hashes to audit trail
+        if scope == "training_data" or "training" in doc.get("scope", "").lower():
+            chunk_hashes = []
+            for chunk in chunks:
+                data_b64 = chunk.get("data", "")
+                if data_b64:
+                    try:
+                        import base64
+
+                        raw = base64.b64decode(data_b64)
+                        h = hashlib.sha256(raw).hexdigest()
+                        chunk_hashes.append({"chunk_id": chunk.get("id", "?"), "sha256": h})
+                    except Exception:
+                        pass
+            if chunk_hashes:
+                log.info(
+                    "TRAINING_DATA media audit: cmd_id=%s hashes=%s",
+                    cmd_id,
+                    chunk_hashes,
+                )
+
+        return chunks
+
+    # ------------------------------------------------------------------
     # Firebase initialisation
     # ------------------------------------------------------------------
 
@@ -366,7 +688,7 @@ class CastorBridge:
                 "capabilities": self.capabilities,
                 "version": self.version,
                 "bridge_version": BRIDGE_VERSION,
-                "rcan_version": "1.5",  # GAP-12 version negotiation
+                "rcan_version": "1.6",  # v1.6: version negotiation
                 "registered_at": datetime.now(timezone.utc).isoformat(),
                 "status": {
                     "online": True,
@@ -468,6 +790,9 @@ class CastorBridge:
                 }
             )
 
+            # --- v1.6 GAP-17: Transport encoding detection ------------------
+            doc = self._check_transport_encoding(doc)
+
             scope: str = doc.get("scope", "chat")
             instruction: str = doc.get("instruction", "")
             is_estop = scope == "safety" and "estop" in instruction.lower()
@@ -531,6 +856,28 @@ class CastorBridge:
                 cmd_ref.update(offline_audit)
                 return
 
+            # --- v1.6 GAP-14: Federation trust check (after ESTOP bypass) ---
+            if not self._check_federation(cmd_id, doc, scope):
+                fed_entry: dict[str, Any] = {
+                    "status": "denied",
+                    "error": "federation_trust: cross-registry command rejected",
+                    "sender_type": sender_type,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                cmd_ref.update(fed_entry)
+                return
+
+            # --- v1.6 GAP-16: LoA check (log-only by default) ---------------
+            if not self._check_loa(cmd_id, doc, scope):
+                loa_entry: dict[str, Any] = {
+                    "status": "denied",
+                    "error": "loa_enforcement: insufficient Level of Assurance for scope",
+                    "sender_type": sender_type,
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                cmd_ref.update(loa_entry)
+                return
+
             # --- R2RAM scope check ------------------------------------------
             requester_owner: str = doc.get("issued_by_owner", "")
             issued_by_uid: str = doc.get("issued_by_uid", "")
@@ -582,8 +929,11 @@ class CastorBridge:
                     )
                     return
 
+            # --- v1.6 GAP-18: Multi-modal media chunk handling ---------------
+            media_chunks = self._handle_media_chunks(cmd_id, doc, scope)
+
             # --- Dispatch to local gateway -----------------------------------
-            result = self._dispatch_to_gateway(scope, instruction, doc)
+            result = self._dispatch_to_gateway(scope, instruction, doc, media_chunks=media_chunks)
 
             # --- GAP-08: Build audit entry with sender_type -----------------
             complete_entry: dict[str, Any] = {
@@ -663,7 +1013,11 @@ class CastorBridge:
     # ------------------------------------------------------------------
 
     def _dispatch_to_gateway(
-        self, scope: str, instruction: str, doc: dict[str, Any]
+        self,
+        scope: str,
+        instruction: str,
+        doc: dict[str, Any],
+        media_chunks: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         """Forward a validated command to the local castor gateway."""
         import httpx
@@ -698,26 +1052,33 @@ class CastorBridge:
                     )
 
         elif scope in ("chat", "control"):
+            payload: dict[str, Any] = {
+                "instruction": instruction,
+                "channel": "opencastor_app",
+                "context": "opencastor_fleet_ui",
+            }
+            # v1.6 GAP-18: pass media_chunks as context for vision-capable providers
+            if media_chunks:
+                payload["media_chunks"] = media_chunks
             with httpx.Client(timeout=60.0) as client:
                 resp = client.post(
                     f"{self.gateway_url}/api/command",
-                    json={
-                        "instruction": instruction,
-                        "channel": "opencastor_app",
-                        "context": "opencastor_fleet_ui",
-                    },
+                    json=payload,
                     headers=headers,
                 )
 
         else:
+            payload_else: dict[str, Any] = {
+                "instruction": instruction,
+                "channel": "opencastor_app",
+                "context": "opencastor_fleet_ui",
+            }
+            if media_chunks:
+                payload_else["media_chunks"] = media_chunks
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post(
                     f"{self.gateway_url}/api/command",
-                    json={
-                        "instruction": instruction,
-                        "channel": "opencastor_app",
-                        "context": "opencastor_fleet_ui",
-                    },
+                    json=payload_else,
                     headers=headers,
                 )
 

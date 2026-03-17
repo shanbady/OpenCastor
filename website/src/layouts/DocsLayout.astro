@@ -15,29 +15,52 @@ if (currentPath === '/docs/index') {
 }
 
 const sidebarLinks = [
-  { label: 'Introduction & Quick Start', href: '/docs' },
-  { label: 'Setup Wizard', href: '/docs/setup-wizard' },
-  { label: 'Configuration (RCAN)', href: '/docs/configuration' },
-  { label: 'Architecture', href: '/docs/architecture' },
-  { label: 'AI Providers', href: '/docs/providers' },
-  { label: 'Hardware & Auto-Detect', href: '/docs/peripherals' },
-  { label: 'Safety & Protocol 66', href: '/docs/safety' },
-  { label: 'Ecosystem Reference', href: '/docs/ecosystem' },
+  { group: 'Overview', items: [
+    { label: 'Introduction & Quick Start', href: '/docs' },
+    { label: 'Setup Wizard', href: '/docs/setup-wizard' },
+    { label: 'Architecture', href: '/docs/architecture' }
+  ]},
+  { group: 'Core API', items: [
+    { label: 'Configuration (RCAN)', href: '/docs/configuration' },
+    { label: 'Hardware & Auto-Detect', href: '/docs/peripherals' },
+    { label: 'Safety & Protocol 66', href: '/docs/safety' }
+  ]},
+  { group: 'Ecosystem', items: [
+    { label: 'AI Providers', href: '/docs/providers' },
+    { label: 'Ecosystem Reference', href: '/docs/ecosystem' }
+  ]}
 ];
 ---
 <BaseLayout title={title} description={description} ogUrl={ogUrl}>
   <div class="docs-container container">
     <aside class="docs-sidebar reveal">
       <div class="sidebar-sticky">
-        <h3 class="sidebar-title">Documentation</h3>
-        <nav class="sidebar-nav">
-          {sidebarLinks.map(link => (
-            <a 
-              href={link.href} 
-              class={`sidebar-link ${currentPath === link.href ? 'active' : ''}`}
-            >
-              {link.label}
-            </a>
+        <div class="sidebar-header">
+          <div class="sidebar-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" placeholder="Search docs..." />
+            <span class="search-hint">⌘K</span>
+          </div>
+          <div class="sidebar-version">
+            <span>v2.1.0 stable</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </div>
+        <nav class="sidebar-nav-grouped">
+          {sidebarLinks.map(group => (
+            <div class="sidebar-group">
+              <h4 class="sidebar-group-title">{group.group}</h4>
+              <div class="sidebar-group-items">
+                {group.items.map(link => (
+                  <a 
+                    href={link.href} 
+                    class={`sidebar-link ${currentPath === link.href ? 'active' : ''}`}
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
       </div>
@@ -62,35 +85,64 @@ const sidebarLinks = [
 .sidebar-sticky {
   position: sticky;
   top: 100px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
 }
-.sidebar-title {
-  font-size: 0.8125rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  margin-bottom: 20px;
+.sidebar-header { margin-bottom: 24px; }
+.sidebar-search {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+  margin-bottom: 12px; transition: border-color var(--dur) var(--ease);
 }
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.sidebar-search:focus-within { border-color: var(--accent); }
+.sidebar-search svg { width: 14px; height: 14px; color: var(--text-muted); }
+.sidebar-search input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-family: var(--font-body); font-size: 0.8125rem; color: var(--text);
+  width: 100%;
+}
+.sidebar-search input::placeholder { color: var(--text-muted); }
+.search-hint { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+.sidebar-version {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.75rem; font-weight: 500; color: var(--text-secondary);
+  padding: 6px 10px; background: var(--surface); border-radius: var(--radius-sm);
+  cursor: pointer; transition: color var(--dur) var(--ease);
+}
+.sidebar-version:hover { color: var(--text); }
+.sidebar-version svg { width: 14px; height: 14px; }
+
+.sidebar-group { margin-bottom: 24px; }
+.sidebar-group:last-child { margin-bottom: 0; }
+.sidebar-group-title {
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted); margin-bottom: 12px; font-weight: 600;
+}
+.sidebar-group-items {
+  display: flex; flex-direction: column; gap: 4px;
 }
 .sidebar-link {
-  font-size: 0.9375rem;
-  color: var(--text-secondary);
-  text-decoration: none;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  transition: all var(--dur) var(--ease);
+  font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  transition: all var(--dur) var(--ease); border-left: 2px solid transparent;
 }
 .sidebar-link:hover {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--surface); color: var(--text); padding-left: 16px;
 }
 .sidebar-link.active {
-  background: var(--accent-glow);
-  color: var(--accent);
+  background: rgba(14, 165, 233, 0.08);
+  color: #fff;
   font-weight: 600;
+  border-left-color: var(--cyan);
+  text-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+}
+[data-theme="light"] .sidebar-link.active {
+  color: var(--accent);
+  text-shadow: none;
 }
 .docs-content {
   flex: 1;

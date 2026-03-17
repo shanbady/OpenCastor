@@ -28,12 +28,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <div class="card reveal" style="background: white;">
             <div class="card-icon" style="background: var(--purple-light, #f3e8ff);">🦾</div>
             <h3>1. Install</h3>
-            <pre style="background:#1e1e2e;color:#cdd6f4;padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">pip install opencastor[lerobot]</pre>
+            <pre style="background:var(--code-bg);color:var(--code-text);padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">pip install opencastor[lerobot]</pre>
           </div>
           <div class="card reveal reveal-d1" style="background: white;">
             <div class="card-icon" style="background: var(--green-light, #dcfce7);">🔍</div>
             <h3>2. Scan</h3>
-            <pre style="background:#1e1e2e;color:#cdd6f4;padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor scan
+            <pre style="background:var(--code-bg);color:var(--code-text);padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor scan
 # ✓ Feetech STS3215 board on /dev/ttyUSB0
 # ✓ Detected: 1 arm → preset: so_arm101_follower
 # Tip: connect 2 boards for bimanual preset</pre>
@@ -41,14 +41,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <div class="card reveal reveal-d2" style="background: white;">
             <div class="card-icon" style="background: var(--cyan-light, #e0f2fe);">⚙️</div>
             <h3>3. Configure</h3>
-            <pre style="background:#1e1e2e;color:#cdd6f4;padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor wizard --preset so_arm101
+            <pre style="background:var(--code-bg);color:var(--code-text);padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor wizard --preset so_arm101
 # Guides: follower / leader / bimanual
 # Writes so_arm101.rcan.yaml automatically</pre>
           </div>
           <div class="card reveal reveal-d3" style="background: white;">
             <div class="card-icon" style="background: var(--orange-light, #fff7ed);">🚀</div>
             <h3>4. Run</h3>
-            <pre style="background:#1e1e2e;color:#cdd6f4;padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor gateway --config so_arm101.rcan.yaml
+            <pre style="background:var(--code-bg);color:var(--code-text);padding:1rem;border-radius:8px;font-size:0.85rem;overflow-x:auto;">castor gateway --config so_arm101.rcan.yaml
 # API live at :8000
 # Send commands via WhatsApp, Telegram, REST</pre>
           </div>

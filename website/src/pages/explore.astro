@@ -106,7 +106,7 @@ const allConfigs = [...communityConfigs, ...presetConfigs];
     <div id="firebase-configs" style="margin-top:32px"></div>
 
     <!-- Upload CTA -->
-    <div class="explore-upload-cta" style="margin-top:48px;text-align:center;padding:32px;background:var(--surface-2);border-radius:12px;border:1px solid var(--border-color)">
+    <div class="explore-upload-cta" style="margin-top:48px;text-align:center;padding:32px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border)">
       <h3 style="margin:0 0 8px">Share your robot config</h3>
       <p style="color:var(--text-muted);margin:0 0 16px;font-size:.95rem">
         Phase 2: instant upload via <code>castor share</code> coming soon.<br>
@@ -126,8 +126,8 @@ const allConfigs = [...communityConfigs, ...presetConfigs];
   gap: 20px;
 }
 .explore-card {
-  background: var(--surface-2, #1a1a2e);
-  border: 1px solid var(--border-color, rgba(255,255,255,.1));
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   transition: border-color .2s, transform .2s;
@@ -182,7 +182,7 @@ const allConfigs = [...communityConfigs, ...presetConfigs];
 .explore-install {
   display: block;
   font-size: .72rem;
-  background: var(--surface-3, rgba(0,0,0,.3));
+  background: var(--surface);
   padding: 6px 8px;
   border-radius: 6px;
   overflow: hidden;
@@ -193,8 +193,8 @@ const allConfigs = [...communityConfigs, ...presetConfigs];
 .explore-card-footer { margin-top: 12px; }
 .explore-filter {
   background: transparent;
-  border: 1px solid var(--border-color, rgba(255,255,255,.15));
-  color: var(--text-muted, #aaa);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   padding: 4px 12px;
   border-radius: 20px;
   font-size: .8rem;

@@ -78,6 +78,23 @@ docker run -it \
   castor gateway
 ```
 
+
+<!-- SETUP_CATALOG:BEGIN -->
+| Profile | Description | Requires |
+|---|---|---|
+| `apple_native` | Mac with Apple Silicon (M1–M4) — runs models on-device via Apple Foundation Models. No API key needed. | macOS, Apple Silicon |
+| `mlx_local_vision` | Mac with Apple Silicon — open-source models via MLX (Llama, Mistral, Qwen). More model choice than apple_native. | macOS, Apple Silicon |
+| `ollama_universal_local` | Any machine — runs local models via Ollama. Works on Mac, Linux, and Windows. | [Ollama](https://ollama.com) installed |
+
+**On Apple Silicon, `apple_native` is the default.** The wizard will ask which Apple model profile fits your use case:
+
+| Apple Profile | Use case | Guardrails |
+|---|---|---|
+| `apple-balanced` ⭐ | General chat and robot commands — best starting point | Default |
+| `apple-creative` | Creative tasks, less restrictive output | Permissive Content Transformations |
+| `apple-tagging` | Classifying or labeling objects/scenes | Default |
+<!-- SETUP_CATALOG:END -->
+
 ## Features
 
 - **Protocol 66 safety** — ESTOP never blocked, local safety always wins, confidence gates run on-device

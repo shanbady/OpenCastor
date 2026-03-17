@@ -67,25 +67,49 @@ const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" 
 
     <!-- Center links + mobile drawer -->
     <div class="nav-links" id="navLinks">
+      
+      <!-- 'Community' Dropdown: Aggregates Hub and Explore -->
       <div class="nav-dropdown">
-        <a href="/docs" class={currentPath === '/docs' || currentPath.startsWith('/docs/') ? 'nav-active' : ''}>Docs</a>
+        <span class="nav-dropdown-title nav-toggle">Community
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
+        <div class="nav-dropdown-menu">
+          <a href="/explore">Explore Configs</a>
+          <a href="/hub">Community Hub</a>
+        </div>
+      </div>
+
+      <!-- 'Resources' Dropdown: Hardware, Tutorials, Docs -->
+      <div class="nav-dropdown">
+        <span class="nav-dropdown-title nav-toggle">Resources
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
+        <div class="nav-dropdown-menu">
+          <a href="/tutorials">Tutorials</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/docs/harness">Harnesses</a>
+        </div>
+      </div>
+
+      <!-- 'Docs' Dropdown: Core docs mapping -->
+      <div class="nav-dropdown">
+        <span class="nav-dropdown-title nav-toggle">Docs
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
         <div class="nav-dropdown-menu">
           <a href="/docs/getting-started">Getting Started</a>
-          <a href="/docs/hardware/so-arm101">SO-ARM101</a>
-          <a href="/docs/configuration">RCAN Config</a>
+          <a href="/docs/hardware/so-arm101">SO-ARM101 Guide</a>
+          <a href="/docs/configuration">RCAN config.yaml</a>
           <a href="/docs/safety">Protocol 66</a>
           <a href="/docs/setup-wizard">CLI Reference</a>
         </div>
       </div>
+
+      <!-- 'Ecosystem' Dropdown -->
       <div class="nav-dropdown">
-        <a href="/hardware" class={currentPath === '/hardware' || currentPath.startsWith('/hardware/') || currentPath === '/docs/harness' ? 'nav-active' : ''}>Hardware</a>
-        <div class="nav-dropdown-menu">
-          <a href="/hardware">Hardware Overview</a>
-          <a href="/docs/harness">Harnesses</a>
-        </div>
-      </div>
-      <div class="nav-dropdown">
-        <a href="/docs/ecosystem" class={currentPath === '/docs/ecosystem' ? 'nav-active' : ''}>Ecosystem</a>
+        <span class="nav-dropdown-title nav-toggle">Ecosystem
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </span>
         <div class="nav-dropdown-menu">
           <a href="/docs/ecosystem">Ecosystem Overview</a>
           <a href="https://rcan.dev" target="_blank" rel="noopener">RCAN Protocol</a>
@@ -94,9 +118,7 @@ const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" 
         </div>
       </div>
 
-      <a href="/tutorials" class={currentPath === '/tutorials' ? 'nav-active' : ''}>Tutorials</a>
-      <a href="/hub"       class={currentPath === '/hub'       ? 'nav-active' : ''}>Hub</a>
-      <a href="/about"     class={currentPath === '/about'     ? 'nav-active' : ''}>About</a>
+      <a href="/about" class={currentPath === '/about' ? 'nav-active' : ''}>About</a>
 
       <!-- Theme pill — visible inside mobile drawer only -->
       <div class="nav-drawer-theme">
@@ -176,13 +198,23 @@ const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" 
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       document.body.style.overflow = open ? 'hidden' : '';
     });
-    // Close on nav link click
+    // Close on simple nav link click
     links.querySelectorAll('a').forEach(function (a) {
       a.addEventListener('click', function () {
         links.classList.remove('open');
         toggle.classList.remove('active');
         toggle.setAttribute('aria-expanded', 'false');
         document.body.style.overflow = '';
+      });
+    });
+    // Toggle internal groups (.nav-dropdown) on Mobile
+    links.querySelectorAll('.nav-toggle').forEach(function (t) {
+      t.addEventListener('click', function (e) {
+        if (window.innerWidth <= 768) {
+          e.preventDefault();
+          var parent = this.closest('.nav-dropdown');
+          parent.classList.toggle('is-open');
+        }
       });
     });
   }

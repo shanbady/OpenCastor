@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <b>94,438 lines of Python · 6,459 tests · Python 3.10–3.13</b>
+  <b>94,438 lines of Python · 7,334 tests · Python 3.10–3.13</b>
 </p>
 
 ---
@@ -229,7 +229,7 @@ castor gateway --config so_arm101.rcan.yaml
 
 | Project | Version | Purpose |
 |---|---|---|
-| **OpenCastor** (this) | v2026.4.1.0 | Robot runtime, RCAN reference implementation |
+| **OpenCastor** (this) | v2026.3.17.13 | Robot runtime, RCAN reference implementation |
 | [Fleet UI](https://app.opencastor.com) | live | Web fleet dashboard |
 | [RCAN Protocol](https://rcan.dev/spec/) | v1.6.0 | Open robot communication standard |
 | [rcan-py](https://github.com/continuonai/rcan-py) | v0.6.0 | Python RCAN SDK |

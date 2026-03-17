@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import pytest
-from unittest.mock import MagicMock, patch
 
-from castor.context import ContextBuilder, BuiltContext
+from castor.context import BuiltContext, ContextBuilder
 from castor.harness import HarnessContext
 from castor.tools import ToolRegistry
 

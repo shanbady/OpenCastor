@@ -24,6 +24,22 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
+## [2026.3.17.13] — 2026-03-17
+
+### Added
+- **`castor/optimizer.py` v1**: per-robot runtime optimizer — episodic memory consolidation, idle detection, and adaptive task scheduling (#697, #698, #699).
+- **RCAN v1.5+v1.6 conformance checks**: 100/100 conformance score across all spec sections; `castor conformance` command reports compliance gaps (#696).
+- **Phase 2 Community Hub**: `/explore` browse page and `/config/:id` detail view for shared configs; Firebase Cloud Functions backend for config publishing and retrieval.
+- **Robot profiles + version pinning**: social layer — robot identity cards, pinned software versions, and `CONFIG_SHARE` protocol (OpenCastor#701).
+- **`code-reviewer` built-in skill v1.0**: code review skill available in the skill registry; integrates with `castor eval` pipeline.
+- **Documentation website**: initial site launched at `opencastor.com/docs/` with core pages, layouts, and navigation.
+
+### Fixed
+- **CI**: switched website deploy job from npm to pnpm; added `js-yaml` dependency via pnpm.
+- **Website**: removed Windows-only rollup binary; regenerated pnpm lockfile for cross-platform compatibility.
+
+---
+
 ## [2026.3.13.14] — 2026-03-13
 
 ### Fixed

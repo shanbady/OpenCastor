@@ -381,7 +381,8 @@ class TestSensorMonitorEstopWiring:
 
     def test_sensor_monitor_critical_triggers_estop(self):
         """wire_safety_layer wires SensorMonitor so critical events call estop()."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
+
         from castor.safety.monitor import SensorMonitor, wire_safety_layer
 
         monitor = SensorMonitor(consecutive_critical=1)
@@ -403,7 +404,13 @@ class TestSensorMonitorEstopWiring:
     def test_sensor_monitor_critical_includes_snapshot_in_reason(self):
         """The estop reason string should include sensor reading details."""
         from unittest.mock import MagicMock
-        from castor.safety.monitor import SensorMonitor, MonitorSnapshot, SensorReading, wire_safety_layer
+
+        from castor.safety.monitor import (
+            MonitorSnapshot,
+            SensorMonitor,
+            SensorReading,
+            wire_safety_layer,
+        )
 
         monitor = SensorMonitor(consecutive_critical=1)
         mock_sl = MagicMock()
@@ -487,7 +494,7 @@ class TestSessionExpiryStop(_Base):
         stop_before = [e for e in safety_log_before if e.get("event") == "session_expiry_stop"]
 
         # Patch Scope so GUEST has STATUS-only for this test
-        from castor.rcan.rbac import Scope, RCANRole
+        from castor.rcan.rbac import RCANRole, Scope
         original_for_role = Scope.for_role
 
         def status_only(role: RCANRole) -> Scope:
@@ -600,7 +607,7 @@ class TestV15SafetyInvariants:
 
     def test_safety_replay_window_10s(self):
         """Safety replay cache uses 10s window (not 30s)."""
-        from castor.cloud.bridge import CastorBridge, SAFETY_REPLAY_WINDOW_S
+        from castor.cloud.bridge import SAFETY_REPLAY_WINDOW_S, CastorBridge
         bridge = CastorBridge(
             config={"rrn": "RRN-00000001", "metadata": {"name": "T"}},
             firebase_project="test",
@@ -682,7 +689,7 @@ class TestV15SafetyInvariants:
 
     def test_outgoing_message_includes_rcan_version(self):
         """RCANMessage.to_dict() includes rcan_version field."""
-        from castor.rcan.message import RCANMessage, MessageType, Priority
+        from castor.rcan.message import MessageType, RCANMessage
         msg = RCANMessage(
             type=MessageType.COMMAND,
             source="rcan://test/src",

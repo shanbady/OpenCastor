@@ -1,0 +1,451 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Agent Harness Architecture — OpenCastor"
+  description="Visual reference for the OpenCastor Agent Harness — context engineering, tool execution loop, P66 safety invariants, and evolution over time."
+  ogUrl="https://opencastor.com/docs/harness"
+>
+
+<main>
+  <!-- ── HERO ── -->
+  <section class="page-hero" style="padding-bottom:32px">
+    <p class="section-label reveal">Architecture</p>
+    <h1 class="reveal reveal-d1">Agent Harness<br><span class="gradient-text">Visual Reference</span></h1>
+    <p class="reveal reveal-d2" style="font-size:1.1rem;max-width:560px;margin:0 auto 24px">
+      The harness is the OS around the model — context curation, tool execution, safety enforcement,
+      and trajectory capture. The model is the CPU; the harness is everything else.
+    </p>
+    <div class="hero-actions reveal reveal-d3">
+      <a href="#current" class="btn btn-primary">Current Architecture</a>
+      <a href="#p66" class="btn btn-secondary">P66 Safety Flow</a>
+      <a href="#evolution" class="btn btn-secondary">Evolution Timeline</a>
+    </div>
+  </section>
+
+  <!-- ── Phil Schmid definition ── -->
+  <section class="section" style="padding-top:0;padding-bottom:24px">
+    <div class="container">
+      <div class="wizard-tip reveal" style="max-width:760px;margin:0 auto">
+        <strong>Definition (Phil Schmid):</strong> The harness is not the agent — it's the infrastructure
+        <em>around</em> the agent. Model = CPU. Context window = RAM.
+        Harness = OS. Agent = Application.<br>
+        The harness provides: context engineering, tool dispatch, lifecycle hooks, planning,
+        sub-agent management. It must be lightweight and build-to-delete as models improve.
+      </div>
+    </div>
+  </section>
+
+  <!-- ── DIAGRAM 1: Current architecture ── -->
+  <section class="section" id="current">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-label">Diagram 1</p>
+        <h2 class="section-title">Current Architecture</h2>
+        <p class="section-desc">Full request path from user input to response — v2026.3.17.5+</p>
+      </div>
+
+      <div class="mermaid-card reveal">
+        <div class="mermaid-header">
+          <span class="mermaid-label">opencastor/castor/harness.py · context.py · trajectory.py</span>
+          <span class="mermaid-version">v2026.3.17.5+</span>
+        </div>
+        <div class="mermaid">
+graph TD
+    A["🌐 User · App · RCAN peer<br/>/api/command"] --> B["AgentHarness.run()"]
+
+    B --> ESTOP{"ESTOP?<br/>scope=safety OR<br/>instruction starts ESTOP/HALT"}
+    ESTOP -->|"YES — P66 invariant"| STOP["⛔ Immediate stop<br/>Bypasses ALL hooks<br/>No context · No tools"]
+    ESTOP -->|"NO"| CB["ContextBuilder.build()"]
+
+    subgraph Context ["Context Window Assembly (RAM)"]
+        CB --> P["PERSONA<br/>robot identity"]
+        CB --> SK["SKILL<br/>SkillSelector picks best match<br/>(embedding · keyword · explicit /trigger)"]
+        CB --> MEM["MEMORY<br/>episodic RAG · k=3"]
+        CB --> ST["STATUS<br/>telemetry snapshot"]
+        CB --> TL["TOOLS<br/>ToolRegistry schemas"]
+        CB --> HI["HISTORY<br/>last N turns · compacted if needed"]
+    end
+
+    P & SK & MEM & ST & TL & HI --> PROV["Provider (CPU)<br/>Gemini · Claude · Ollama · HuggingFace"]
+
+    PROV --> LOOP["Tool Loop<br/>max_iterations · tool_calls[]"]
+
+    subgraph Hooks ["Lifecycle Hooks"]
+        LOOP --> H1["P66AuditHook<br/>consent check before physical tools"]
+        LOOP --> H2["DriftDetectionHook<br/>Jaccard similarity · threshold 0.15"]
+        LOOP --> H3["RetryOnErrorHook<br/>retry on tool failure"]
+    end
+
+    H1 & H2 & H3 --> TRAJ["TrajectoryLogger<br/>SQLite · schema v1<br/>~/.config/opencastor/trajectories.db"]
+    TRAJ --> RESP["Response → User"]
+
+    style STOP fill:#ef4444,color:#fff,stroke:#dc2626
+    style ESTOP fill:#fef2f2,stroke:#fca5a5
+    style Context fill:#f0f9ff,stroke:#bae6fd
+    style Hooks fill:#fefce8,stroke:#fef08a
+        </div>
+      </div>
+
+      <!-- Key files table -->
+      <div class="reveal" style="max-width:760px;margin:32px auto 0">
+        <table class="arch-table">
+          <thead><tr><th>File</th><th>Role</th><th>Key class</th></tr></thead>
+          <tbody>
+            <tr><td><code>castor/harness.py</code></td><td>Orchestrator + hooks</td><td><code>AgentHarness</code>, <code>P66AuditHook</code>, <code>DriftDetectionHook</code></td></tr>
+            <tr><td><code>castor/context.py</code></td><td>Context window assembly</td><td><code>ContextBuilder</code>, <code>BuiltContext</code></td></tr>
+            <tr><td><code>castor/trajectory.py</code></td><td>Trajectory capture (SQLite)</td><td><code>TrajectoryLogger</code>, <code>TrajectoryRecord</code></td></tr>
+            <tr><td><code>castor/dual_model.py</code></td><td>Secondary model (safety oracle, verifier)</td><td><code>DualModelHarness</code>, <code>SafetyVerdict</code></td></tr>
+            <tr><td><code>castor/skills/loader.py</code></td><td>Skill matching</td><td><code>SkillLoader</code>, <code>SkillSelector</code></td></tr>
+            <tr><td><code>castor/agent_tools.py</code></td><td>5 built-in agent tools</td><td><code>register_agent_tools()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── DIAGRAM 2: P66 safety flow ── -->
+  <section class="section alt-section" id="p66">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-label">Diagram 2</p>
+        <h2 class="section-title">P66 Safety Invariants</h2>
+        <p class="section-desc">Protocol 66 defines hard constraints that the harness enforces regardless of model output.
+          ESTOP is absolute — it bypasses every other step.</p>
+      </div>
+
+      <div class="mermaid-card reveal">
+        <div class="mermaid-header">
+          <span class="mermaid-label">opencastor/castor/harness.py · P66AuditHook</span>
+          <span class="mermaid-version">Non-negotiable invariants</span>
+        </div>
+        <div class="mermaid">
+flowchart LR
+    IN["Incoming command"] --> E1{"ESTOP signal?\nscope=safety\nor ESTOP prefix"}
+    E1 -->|YES| BYPASS["⛔ Immediate stop\nBypasses ALL:\n· Context builder\n· Hooks\n· Tool loop\n· Trajectory log"]
+    E1 -->|NO| E2{"Physical tool\nrequested?\nmove · grip · actuate"}
+    E2 -->|YES| E3{"User consent\nexplicitly granted?\nin this session"}
+    E3 -->|NO| BLOCK["🚫 Blocked\nconsent_required\nBot sends ask-first message"]
+    E3 -->|YES| E4{"LoA sufficient?\nrequired scope ≤ granted scope"}
+    E4 -->|NO| LOA["🚫 LoA enforced\nEscalation required"]
+    E4 -->|YES| AUDIT["✓ Execute\nAudit record written\nTrajectory flagged p66_consent_ok=true"]
+    E2 -->|NO| PASS["✓ Execute normally\nno physical gate"]
+
+    style BYPASS fill:#ef4444,color:#fff,stroke:#dc2626
+    style BLOCK fill:#f97316,color:#fff,stroke:#ea580c
+    style LOA fill:#f97316,color:#fff,stroke:#ea580c
+    style AUDIT fill:#22c55e,color:#fff,stroke:#16a34a
+    style PASS fill:#22c55e,color:#fff,stroke:#16a34a
+        </div>
+      </div>
+
+      <div class="bento reveal" style="max-width:760px;margin:32px auto 0;grid-template-columns:1fr 1fr">
+        <div class="card">
+          <h3>⛔ ESTOP is absolute</h3>
+          <p>Triggered by <code>scope="safety"</code> or instruction starting with <code>ESTOP</code>, <code>E-STOP</code>, <code>EMERGENCY STOP</code>, <code>STOP ALL</code>, <code>HALT</code>. No hooks, no context, no logging — just stop.</p>
+        </div>
+        <div class="card">
+          <h3>🔒 Physical tools require consent</h3>
+          <p>Any tool in <code>PHYSICAL_TOOLS</code> (move, grip, actuate) is blocked until the user explicitly consents in the current session. Consent resets on session expiry.</p>
+        </div>
+        <div class="card">
+          <h3>📊 Scope hierarchy</h3>
+          <p><code>discover(0) &lt; status(1) &lt; chat(2) &lt; control(3) &lt; safety(99)</code>. A command issued at <code>chat</code> scope cannot execute <code>control</code>-level tools.</p>
+        </div>
+        <div class="card">
+          <h3>🧠 Model cannot self-escalate</h3>
+          <p>The harness enforces scope locally. The model cannot grant itself higher scope — P66 constraints are code-level, not prompt-level.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── DIAGRAM 3: Evolution ── -->
+  <section class="section" id="evolution">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-label">Diagram 3</p>
+        <h2 class="section-title">Evolution Over Time</h2>
+        <p class="section-desc">Each version added one layer. The harness grew from a single function call
+          to a full OS-layer in four releases.</p>
+      </div>
+
+      <div class="mermaid-card reveal">
+        <div class="mermaid-header">
+          <span class="mermaid-label">opencastor — harness design evolution</span>
+          <span class="mermaid-version">2026-03</span>
+        </div>
+        <div class="mermaid">
+timeline
+    title OpenCastor Agent Harness Evolution
+    Pre-harness (≤v2026.3.13) : Direct think() call : No context curation : No tool execution loop : No trajectory logging : No safety hooks
+    v2026.3.17.3 : AgentHarness orchestrator : ContextBuilder — PERSONA·SKILL·MEMORY·STATUS·TOOLS : TrajectoryLogger — SQLite schema v1 : P66AuditHook — consent + ESTOP absolute : RetryOnErrorHook
+    v2026.3.17.4 : SkillSystem — 5 built-in skills : SkillSelector — embedding + keyword + explicit trigger : 5 Agent Tools — web_search · recall_episode · get_telemetry · send_rcan_message · query_local_knowledge : castor eval CLI — skill eval harness
+    v2026.3.17.5 : DualModelHarness — 5 modes (safety oracle · specialist · consensus · verifier · shadow) : DriftDetectionHook — Jaccard word-overlap · threshold 0.15 : castor trajectory CLI — list · show · export · stats : EvalHarness — deterministic checks + LLM-as-judge
+    v2026.3.17.6 : castor share · install · explore CLI : hub.astro — type filter tabs + skill + harness cards : Two-tier autoresearch — Tier 1 repo · Tier 2 per-robot optimizer
+        </div>
+      </div>
+
+      <!-- Design choices callout -->
+      <div class="reveal" style="max-width:760px;margin:32px auto 0">
+        <div class="wizard-tip">
+          <strong>Key design decisions:</strong>
+          <ul style="margin:8px 0 0 0;padding-left:20px;line-height:1.8">
+            <li><strong>Harness is opt-in</strong> — <code>agent.harness.enabled: false</code> by default; existing robots unaffected until config updated</li>
+            <li><strong>No new packages</strong> — harness uses only stdlib + existing castor deps (SQLite, asyncio, logging)</li>
+            <li><strong>Build-to-delete</strong> — each harness layer designed to be replaced as models improve; thin interfaces, no lock-in</li>
+            <li><strong>Trajectory is the dataset</strong> — every run logged to SQLite enables offline analysis, eval, and autoresearch tracks D/E/F</li>
+            <li><strong>Safety is code, not prompt</strong> — P66 invariants enforced at harness level; model output cannot override them</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ASCII art (copy-paste friendly) ── -->
+  <section class="section alt-section" id="ascii">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-label">ASCII Reference</p>
+        <h2 class="section-title">Terminal-friendly diagram</h2>
+        <p class="section-desc">Copy-paste into docs, READMEs, or robot terminals.</p>
+      </div>
+
+      <div class="code-block reveal" style="max-width:760px;margin:0 auto">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-filename">OpenCastor Agent Harness — ASCII</span>
+          <button class="copy-btn" onclick="copyAscii(this)">Copy</button>
+        </div>
+        <pre class="code-body" id="ascii-art" style="white-space:pre;overflow-x:auto;font-size:0.75rem;line-height:1.5">
+┌─────────────────────────────────────────────────────────────────┐
+│                  OpenCastor Agent Harness                       │
+│                       v2026.3.17.5+                             │
+└─────────────────────────────────────────────────────────────────┘
+
+User / App / RCAN peer
+        │
+        ▼
+ ┌─────────────────┐
+ │  /api/command   │
+ └────────┬────────┘
+          │
+          ▼
+ ┌─────────────────────────────────────────────┐
+ │            AgentHarness.run()               │
+ │                                             │
+ │  1. ESTOP check ──────── scope=safety?      │
+ │     └── YES → ⛔ bypass ALL, stop now       │
+ │     └── NO  → continue                     │
+ │                                             │
+ │  2. ContextBuilder.build()                  │
+ │     ├── PERSONA   (robot identity)          │
+ │     ├── SKILL     (SkillSelector match)     │
+ │     ├── MEMORY    (episodic RAG, k=3)       │
+ │     ├── STATUS    (telemetry snapshot)      │
+ │     ├── TOOLS     (ToolRegistry schemas)    │
+ │     └── HISTORY   (last N turns, compacted) │
+ │                                             │
+ │  3. Provider.think_with_tools()             │
+ │     └── Gemini / Claude / Ollama / HF       │
+ │                                             │
+ │  4. Tool Loop  (max_iterations)             │
+ │     ├── P66AuditHook   (consent gate)       │
+ │     ├── DriftDetection (Jaccard, 0.15)      │
+ │     └── RetryOnError                        │
+ │                                             │
+ │  5. TrajectoryLogger → SQLite               │
+ │     └── ~/.config/opencastor/trajectories.db│
+ └─────────────────────────────────────────────┘
+          │
+          ▼
+      Response
+
+P66 Physical Tool Gate:
+  physical tool called?
+    └── NO  → execute normally
+    └── YES → consent granted this session?
+                └── NO  → 🚫 blocked, ask first
+                └── YES → LoA sufficient?
+                            └── NO  → 🚫 escalate
+                            └── YES → ✓ execute + audit
+
+Scope: discover(0) &lt; status(1) &lt; chat(2) &lt; control(3) &lt; safety(99)
+ESTOP: absolute — bypasses context, hooks, tools, logging
+        </pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Config reference ── -->
+  <section class="section" id="config">
+    <div class="container">
+      <div class="section-header reveal">
+        <p class="section-label">Configuration</p>
+        <h2 class="section-title">Enable the harness</h2>
+        <p class="section-desc">The harness is opt-in. Add this block to your RCAN yaml.</p>
+      </div>
+
+      <div class="code-block reveal" style="max-width:760px;margin:0 auto">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-filename">robot.rcan.yaml — agent.harness block</span>
+        </div>
+        <div class="code-body">
+<span class="cm"># Agent Harness — add to your existing RCAN config</span>
+<span class="k">agent</span>:
+  <span class="k">provider</span>: google
+  <span class="k">model</span>: gemini-2.0-flash
+
+  <span class="k">harness</span>:
+    <span class="k">enabled</span>: <span class="s">true</span>          <span class="cm"># default: false (opt-in)</span>
+
+    <span class="cm"># Context window</span>
+    <span class="k">context_budget</span>: <span class="s">0.8</span>    <span class="cm"># fraction of model context to use</span>
+    <span class="k">max_history</span>: <span class="s">20</span>        <span class="cm"># turns of history to include</span>
+
+    <span class="cm"># Tool loop</span>
+    <span class="k">max_iterations</span>: <span class="s">5</span>      <span class="cm"># tool calls per turn before stopping</span>
+
+    <span class="cm"># Hooks (all enabled by default)</span>
+    <span class="k">hooks</span>:
+      <span class="k">p66_audit</span>: <span class="s">true</span>        <span class="cm"># P66 safety invariants</span>
+      <span class="k">drift_detection</span>: <span class="s">true</span>  <span class="cm"># detect model drift after 3+ iterations</span>
+      <span class="k">retry_on_error</span>: <span class="s">true</span>   <span class="cm"># retry tool calls on failure</span>
+
+    <span class="cm"># Secondary model (optional)</span>
+    <span class="k">secondary</span>:
+      <span class="k">enabled</span>: <span class="s">false</span>
+      <span class="k">mode</span>: safety_oracle    <span class="cm"># safety_oracle|specialist|consensus|verifier|shadow</span>
+      <span class="k">provider</span>: ollama
+      <span class="k">model</span>: gemma3:1b
+
+    <span class="cm"># Trajectory logging</span>
+    <span class="k">trajectory</span>:
+      <span class="k">enabled</span>: <span class="s">true</span>
+      <span class="k">db_path</span>: <span class="s">~/.config/opencastor/trajectories.db</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Links ── -->
+  <section class="cta-section">
+    <h2 class="reveal">Dig deeper</h2>
+    <p class="reveal reveal-d1">Source, tests, and the trajectory dataset that feeds autoresearch.</p>
+    <div class="hero-actions reveal reveal-d2">
+      <a href="https://github.com/craigm26/OpenCastor/blob/main/castor/harness.py" class="btn btn-primary btn-lg">
+        harness.py on GitHub →
+      </a>
+      <a href="/docs" class="btn btn-secondary btn-lg">← Back to Docs</a>
+    </div>
+  </section>
+
+</main>
+
+<!-- Mermaid.js (CDN, no build dep) -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
+    themeVariables: {
+      fontFamily: 'inherit',
+      fontSize: '14px',
+    },
+    flowchart: { curve: 'basis', padding: 20 },
+    timeline: { useMaxWidth: false },
+  });
+
+  // Re-render on theme toggle
+  const observer = new MutationObserver(() => {
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme });
+    mermaid.run();
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+</script>
+
+<script>
+  function copyAscii(btn) {
+    const pre = document.getElementById('ascii-art');
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+
+  // Theme init (matches other pages)
+  (function() {
+    var t = localStorage.getItem('oc-theme');
+    var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', t || (dark ? 'dark' : 'light'));
+  })();
+</script>
+
+<style>
+  .mermaid-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .mermaid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--alt-bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .mermaid-label { color: var(--text-muted); font-family: monospace; }
+  .mermaid-version {
+    background: var(--accent-light);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .mermaid { padding: 24px; overflow-x: auto; }
+  .arch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .arch-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--alt-bg);
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+  }
+  .arch-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .arch-table tr:last-child td { border-bottom: none; }
+  .copy-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .copy-btn:hover { opacity: 0.85; }
+  .code-header { display: flex; align-items: center; gap: 8px; }
+  pre.code-body { tab-size: 2; }
+
+  /* Make mermaid diagrams respect dark theme */
+  :root[data-theme="dark"] .mermaid svg { filter: invert(0.05) hue-rotate(180deg) brightness(0.95); }
+</style>
+
+</BaseLayout>

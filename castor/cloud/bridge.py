@@ -479,8 +479,20 @@ class CastorBridge:
             cmd_id,
         )
 
+        # validate_cross_registry_command expects an RCANMessage-like object;
+        # bridge deals in raw Firestore dicts — build a minimal shim.
+        class _MsgShim:  # noqa: N801
+            def __init__(self, d: dict) -> None:
+                self.cmd = d.get("command", d.get("cmd", ""))
+                self.loa = d.get("loa", 1)
+                self.from_rrn = d.get("from_rrn", d.get("issued_by_rrn", ""))
+                self.issuer = d.get("issuer", d.get("registry_url", ""))
+                self.signature = d.get("signature")
+                self.params = d.get("params", {})
+
         allowed, reason = _validate_cross_registry_command(
-            command=doc,
+            msg=_MsgShim(doc),
+            local_registry=self.owner,
             trust_cache=self.trust_anchor_cache,
         )
         if not allowed:
@@ -516,7 +528,7 @@ class CastorBridge:
         )
 
         if self.loa_enforcement:
-            ok = _validate_loa_for_scope(loa=loa, scope=scope, required=required)
+            ok = _validate_loa_for_scope(loa=loa, scope=scope, min_loa_overrides={scope: required})
             if not ok:
                 log.warning(
                     "LoA enforcement: REJECTED cmd_id=%s scope=%s loa=%d required=%d",

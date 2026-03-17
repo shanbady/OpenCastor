@@ -104,9 +104,9 @@ class TestFederationEstopBypass:
             instruction="move forward",
             from_rrn="rrn://foreign-registry/robot/some-bot",
         )
+        doc["loa"] = 2  # LoA >= 2 required for cross-registry commands
 
         with caplog.at_level(logging.INFO, logger="castor.cloud.bridge"):
-            # Stub always allows — just check the log
             result = bridge._check_federation("cmd-cross-001", doc, scope="chat")
 
         assert result is True

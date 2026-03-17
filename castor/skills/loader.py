@@ -159,8 +159,7 @@ class SkillSelector:
 
         # 2. Filter by robot capabilities
         available = {
-            n: s for n, s in skills.items()
-            if self._has_capabilities(s, robot_capabilities or [])
+            n: s for n, s in skills.items() if self._has_capabilities(s, robot_capabilities or [])
         }
         if not available:
             available = skills
@@ -190,12 +189,11 @@ class SkillSelector:
                 return False
         return True
 
-    def _select_by_embedding(
-        self, instruction: str, skills: dict[str, Skill]
-    ) -> Optional[Skill]:
+    def _select_by_embedding(self, instruction: str, skills: dict[str, Skill]) -> Optional[Skill]:
         """Select via cosine similarity of embedded descriptions."""
         try:
             from castor.learner.embedding_interpreter import EmbeddingInterpreter
+
             interp = EmbeddingInterpreter.get_default()
             if interp is None:
                 return None
@@ -212,15 +210,14 @@ class SkillSelector:
                     best_skill = skill
 
             if best_skill:
-                logger.debug("Skill selected by embedding: %s (score=%.3f)",
-                             best_skill["name"], best_score)
+                logger.debug(
+                    "Skill selected by embedding: %s (score=%.3f)", best_skill["name"], best_score
+                )
             return best_skill
         except Exception:
             return None
 
-    def _select_by_keywords(
-        self, instruction: str, skills: dict[str, Skill]
-    ) -> Optional[Skill]:
+    def _select_by_keywords(self, instruction: str, skills: dict[str, Skill]) -> Optional[Skill]:
         """Select by keyword overlap between instruction and skill description."""
         instr_words = set(_tokenise(instruction))
         best_count = _KEYWORD_THRESHOLD - 1
@@ -240,12 +237,14 @@ class SkillSelector:
                 best_skill = skill
 
         if best_skill:
-            logger.debug("Skill selected by keywords: %s (overlap=%d)",
-                         best_skill["name"], best_count)
+            logger.debug(
+                "Skill selected by keywords: %s (overlap=%d)", best_skill["name"], best_count
+            )
         return best_skill
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _split_frontmatter(content: str) -> tuple[Optional[str], str]:
     """Split SKILL.md into (frontmatter, body). Returns (None, content) if no frontmatter."""
@@ -265,6 +264,7 @@ def _parse_yaml_simple(yaml_text: str) -> dict:
     """
     try:
         import yaml
+
         return yaml.safe_load(yaml_text) or {}
     except ImportError:
         pass
@@ -275,7 +275,7 @@ def _parse_yaml_simple(yaml_text: str) -> dict:
     while i < len(lines):
         line = lines[i]
         # Key: value
-        m = re.match(r'^(\w[\w_-]*)\s*:\s*(.*)', line)
+        m = re.match(r"^(\w[\w_-]*)\s*:\s*(.*)", line)
         if m:
             key = m.group(1)
             val = m.group(2).strip()
@@ -319,11 +319,42 @@ def _to_list(val) -> list:
 
 def _tokenise(text: str) -> list[str]:
     """Lowercase word tokens, filtering stop words."""
-    _STOP = {"the", "a", "an", "to", "in", "of", "for", "and", "or", "it",
-             "is", "at", "on", "do", "you", "i", "my", "your", "can", "please",
-             "with", "that", "this", "what", "when", "how", "me",
-             "use", "asks", "user", "robot", "want", "tell"}
-    words = re.findall(r'\b[a-z]+\b', text.lower())
+    _STOP = {
+        "the",
+        "a",
+        "an",
+        "to",
+        "in",
+        "of",
+        "for",
+        "and",
+        "or",
+        "it",
+        "is",
+        "at",
+        "on",
+        "do",
+        "you",
+        "i",
+        "my",
+        "your",
+        "can",
+        "please",
+        "with",
+        "that",
+        "this",
+        "what",
+        "when",
+        "how",
+        "me",
+        "use",
+        "asks",
+        "user",
+        "robot",
+        "want",
+        "tell",
+    }
+    words = re.findall(r"\b[a-z]+\b", text.lower())
     return [w for w in words if w not in _STOP and len(w) >= 2]
 
 

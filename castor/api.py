@@ -676,12 +676,17 @@ async def send_command(cmd: CommandRequest, request: Request):
 
             _get_reg().record_provider_latency(_provider_name, _think_ms)
 
-    _think_ms = round(getattr(_think_ms, "real", _think_ms) if isinstance(_think_ms, complex) else _think_ms, 1)
+    _think_ms = round(
+        getattr(_think_ms, "real", _think_ms) if isinstance(_think_ms, complex) else _think_ms, 1
+    )
     _provider_name = getattr(active, "model_name", None) or "unknown"
     from castor.metrics import get_registry as _get_reg
+
     _get_reg().record_provider_latency(_provider_name, _think_ms)
 
-    logger.info("Brain replied via %s in %.0f ms (harness=%s)", _provider_name, _think_ms, _harness_enabled)
+    logger.info(
+        "Brain replied via %s in %.0f ms (harness=%s)", _provider_name, _think_ms, _harness_enabled
+    )
     _record_thought(cmd.instruction, thought.raw_text, thought.action)
 
     # Execute action on hardware if available

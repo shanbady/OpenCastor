@@ -105,6 +105,7 @@ REASON: <one line>
 @dataclass
 class SafetyVerdict:
     """Result of a secondary model safety evaluation."""
+
     safe: bool
     reason: str
     model: str = ""
@@ -197,7 +198,8 @@ class DualModelHarness(AgentHarness):
                     if score < self._verifier_threshold:
                         logger.warning(
                             "Verifier: low score %d < %d, escalating",
-                            score, self._verifier_threshold,
+                            score,
+                            self._verifier_threshold,
                         )
                         # Re-run with stronger context hint
                         augmented = _Thought(
@@ -229,10 +231,15 @@ class DualModelHarness(AgentHarness):
                 if name in ESTOP_TOOLS:
                     tr = await asyncio.to_thread(self._execute_tool, name, args)
                     from castor.harness import ToolCallRecord
-                    tools_called.append(ToolCallRecord(
-                        tool_name=name, args=args,
-                        result=tr.result, latency_ms=tr.duration_ms,
-                    ))
+
+                    tools_called.append(
+                        ToolCallRecord(
+                            tool_name=name,
+                            args=args,
+                            result=tr.result,
+                            latency_ms=tr.duration_ms,
+                        )
+                    )
                     for hook in self.hooks:
                         await hook.on_tool_call(call, tr)
                     continue
@@ -241,11 +248,18 @@ class DualModelHarness(AgentHarness):
                 if name in PHYSICAL_TOOLS:
                     if ctx.scope not in ("control", "safety") or not consent_granted:
                         from castor.harness import ToolCallRecord
-                        tools_called.append(ToolCallRecord(
-                            tool_name=name, args=args, result=None, latency_ms=0,
-                            p66_consent_required=True, p66_consent_granted=False,
-                            p66_blocked=True,
-                        ))
+
+                        tools_called.append(
+                            ToolCallRecord(
+                                tool_name=name,
+                                args=args,
+                                result=None,
+                                latency_ms=0,
+                                p66_consent_required=True,
+                                p66_consent_granted=False,
+                                p66_blocked=True,
+                            )
+                        )
                         consent_thought = _Thought(
                             raw_text=(
                                 f"I need your confirmation before I can {name}. "
@@ -256,19 +270,28 @@ class DualModelHarness(AgentHarness):
                         return consent_thought, tools_called, iteration + 1
 
                     # ── Safety oracle veto (physical tools only, after consent) ─
-                    if (secondary_active and self._mode == "safety_oracle"
-                            and self._p66_veto and name in PHYSICAL_TOOLS):
+                    if (
+                        secondary_active
+                        and self._mode == "safety_oracle"
+                        and self._p66_veto
+                        and name in PHYSICAL_TOOLS
+                    ):
                         telemetry = await asyncio.to_thread(self._get_telemetry_snapshot)
                         verdict = await self._run_safety_oracle(name, args, telemetry)
                         if not verdict.safe:
                             from castor.harness import ToolCallRecord
-                            tools_called.append(ToolCallRecord(
-                                tool_name=name, args=args, result=None,
-                                latency_ms=verdict.latency_ms,
-                                p66_consent_required=True,
-                                p66_consent_granted=True,
-                                p66_blocked=True,
-                            ))
+
+                            tools_called.append(
+                                ToolCallRecord(
+                                    tool_name=name,
+                                    args=args,
+                                    result=None,
+                                    latency_ms=verdict.latency_ms,
+                                    p66_consent_required=True,
+                                    p66_consent_granted=True,
+                                    p66_blocked=True,
+                                )
+                            )
                             blocked_thought = _Thought(
                                 raw_text=(
                                     f"⚠️ Safety check blocked this action: {verdict.reason}. "
@@ -282,26 +305,38 @@ class DualModelHarness(AgentHarness):
                 tr = await asyncio.to_thread(self._execute_tool, name, args)
                 is_phys = name in PHYSICAL_TOOLS
                 from castor.harness import ToolCallRecord
-                tools_called.append(ToolCallRecord(
-                    tool_name=name, args=args,
-                    result=tr.result, latency_ms=tr.duration_ms,
-                    p66_consent_required=is_phys,
-                    p66_consent_granted=is_phys and consent_granted,
-                    error=tr.error,
-                ))
+
+                tools_called.append(
+                    ToolCallRecord(
+                        tool_name=name,
+                        args=args,
+                        result=tr.result,
+                        latency_ms=tr.duration_ms,
+                        p66_consent_required=is_phys,
+                        p66_consent_granted=is_phys and consent_granted,
+                        error=tr.error,
+                    )
+                )
                 for hook in self.hooks:
                     await hook.on_tool_call(call, tr)
-                messages.append({
-                    "role": "tool",
-                    "name": name,
-                    "content": str(tr.result) if tr.ok else f"Error: {tr.error}",
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": name,
+                        "content": str(tr.result) if tr.ok else f"Error: {tr.error}",
+                    }
+                )
 
         from castor.providers.base import Thought as _T
-        return _T(
-            raw_text="I reached my step limit for this task.",
-            provider="harness",
-        ), tools_called, self._max_iterations
+
+        return (
+            _T(
+                raw_text="I reached my step limit for this task.",
+                provider="harness",
+            ),
+            tools_called,
+            self._max_iterations,
+        )
 
     # ── Secondary model runners ───────────────────────────────────────────────
 
@@ -310,6 +345,7 @@ class DualModelHarness(AgentHarness):
     ) -> SafetyVerdict:
         """Ask secondary model whether this physical action is safe."""
         import json
+
         prompt = _SAFETY_ORACLE_PROMPT.format(
             telemetry=json.dumps(telemetry, default=str)[:400],
             tool_name=tool_name,
@@ -317,15 +353,14 @@ class DualModelHarness(AgentHarness):
         )
         t0 = time.perf_counter()
         try:
-            thought = await asyncio.to_thread(
-                self._secondary.think, b"", prompt, "safety_oracle"
-            )
+            thought = await asyncio.to_thread(self._secondary.think, b"", prompt, "safety_oracle")
             latency = (time.perf_counter() - t0) * 1000
             text = thought.raw_text.strip()
             safe = text.upper().startswith("SAFE")
             reason = text.split("-", 1)[-1].strip() if "-" in text else text
             return SafetyVerdict(
-                safe=safe, reason=reason,
+                safe=safe,
+                reason=reason,
                 model=getattr(self._secondary, "model_name", "secondary"),
                 latency_ms=latency,
             )
@@ -333,9 +368,7 @@ class DualModelHarness(AgentHarness):
             logger.warning("Safety oracle failed: %s — defaulting SAFE", exc)
             return SafetyVerdict(safe=True, reason=f"Oracle unavailable: {exc}")
 
-    async def _run_consensus(
-        self, instruction: str, primary_response: str
-    ) -> SafetyVerdict:
+    async def _run_consensus(self, instruction: str, primary_response: str) -> SafetyVerdict:
         """Ask secondary model if it agrees with primary's response."""
         prompt = _CONSENSUS_PROMPT.format(
             instruction=instruction[:200],
@@ -343,15 +376,14 @@ class DualModelHarness(AgentHarness):
         )
         t0 = time.perf_counter()
         try:
-            thought = await asyncio.to_thread(
-                self._secondary.think, b"", prompt, "consensus"
-            )
+            thought = await asyncio.to_thread(self._secondary.think, b"", prompt, "consensus")
             latency = (time.perf_counter() - t0) * 1000
             text = thought.raw_text.strip()
             agreed = text.upper().startswith("AGREE")
             reason = text.split("-", 1)[-1].strip() if "-" in text else text
             return SafetyVerdict(
-                safe=agreed, reason=reason,
+                safe=agreed,
+                reason=reason,
                 model=getattr(self._secondary, "model_name", "secondary"),
                 latency_ms=latency,
             )
@@ -366,26 +398,25 @@ class DualModelHarness(AgentHarness):
             response=response[:400],
         )
         try:
-            thought = await asyncio.to_thread(
-                self._secondary.think, b"", prompt, "verifier"
-            )
+            thought = await asyncio.to_thread(self._secondary.think, b"", prompt, "verifier")
             text = thought.raw_text
             import re
-            m = re.search(r'SCORE:\s*(\d+)', text, re.IGNORECASE)
+
+            m = re.search(r"SCORE:\s*(\d+)", text, re.IGNORECASE)
             if m:
                 return min(100, max(0, int(m.group(1))))
         except Exception as exc:
             logger.warning("Verifier failed: %s", exc)
         return 100  # default: pass
 
-    async def _run_shadow(
-        self, ctx: HarnessContext, primary_result: HarnessResult
-    ) -> None:
+    async def _run_shadow(self, ctx: HarnessContext, primary_result: HarnessResult) -> None:
         """Run secondary in shadow mode — async, doesn't affect response."""
         try:
             secondary_thought = await asyncio.to_thread(
                 self._secondary.think,
-                ctx.image_bytes, ctx.instruction, ctx.surface,
+                ctx.image_bytes,
+                ctx.instruction,
+                ctx.surface,
             )
             # Log shadow result to trajectory for A/B comparison
             logger.debug(
@@ -400,15 +431,14 @@ class DualModelHarness(AgentHarness):
         """Get current telemetry for safety oracle context."""
         try:
             from castor.agent_tools import get_telemetry
+
             return get_telemetry()
         except Exception:
             return {}
 
     # ── Override post-turn for shadow mode ────────────────────────────────────
 
-    async def _run_pipeline(
-        self, ctx: HarnessContext, run_id: str, t0: float
-    ) -> HarnessResult:
+    async def _run_pipeline(self, ctx: HarnessContext, run_id: str, t0: float) -> HarnessResult:
         result = await super()._run_pipeline(ctx, run_id, t0)
         # Shadow mode: fire secondary async without blocking
         if self._mode == "shadow" and ctx.scope in self._scope_filter:
@@ -417,6 +447,7 @@ class DualModelHarness(AgentHarness):
 
 
 # ── Factory function ──────────────────────────────────────────────────────────
+
 
 def build_dual_harness(
     primary: BaseProvider,

@@ -115,6 +115,7 @@ class TrajectoryRecord:
 
 def _now_iso() -> str:
     import datetime
+
     return datetime.datetime.utcnow().isoformat() + "Z"
 
 
@@ -180,9 +181,7 @@ class TrajectoryLogger:
         """Return a single trajectory record by ID."""
         try:
             conn = cls._get_conn()
-            row = conn.execute(
-                "SELECT * FROM trajectories WHERE id = ?", (record_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM trajectories WHERE id = ?", (record_id,)).fetchone()
             if row is None:
                 return None
             cols = [d[0] for d in conn.execute("SELECT * FROM trajectories LIMIT 0").description]
@@ -223,9 +222,9 @@ class TrajectoryLogger:
         try:
             conn = cls._get_conn()
             total = conn.execute("SELECT COUNT(*) FROM trajectories").fetchone()[0]
-            avg_lat = conn.execute(
-                "SELECT AVG(total_latency_ms) FROM trajectories"
-            ).fetchone()[0] or 0
+            avg_lat = (
+                conn.execute("SELECT AVG(total_latency_ms) FROM trajectories").fetchone()[0] or 0
+            )
             p66_events = conn.execute(
                 "SELECT COUNT(*) FROM trajectories WHERE p66_consent_req=1 OR p66_blocked=1 OR p66_estop=1"
             ).fetchone()[0]
@@ -256,6 +255,7 @@ class TrajectoryLogger:
         if not robot_rrn:
             try:
                 from castor.main import get_shared_fs
+
                 fs = get_shared_fs()
                 if fs:
                     robot_rrn = getattr(fs, "rrn", "") or ""
@@ -266,6 +266,7 @@ class TrajectoryLogger:
         if not primary_model:
             try:
                 from castor.main import get_shared_brain
+
                 brain = get_shared_brain()
                 if brain:
                     primary_model = getattr(brain, "model_name", "") or ""
@@ -290,7 +291,7 @@ class TrajectoryLogger:
             id=result.run_id,
             session_id=ctx.session_id,
             robot_rrn=robot_rrn,
-            instruction=ctx.instruction[:1000],          # cap at 1KB
+            instruction=ctx.instruction[:1000],  # cap at 1KB
             scope=ctx.scope,
             surface=ctx.surface,
             skill_triggered=result.skill_triggered,
@@ -346,7 +347,9 @@ class TrajectoryLogger:
                 "total_latency_ms": record.total_latency_ms,
                 "primary_model": record.primary_model,
                 "secondary_model": record.secondary_model,
-                "secondary_verdict_json": json.dumps(record.secondary_verdict) if record.secondary_verdict else None,
+                "secondary_verdict_json": json.dumps(record.secondary_verdict)
+                if record.secondary_verdict
+                else None,
                 "drift_score": record.drift_score,
                 "iterations": record.iterations,
                 "p66_consent_req": int(record.p66_consent_required),
@@ -374,7 +377,7 @@ class TrajectoryLogger:
     def set_db_path(cls, path: Path) -> None:
         """Override default DB path (useful for testing)."""
         cls._db_path = path
-        cls._conn = None   # force reconnect
+        cls._conn = None  # force reconnect
 
 
 def _safe_str(val: Any) -> str:

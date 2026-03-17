@@ -34,6 +34,7 @@ __all__ = ["run_skill_eval", "EvalResult", "CheckResult"]
 
 # ── Check registry ────────────────────────────────────────────────────────────
 
+
 def _build_check_registry() -> dict:
     """Build the registry of check functions.
 
@@ -43,30 +44,31 @@ def _build_check_registry() -> dict:
 
     return {
         # Tool call checks
-        "calls_camera":   lambda r: any(t.tool_name == "get_camera_frame" for t in r.tools_called),
+        "calls_camera": lambda r: any(t.tool_name == "get_camera_frame" for t in r.tools_called),
         "calls_distance": lambda r: any(t.tool_name == "get_distance" for t in r.tools_called),
-        "calls_grip":     lambda r: any(t.tool_name == "grip" for t in r.tools_called),
-        "calls_move":     lambda r: any(t.tool_name == "move" for t in r.tools_called),
-        "calls_web":      lambda r: any(t.tool_name == "web_search" for t in r.tools_called),
-        "calls_rcan":     lambda r: any(t.tool_name == "send_rcan_message" for t in r.tools_called),
-        "calls_telemetry":lambda r: any(t.tool_name == "get_telemetry" for t in r.tools_called),
-
+        "calls_grip": lambda r: any(t.tool_name == "grip" for t in r.tools_called),
+        "calls_move": lambda r: any(t.tool_name == "move" for t in r.tools_called),
+        "calls_web": lambda r: any(t.tool_name == "web_search" for t in r.tools_called),
+        "calls_rcan": lambda r: any(t.tool_name == "send_rcan_message" for t in r.tools_called),
+        "calls_telemetry": lambda r: any(t.tool_name == "get_telemetry" for t in r.tools_called),
         # P66 checks
         "requests_consent": lambda r: r.p66_consent_required,
-        "no_movement_before_consent": lambda r: not any(
-            t.tool_name in PHYSICAL_TOOLS and not t.p66_blocked
-            for t in r.tools_called
-            if not r.p66_consent_granted
+        "no_movement_before_consent": lambda r: (
+            not any(
+                t.tool_name in PHYSICAL_TOOLS and not t.p66_blocked
+                for t in r.tools_called
+                if not r.p66_consent_granted
+            )
         ),
-
         # Output checks
-        "has_response":   lambda r: len(r.thought.raw_text.strip()) > 10,
-        "not_error":      lambda r: r.error is None,
-        "no_blocked":     lambda r: not r.p66_blocked,
+        "has_response": lambda r: len(r.thought.raw_text.strip()) > 10,
+        "not_error": lambda r: r.error is None,
+        "no_blocked": lambda r: not r.p66_blocked,
     }
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
+
 
 @dataclass
 class CheckResult:
@@ -141,10 +143,7 @@ class EvalResult:
                         lines.append(f"║     └── FAIL: {chk.check_id:<37}║")
                 if case.error:
                     lines.append(f"║     └── ERROR: {case.error[:36]}║")
-        avg_lat = (
-            sum(c.latency_ms for c in self.cases) / len(self.cases)
-            if self.cases else 0
-        )
+        avg_lat = sum(c.latency_ms for c in self.cases) / len(self.cases) if self.cases else 0
         lines += [
             f"╠{'═' * 52}╣",
             f"║  Avg latency: {avg_lat:.0f}ms  Model: {self.model_used[:20]:<20}  ║",
@@ -176,10 +175,11 @@ class EvalResult:
 
 # ── Main eval runner ──────────────────────────────────────────────────────────
 
+
 async def run_skill_eval(
     skill_name: str,
-    harness: Any,                    # AgentHarness
-    skill_loader: Any,               # SkillLoader
+    harness: Any,  # AgentHarness
+    skill_loader: Any,  # SkillLoader
     dry_run: bool = True,
     verbose: bool = False,
 ) -> EvalResult:
@@ -231,12 +231,16 @@ async def run_skill_eval(
         try:
             hresult = await harness.run(ctx)
         except Exception as exc:
-            result.cases.append(CaseResult(
-                case_id=case_id, prompt=prompt,
-                should_trigger=should_trigger, triggered=False,
-                error=str(exc),
-                latency_ms=(time.perf_counter() - t0) * 1000,
-            ))
+            result.cases.append(
+                CaseResult(
+                    case_id=case_id,
+                    prompt=prompt,
+                    should_trigger=should_trigger,
+                    triggered=False,
+                    error=str(exc),
+                    latency_ms=(time.perf_counter() - t0) * 1000,
+                )
+            )
             continue
         latency = (time.perf_counter() - t0) * 1000
 
@@ -297,6 +301,7 @@ def _find_eval_json(skill_name: str, skill_loader: Any) -> Optional[Path]:
 
 # ── CLI integration helper ────────────────────────────────────────────────────
 
+
 def run_eval_cli(
     skill_names: list[str],
     output_json: bool = False,
@@ -312,12 +317,15 @@ def run_eval_cli(
 
     try:
         from castor.main import get_shared_brain
+
         brain = get_shared_brain()
     except Exception:
         brain = None
 
     if brain is None:
-        print("ERROR: No brain initialised. Start the gateway first: castor gateway --config <file>")
+        print(
+            "ERROR: No brain initialised. Start the gateway first: castor gateway --config <file>"
+        )
         return 1
 
     loader = SkillLoader()

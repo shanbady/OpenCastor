@@ -46,7 +46,11 @@ def register_agent_tools(registry: ToolRegistry) -> None:
         ),
         parameters={
             "query": {"type": "string", "description": "Search query", "required": True},
-            "num_results": {"type": "integer", "description": "Number of results (1-5)", "required": False},
+            "num_results": {
+                "type": "integer",
+                "description": "Number of results (1-5)",
+                "required": False,
+            },
         },
         returns="array",
     )
@@ -68,8 +72,16 @@ def register_agent_tools(registry: ToolRegistry) -> None:
             "Returns summaries of past interactions matching the query."
         ),
         parameters={
-            "query": {"type": "string", "description": "What to search for in memory", "required": True},
-            "k": {"type": "integer", "description": "Number of results (default 3)", "required": False},
+            "query": {
+                "type": "string",
+                "description": "What to search for in memory",
+                "required": True,
+            },
+            "k": {
+                "type": "integer",
+                "description": "Number of results (default 3)",
+                "required": False,
+            },
         },
         returns="array",
     )
@@ -81,9 +93,17 @@ def register_agent_tools(registry: ToolRegistry) -> None:
             "Use to consult, coordinate with, or delegate to another robot in the fleet."
         ),
         parameters={
-            "rrn": {"type": "string", "description": "Target robot RRN (e.g. RRN-000000000005)", "required": True},
+            "rrn": {
+                "type": "string",
+                "description": "Target robot RRN (e.g. RRN-000000000005)",
+                "required": True,
+            },
             "message": {"type": "string", "description": "Message to send", "required": True},
-            "timeout_s": {"type": "number", "description": "Timeout in seconds (default 10)", "required": False},
+            "timeout_s": {
+                "type": "number",
+                "description": "Timeout in seconds (default 10)",
+                "required": False,
+            },
         },
         returns="object",
     )
@@ -96,14 +116,21 @@ def register_agent_tools(registry: ToolRegistry) -> None:
         ),
         parameters={
             "query": {"type": "string", "description": "What to search for", "required": True},
-            "k": {"type": "integer", "description": "Number of results (default 5)", "required": False},
+            "k": {
+                "type": "integer",
+                "description": "Number of results (default 5)",
+                "required": False,
+            },
         },
         returns="array",
     )
-    logger.info("AgentTools: registered web_search, get_telemetry, recall_episode, send_rcan_message, query_local_knowledge")
+    logger.info(
+        "AgentTools: registered web_search, get_telemetry, recall_episode, send_rcan_message, query_local_knowledge"
+    )
 
 
 # ── Tool implementations ──────────────────────────────────────────────────────
+
 
 def web_search(query: str = "", num_results: int = 3) -> list[dict]:
     """Search the web using Brave API or DuckDuckGo fallback."""
@@ -129,35 +156,41 @@ def web_search(query: str = "", num_results: int = 3) -> list[dict]:
 
 def _brave_search(query: str, num_results: int, api_key: str) -> list[dict]:
     """Brave Search API."""
-    url = (
-        "https://api.search.brave.com/res/v1/web/search?"
-        + urllib.parse.urlencode({"q": query, "count": num_results, "text_decorations": "false"})
+    url = "https://api.search.brave.com/res/v1/web/search?" + urllib.parse.urlencode(
+        {"q": query, "count": num_results, "text_decorations": "false"}
     )
-    req = urllib.request.Request(url, headers={
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": api_key,
-    })
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": api_key,
+        },
+    )
     with urllib.request.urlopen(req, timeout=8) as resp:
         data = json.loads(resp.read())
     results = []
     for item in data.get("web", {}).get("results", [])[:num_results]:
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "snippet": item.get("description", ""),
-        })
+        results.append(
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "snippet": item.get("description", ""),
+            }
+        )
     return results
 
 
 def _ddg_search(query: str, num_results: int) -> list[dict]:
     """DuckDuckGo instant answer API (limited but no key needed)."""
-    url = (
-        "https://api.duckduckgo.com/?"
-        + urllib.parse.urlencode({
-            "q": query, "format": "json", "no_html": 1,
-            "skip_disambig": 1, "no_redirect": 1,
-        })
+    url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(
+        {
+            "q": query,
+            "format": "json",
+            "no_html": 1,
+            "skip_disambig": 1,
+            "no_redirect": 1,
+        }
     )
     req = urllib.request.Request(url, headers={"User-Agent": "OpenCastor/1.0"})
     with urllib.request.urlopen(req, timeout=8) as resp:
@@ -166,21 +199,27 @@ def _ddg_search(query: str, num_results: int) -> list[dict]:
     results = []
     # Abstract (top result)
     if data.get("AbstractText"):
-        results.append({
-            "title": data.get("Heading", query),
-            "url": data.get("AbstractURL", ""),
-            "snippet": data["AbstractText"][:400],
-        })
+        results.append(
+            {
+                "title": data.get("Heading", query),
+                "url": data.get("AbstractURL", ""),
+                "snippet": data["AbstractText"][:400],
+            }
+        )
     # Related topics
-    for topic in data.get("RelatedTopics", [])[:num_results - len(results)]:
+    for topic in data.get("RelatedTopics", [])[: num_results - len(results)]:
         if isinstance(topic, dict) and topic.get("Text"):
-            results.append({
-                "title": topic.get("Text", "")[:60],
-                "url": topic.get("FirstURL", ""),
-                "snippet": topic.get("Text", "")[:300],
-            })
+            results.append(
+                {
+                    "title": topic.get("Text", "")[:60],
+                    "url": topic.get("FirstURL", ""),
+                    "snippet": topic.get("Text", "")[:300],
+                }
+            )
     if not results:
-        results.append({"title": "No results", "url": "", "snippet": f"No results found for: {query}"})
+        results.append(
+            {"title": "No results", "url": "", "snippet": f"No results found for: {query}"}
+        )
     return results[:num_results]
 
 
@@ -188,6 +227,7 @@ def get_telemetry() -> dict:
     """Return the robot's current sensor and system telemetry."""
     try:
         from castor.main import get_shared_fs
+
         fs = get_shared_fs()
         if fs and hasattr(fs, "proc"):
             snap = fs.proc.snapshot()
@@ -199,6 +239,7 @@ def get_telemetry() -> dict:
     # Fallback: basic system info
     try:
         import psutil
+
         return {
             "cpu_percent": psutil.cpu_percent(interval=0.1),
             "memory_percent": psutil.virtual_memory().percent,
@@ -218,6 +259,7 @@ def recall_episode(query: str = "", k: int = 3) -> list[dict]:
         return []
     try:
         from castor.memory.episode import EpisodeStore
+
         store = EpisodeStore.get_default()
         if store is None:
             return []
@@ -292,20 +334,24 @@ def _send_rcan_firebase(rrn: str, message: str, timeout_s: float) -> dict:
     t0 = _time.time()
 
     # Write command to peer's Firestore commands collection
-    db.collection("robots").document(rrn).collection("commands").document(cmd_id).set({
-        "id": cmd_id,
-        "type": "CHAT",
-        "from_rrn": _get_own_rrn(),
-        "payload": {"instruction": message},
-        "loa": 2,
-        "timestamp": _time.time(),
-    })
+    db.collection("robots").document(rrn).collection("commands").document(cmd_id).set(
+        {
+            "id": cmd_id,
+            "type": "CHAT",
+            "from_rrn": _get_own_rrn(),
+            "payload": {"instruction": message},
+            "loa": 2,
+            "timestamp": _time.time(),
+        }
+    )
 
     # Poll for response
     deadline = t0 + timeout_s
     while _time.time() < deadline:
         _time.sleep(0.5)
-        resp_doc = db.collection("robots").document(rrn).collection("responses").document(cmd_id).get()
+        resp_doc = (
+            db.collection("robots").document(rrn).collection("responses").document(cmd_id).get()
+        )
         if resp_doc.exists:
             data = resp_doc.to_dict()
             return {
@@ -340,7 +386,7 @@ def query_local_knowledge(query: str = "", k: int = 5) -> list[dict]:
             text = open(fpath, encoding="utf-8", errors="ignore").read()
             # Split into ~500-char chunks
             for i in range(0, len(text), 500):
-                chunk = text[i:i + 500].strip()
+                chunk = text[i : i + 500].strip()
                 if chunk:
                     chunks.append({"source": fname, "chunk": chunk})
         except Exception:
@@ -361,6 +407,7 @@ def query_local_knowledge(query: str = "", k: int = 5) -> list[dict]:
     # Try embedding-based ranking if available
     try:
         from castor.learner.embedding_interpreter import EmbeddingInterpreter
+
         interp = EmbeddingInterpreter.get_default()
         if interp:
             q_emb = interp.embed(query)
@@ -381,9 +428,11 @@ def query_local_knowledge(query: str = "", k: int = 5) -> list[dict]:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _get_own_rrn() -> str:
     try:
         from castor.main import get_shared_fs
+
         fs = get_shared_fs()
         if fs:
             return getattr(fs, "rrn", "") or ""
@@ -396,6 +445,7 @@ def _get_peer_urls() -> dict[str, str]:
     """Return known RRN → HTTP base URL mappings from config or env."""
     try:
         from castor.main import get_shared_fs
+
         fs = get_shared_fs()
         if fs and hasattr(fs, "config"):
             peers = fs.config.get("fleet", {}).get("peers", [])
@@ -404,8 +454,8 @@ def _get_peer_urls() -> dict[str, str]:
         pass
     # Hardcoded known peers (fallback)
     return {
-        "RRN-000000000001": "http://127.0.0.1:8001",   # Bob
-        "RRN-000000000005": "http://alex.local:8000",   # Alex
+        "RRN-000000000001": "http://127.0.0.1:8001",  # Bob
+        "RRN-000000000005": "http://alex.local:8000",  # Alex
     }
 
 

@@ -3390,6 +3390,7 @@ def _improve_toggle(args) -> bool:
 def _cmd_eval(args) -> None:
     """castor eval — run skill evaluation harness."""
     from castor.eval_harness import run_eval_cli
+
     skill_names = []
     if getattr(args, "skill", None):
         skill_names = [args.skill]
@@ -3422,7 +3423,7 @@ def _cmd_trajectory(args) -> None:
         for r in records:
             p66 = "🔴" if r.get("p66_estop") else ("🟡" if r.get("p66_consent_req") else "🟢")
             print(
-                f"{r['id'][:36]:36}  {r.get('scope','?'):8}  "
+                f"{r['id'][:36]:36}  {r.get('scope', '?'):8}  "
                 f"{(r.get('skill_triggered') or '-')[:20]:20}  "
                 f"{r.get('total_latency_ms', 0):8.0f}ms  {p66}"
             )
@@ -3456,8 +3457,8 @@ def _cmd_trajectory(args) -> None:
         print("Usage: castor trajectory [list|show <id>|export|stats]")
 
 
-
 # ── castor share / castor install / castor explore ────────────────────────────
+
 
 def _cmd_share(args) -> None:
     """castor share — package and share a preset, skill, or harness."""
@@ -3494,7 +3495,10 @@ def _cmd_share(args) -> None:
 
     # Scrub secrets
     SECRET_PATTERNS = [
-        (r"(api[_-]?key|apikey|token|secret|password|passwd)\s*[:=]\s*[\'\"]?([A-Za-z0-9_\-\.]{16,})", r"\1: <REDACTED>"),
+        (
+            r"(api[_-]?key|apikey|token|secret|password|passwd)\s*[:=]\s*[\'\"]?([A-Za-z0-9_\-\.]{16,})",
+            r"\1: <REDACTED>",
+        ),
         (r"(sk|AIza|AKIA|ghp|ghs|glpat|xoxb|xoxp)[A-Za-z0-9_\-]{8,}", "<REDACTED_KEY>"),
         (r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "<PUBLIC_IP>"),
     ]
@@ -3549,7 +3553,7 @@ def _cmd_share(args) -> None:
     print()
     print("  Or contribute directly:")
     print(f"  cp {bundle_zip} ~/OpenCastor/config/community/")
-    print("  git add . && git commit -m \"community: add " + title + "\"")
+    print('  git add . && git commit -m "community: add ' + title + '"')
     print("  git push && gh pr create")
     print()
     print("  ℹ  Firebase-based instant sharing coming in Phase 2 (issue #700)")
@@ -3581,12 +3585,17 @@ def _cmd_install(args) -> None:
                 print(f"  [dry-run] Would install skill {skill_name!r} → {dest}")
                 return
             import shutil
+
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(str(builtin_dir), str(dest))
             print(f"  ✓ Installed skill {skill_name!r} → {dest}")
             print("  Add to your RCAN config under agent.skills.extra_dirs")
         else:
-            available = [d.name for d in (Path(__file__).parent / "skills" / "builtin").iterdir() if d.is_dir()]
+            available = [
+                d.name
+                for d in (Path(__file__).parent / "skills" / "builtin").iterdir()
+                if d.is_dir()
+            ]
             print(f"  ✗ Unknown skill {skill_name!r}")
             print(f"  Available: {', '.join(available)}")
         return
@@ -3594,7 +3603,9 @@ def _cmd_install(args) -> None:
     # Built-in presets
     if target.startswith("preset:"):
         preset_name = target[7:].replace("-", "_")
-        preset_file = Path(__file__).parent.parent / "config" / "presets" / f"{preset_name}.rcan.yaml"
+        preset_file = (
+            Path(__file__).parent.parent / "config" / "presets" / f"{preset_name}.rcan.yaml"
+        )
         if not preset_file.exists():
             # Try fuzzy match
             presets_dir = preset_file.parent
@@ -3610,6 +3621,7 @@ def _cmd_install(args) -> None:
             print(f"  [dry-run] Would copy {preset_file.name} → {dest}")
             return
         import shutil
+
         shutil.copy(str(preset_file), str(dest))
         print(f"  ✓ Installed preset → {dest}")
         return
@@ -3618,7 +3630,9 @@ def _cmd_install(args) -> None:
     if target.startswith("harness:"):
         harness_name = target[8:]
         print("  Harness bundles are available at opencastor.com/hub")
-        print(f"  castor install harness:{harness_name} — Firebase integration coming in Phase 2 (issue #700)")
+        print(
+            f"  castor install harness:{harness_name} — Firebase integration coming in Phase 2 (issue #700)"
+        )
         print("  For now: https://github.com/craigm26/OpenCastor/tree/main/config/community")
         return
 
@@ -3659,7 +3673,11 @@ def _cmd_explore(args) -> None:
             print(f"\n  SKILLS ({len(skill_dirs)} built-in):")
             for s in skill_dirs:
                 skill_md = s / "SKILL.md"
-                consent = "consent: required" if skill_md.exists() and "consent: required" in skill_md.read_text() else ""
+                consent = (
+                    "consent: required"
+                    if skill_md.exists() and "consent: required" in skill_md.read_text()
+                    else ""
+                )
                 flag = " ⚠ consent" if consent else ""
                 print(f"    castor install skill:{s.name}{flag}")
 
@@ -3671,7 +3689,7 @@ def _cmd_explore(args) -> None:
 
     print()
     print("  SHARE YOUR CONFIG:")
-    print("    castor share preset config/robot.rcan.yaml --title \"My Robot\"")
+    print('    castor share preset config/robot.rcan.yaml --title "My Robot"')
     print("    castor share skill castor/skills/my-skill/")
     print("    castor share harness . --include-skills")
     print()
@@ -5156,24 +5174,38 @@ def main() -> None:
     except ImportError:
         pass
 
-
     # castor share
     p_share = sub.add_parser("share", help="Share a preset, skill, or harness to the hub")
-    p_share.add_argument("share_type", nargs="?", choices=["preset","skill","harness"], default="preset", help="What to share (default: preset)")
+    p_share.add_argument(
+        "share_type",
+        nargs="?",
+        choices=["preset", "skill", "harness"],
+        default="preset",
+        help="What to share (default: preset)",
+    )
     p_share.add_argument("source", nargs="?", default=".", help="File or directory to share")
     p_share.add_argument("--title", "-t", help="Human-readable title")
-    p_share.add_argument("--tags", default="", help="Comma-separated tags (hardware, provider, etc.)")
+    p_share.add_argument(
+        "--tags", default="", help="Comma-separated tags (hardware, provider, etc.)"
+    )
     p_share.add_argument("--dry-run", action="store_true", help="Preview without writing files")
 
     # castor install
     p_install2 = sub.add_parser("install", help="Install a preset, skill, or harness from the hub")
-    p_install2.add_argument("target", help="ID to install — e.g. skill:camera-describe, preset:so_arm101, harness:bob-pi4-oakd")
-    p_install2.add_argument("--output", "-o", default=".", help="Destination directory (default: .)")
+    p_install2.add_argument(
+        "target",
+        help="ID to install — e.g. skill:camera-describe, preset:so_arm101, harness:bob-pi4-oakd",
+    )
+    p_install2.add_argument(
+        "--output", "-o", default=".", help="Destination directory (default: .)"
+    )
     p_install2.add_argument("--dry-run", action="store_true", help="Preview without applying")
 
     # castor explore
     p_explore = sub.add_parser("explore", help="Browse available presets, skills, and harnesses")
-    p_explore.add_argument("--type", dest="explore_type", choices=["preset","skill","harness"], help="Filter by type")
+    p_explore.add_argument(
+        "--type", dest="explore_type", choices=["preset", "skill", "harness"], help="Filter by type"
+    )
     p_explore.add_argument("--hardware", help="Filter by hardware tag")
     p_explore.add_argument("--categories", action="store_true", help="List categories only")
 
@@ -5279,10 +5311,14 @@ def main() -> None:
     # castor eval — skill evaluation harness
     p_eval = sub.add_parser("eval", help="Evaluate a skill against its test suite")
     p_eval.add_argument("--skill", "-s", metavar="NAME", help="Skill name to evaluate")
-    p_eval.add_argument("--all", action="store_true", dest="eval_all", help="Evaluate all loaded skills")
+    p_eval.add_argument(
+        "--all", action="store_true", dest="eval_all", help="Evaluate all loaded skills"
+    )
     p_eval.add_argument("--verbose", "-v", action="store_true", help="Show per-check details")
     p_eval.add_argument("--json", action="store_true", dest="output_json", help="Output JSON")
-    p_eval.add_argument("--no-dry-run", action="store_true", help="Allow physical tool execution (CAUTION)")
+    p_eval.add_argument(
+        "--no-dry-run", action="store_true", help="Allow physical tool execution (CAUTION)"
+    )
 
     # castor trajectory — trajectory log management
     p_traj = sub.add_parser("trajectory", help="Manage trajectory logs")

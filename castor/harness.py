@@ -55,15 +55,30 @@ __all__ = [
 # ── P66 tool classification ──────────────────────────────────────────────────
 
 # Tools that require explicit user consent before execution (physical actions)
-PHYSICAL_TOOLS: frozenset[str] = frozenset({
-    "move", "grip", "set_speed", "rotate", "navigate_to",
-    "set_motor", "drive", "arm_move", "arm_grip",
-})
+PHYSICAL_TOOLS: frozenset[str] = frozenset(
+    {
+        "move",
+        "grip",
+        "set_speed",
+        "rotate",
+        "navigate_to",
+        "set_motor",
+        "drive",
+        "arm_move",
+        "arm_grip",
+    }
+)
 
 # ESTOP tools: always execute, no consent, no iteration cap, no secondary veto
-ESTOP_TOOLS: frozenset[str] = frozenset({
-    "emergency_stop", "stop", "halt", "estop", "e_stop",
-})
+ESTOP_TOOLS: frozenset[str] = frozenset(
+    {
+        "emergency_stop",
+        "stop",
+        "halt",
+        "estop",
+        "e_stop",
+    }
+)
 
 # Scope ordering: higher = more privileged
 SCOPE_LEVELS: dict[str, int] = {
@@ -77,6 +92,7 @@ SCOPE_LEVELS: dict[str, int] = {
 
 # ── Data classes ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class HarnessContext:
     """Input context for a single harness turn."""
@@ -85,7 +101,7 @@ class HarnessContext:
     image_bytes: bytes = b""
     surface: str = "opencastor_app"
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    scope: str = "chat"                  # chat | control | safety
+    scope: str = "chat"  # chat | control | safety
     mission_state: dict = field(default_factory=dict)
     # Set True after user has explicitly confirmed a physical action this turn
     consent_granted: bool = False
@@ -129,6 +145,7 @@ class HarnessResult:
 
 # ── Lifecycle hook interface ──────────────────────────────────────────────────
 
+
 class HarnessHook:
     """Base class for AgentHarness lifecycle hooks.
 
@@ -139,7 +156,7 @@ class HarnessHook:
     async def on_pre_turn(
         self,
         ctx: HarnessContext,
-        built_context: Any,          # BuiltContext from context.py
+        built_context: Any,  # BuiltContext from context.py
     ) -> None:
         """Called after context is built, before the first model inference."""
 
@@ -167,6 +184,7 @@ class HarnessHook:
 
 
 # ── Built-in hooks ────────────────────────────────────────────────────────────
+
 
 class P66AuditHook(HarnessHook):
     """Logs all Protocol 66 physical-tool decisions to the dedicated audit log."""
@@ -204,11 +222,10 @@ class RetryOnErrorHook(HarnessHook):
         self._max_retries = max_retries
         self._retries: dict[str, int] = {}
 
-    async def on_error(
-        self, ctx: HarnessContext, error: Exception
-    ) -> Optional[HarnessResult]:
+    async def on_error(self, ctx: HarnessContext, error: Exception) -> Optional[HarnessResult]:
         try:
             from castor.providers.base import ProviderQuotaError
+
             transient = (ConnectionError, TimeoutError, ProviderQuotaError)
         except ImportError:
             transient = (ConnectionError, TimeoutError)
@@ -217,11 +234,16 @@ class RetryOnErrorHook(HarnessHook):
         count = self._retries.get(key, 0)
         if isinstance(error, transient) and count < self._max_retries:
             self._retries[key] = count + 1
-            delay = 2 ** count
-            logger.warning("Harness: transient error, retry %d/%d in %ds: %s",
-                           count + 1, self._max_retries, delay, error)
+            delay = 2**count
+            logger.warning(
+                "Harness: transient error, retry %d/%d in %ds: %s",
+                count + 1,
+                self._max_retries,
+                delay,
+                error,
+            )
             await asyncio.sleep(delay)
-            return None   # caller will retry
+            return None  # caller will retry
         return None
 
 
@@ -242,9 +264,7 @@ class DriftDetectionHook(HarnessHook):
     def __init__(self, threshold: float = 0.15) -> None:
         self.threshold = threshold
 
-    async def on_post_turn(
-        self, ctx: HarnessContext, result: HarnessResult
-    ) -> None:
+    async def on_post_turn(self, ctx: HarnessContext, result: HarnessResult) -> None:
         if result.iterations < 3:
             return  # don't check on short runs
 
@@ -254,7 +274,10 @@ class DriftDetectionHook(HarnessHook):
         if score < self.threshold:
             logger.warning(
                 "Harness: drift detected (score=%.3f < %.3f) session=%s instruction=%r",
-                score, self.threshold, ctx.session_id, ctx.instruction[:60],
+                score,
+                self.threshold,
+                ctx.session_id,
+                ctx.instruction[:60],
             )
 
 
@@ -263,8 +286,9 @@ def _word_overlap_similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     import re
-    words_a = set(re.findall(r'\b[a-z]{3,}\b', a.lower()))
-    words_b = set(re.findall(r'\b[a-z]{3,}\b', b.lower()))
+
+    words_a = set(re.findall(r"\b[a-z]{3,}\b", a.lower()))
+    words_b = set(re.findall(r"\b[a-z]{3,}\b", b.lower()))
     if not words_a or not words_b:
         return 0.0
     intersection = words_a & words_b
@@ -273,6 +297,7 @@ def _word_overlap_similarity(a: str, b: str) -> float:
 
 
 # ── Main harness ──────────────────────────────────────────────────────────────
+
 
 class AgentHarness:
     """Thin orchestration layer around the LLM provider.
@@ -311,6 +336,7 @@ class AgentHarness:
         # Register extended agent tools
         try:
             from castor.agent_tools import register_agent_tools
+
             register_agent_tools(self._tool_registry)
         except Exception as _reg_exc:
             logger.debug("Agent tools registration skipped: %s", _reg_exc)
@@ -328,8 +354,11 @@ class AgentHarness:
         # Lazy import context builder to avoid circular deps
         self._context_builder: Any = None
 
-        logger.info("AgentHarness initialised (enabled=%s, max_iter=%d)",
-                    self._enabled, self._max_iterations)
+        logger.info(
+            "AgentHarness initialised (enabled=%s, max_iter=%d)",
+            self._enabled,
+            self._max_iterations,
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -361,6 +390,7 @@ class AgentHarness:
                     return recovery
             # Return graceful degradation response
             from castor.providers.base import Thought as _T
+
             t = _T(raw_text="I encountered an error. Please try again.", provider="harness")
             result = HarnessResult(
                 thought=t,
@@ -376,9 +406,7 @@ class AgentHarness:
 
     # ── Internal pipeline ─────────────────────────────────────────────────────
 
-    async def _run_pipeline(
-        self, ctx: HarnessContext, run_id: str, t0: float
-    ) -> HarnessResult:
+    async def _run_pipeline(self, ctx: HarnessContext, run_id: str, t0: float) -> HarnessResult:
         """Full harness pipeline: context → skill → inference → tool loop → log."""
         from castor.context import BuiltContext
 
@@ -464,12 +492,12 @@ class AgentHarness:
 
                 # P66: ESTOP always executes
                 if name in ESTOP_TOOLS:
-                    tr = await asyncio.to_thread(
-                        self._execute_tool, name, args
-                    )
+                    tr = await asyncio.to_thread(self._execute_tool, name, args)
                     record = ToolCallRecord(
-                        tool_name=name, args=args,
-                        result=tr.result, latency_ms=tr.duration_ms,
+                        tool_name=name,
+                        args=args,
+                        result=tr.result,
+                        latency_ms=tr.duration_ms,
                     )
                     tools_called.append(record)
                     for hook in self.hooks:
@@ -480,8 +508,10 @@ class AgentHarness:
                 if name in PHYSICAL_TOOLS:
                     if ctx.scope not in ("control", "safety") or not consent_granted:
                         record = ToolCallRecord(
-                            tool_name=name, args=args,
-                            result=None, latency_ms=0,
+                            tool_name=name,
+                            args=args,
+                            result=None,
+                            latency_ms=0,
                             p66_consent_required=True,
                             p66_consent_granted=False,
                             p66_blocked=True,
@@ -502,8 +532,10 @@ class AgentHarness:
                 tr = await asyncio.to_thread(self._execute_tool, name, args)
                 is_phys = name in PHYSICAL_TOOLS
                 record = ToolCallRecord(
-                    tool_name=name, args=args,
-                    result=tr.result, latency_ms=tr.duration_ms,
+                    tool_name=name,
+                    args=args,
+                    result=tr.result,
+                    latency_ms=tr.duration_ms,
                     p66_consent_required=is_phys,
                     p66_consent_granted=is_phys and consent_granted,
                     error=tr.error,
@@ -513,11 +545,13 @@ class AgentHarness:
                     await hook.on_tool_call(call, tr)
 
                 # Append tool result to messages for next iteration
-                messages.append({
-                    "role": "tool",
-                    "name": name,
-                    "content": str(tr.result) if tr.ok else f"Error: {tr.error}",
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "name": name,
+                        "content": str(tr.result) if tr.ok else f"Error: {tr.error}",
+                    }
+                )
 
         # Hit iteration limit
         logger.warning("Harness: reached max_iterations=%d", self._max_iterations)
@@ -527,9 +561,7 @@ class AgentHarness:
         )
         return limit_thought, tools_called, self._max_iterations
 
-    async def _run_estop(
-        self, ctx: HarnessContext, run_id: str, t0: float
-    ) -> HarnessResult:
+    async def _run_estop(self, ctx: HarnessContext, run_id: str, t0: float) -> HarnessResult:
         """P66 ESTOP path — bypass all harness steps, call provider directly."""
         logger.warning("P66 ESTOP bypass activated: %r", ctx.instruction[:60])
         thought = await asyncio.to_thread(
@@ -549,9 +581,7 @@ class AgentHarness:
         asyncio.ensure_future(self._log_trajectory(ctx, result))
         return result
 
-    async def _run_legacy(
-        self, ctx: HarnessContext, run_id: str, t0: float
-    ) -> HarnessResult:
+    async def _run_legacy(self, ctx: HarnessContext, run_id: str, t0: float) -> HarnessResult:
         """Legacy single-shot mode (harness.enabled = false)."""
         thought = await asyncio.to_thread(
             self._provider.think,
@@ -579,6 +609,7 @@ class AgentHarness:
         """Lazy-load ContextBuilder to avoid circular imports."""
         if self._context_builder is None:
             from castor.context import ContextBuilder
+
             self._context_builder = ContextBuilder(
                 config=self._config,
                 tool_registry=self._tool_registry,
@@ -595,8 +626,7 @@ class AgentHarness:
         if scope_level < SCOPE_LEVELS["control"]:
             # Filter out physical tools for non-control scopes
             return [
-                t for t in all_tools
-                if t.get("function", {}).get("name", "") not in PHYSICAL_TOOLS
+                t for t in all_tools if t.get("function", {}).get("name", "") not in PHYSICAL_TOOLS
             ]
         return all_tools
 
@@ -624,9 +654,7 @@ class AgentHarness:
         # Fallback: inject tool descriptions into instruction
         if tools_schema and instruction:
             tool_names = [t.get("function", {}).get("name", "") for t in tools_schema]
-            augmented = (
-                f"{instruction}\n\n[Available tools: {', '.join(tool_names)}]"
-            )
+            augmented = f"{instruction}\n\n[Available tools: {', '.join(tool_names)}]"
             return self._provider.think(image_bytes, augmented, surface)
         return self._provider.think(image_bytes, instruction, surface)
 
@@ -641,10 +669,12 @@ class AgentHarness:
 
         # Parse from action dict (legacy: {"type": "tool_call", "name": ..., "args": ...})
         if thought.action and thought.action.get("type") == "tool_call":
-            return [{
-                "name": thought.action.get("name", ""),
-                "args": thought.action.get("args", {}),
-            }]
+            return [
+                {
+                    "name": thought.action.get("name", ""),
+                    "args": thought.action.get("args", {}),
+                }
+            ]
 
         return []
 
@@ -656,6 +686,7 @@ class AgentHarness:
         """Fire-and-forget trajectory logging."""
         try:
             from castor.trajectory import TrajectoryLogger
+
             await TrajectoryLogger.log_async(ctx, result)
         except Exception as exc:
             logger.debug("Trajectory log failed (non-fatal): %s", exc)

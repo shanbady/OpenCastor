@@ -94,6 +94,7 @@ class ContextBuilder:
         if skill_loader is None:
             try:
                 from castor.skills.loader import SkillLoader
+
                 skill_loader = SkillLoader()
             except Exception:
                 pass
@@ -157,10 +158,12 @@ class ContextBuilder:
         messages = list(history)  # copy
 
         # 7. Append current instruction
-        messages.append({
-            "role": "user",
-            "content": ctx.instruction,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": ctx.instruction,
+            }
+        )
 
         # 8. Estimate tokens
         token_estimate = self._estimate_tokens(system_prompt, messages)
@@ -199,6 +202,7 @@ class ContextBuilder:
         # Try to get from shared state
         try:
             from castor.main import get_shared_fs
+
             fs = get_shared_fs()
             if fs and hasattr(fs, "config"):
                 robot_name = fs.config.get("name", robot_name)
@@ -272,6 +276,7 @@ class ContextBuilder:
         """Fetch top-3 relevant episodes using EmbeddingInterpreter."""
         try:
             from castor.memory.episode import EpisodeStore
+
             store = EpisodeStore.get_default()
             if store is None:
                 return []
@@ -285,13 +290,20 @@ class ContextBuilder:
         """Fetch current robot telemetry snapshot."""
         try:
             from castor.main import get_shared_fs
+
             fs = get_shared_fs()
             if fs and hasattr(fs, "proc"):
                 snap = await asyncio.to_thread(fs.proc.snapshot)
                 if isinstance(snap, dict):
                     # Keep it small — only the most useful fields
-                    keys = ["battery", "cpu_temp", "distance_m", "uptime_s",
-                            "motor_status", "camera_online"]
+                    keys = [
+                        "battery",
+                        "cpu_temp",
+                        "distance_m",
+                        "uptime_s",
+                        "motor_status",
+                        "camera_online",
+                    ]
                     return {k: snap[k] for k in keys if k in snap}
         except Exception as exc:
             logger.debug("Telemetry fetch unavailable: %s", exc)
@@ -351,16 +363,14 @@ class ContextBuilder:
         """Summarise a list of messages using the configured provider."""
         try:
             from castor.main import get_shared_brain
+
             brain = get_shared_brain()
             if brain is None:
                 return "[earlier conversation omitted]"
             text = "\n".join(
-                f"{m.get('role','?')}: {str(m.get('content',''))[:200]}"
-                for m in messages
+                f"{m.get('role', '?')}: {str(m.get('content', ''))[:200]}" for m in messages
             )
-            prompt = (
-                f"Summarise this conversation in 2–3 sentences, preserving key facts:\n{text}"
-            )
+            prompt = f"Summarise this conversation in 2–3 sentences, preserving key facts:\n{text}"
             thought = await asyncio.to_thread(brain.think, b"", prompt, "context_compactor")
             return thought.raw_text[:500]
         except Exception:

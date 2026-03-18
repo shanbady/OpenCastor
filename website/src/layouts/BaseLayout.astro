@@ -93,7 +93,7 @@ const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" 
 
       <!-- 'Docs' Dropdown: Core docs mapping -->
       <div class="nav-dropdown">
-        <span class="nav-dropdown-title nav-toggle">Docs
+        <span class="nav-dropdown-title nav-toggle" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false"><a href="/docs/getting-started" class="nav-dropdown-fallback-link" tabindex="-1">Docs</a>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </span>
         <div class="nav-dropdown-menu">
@@ -207,15 +207,44 @@ const moonSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" 
         document.body.style.overflow = '';
       });
     });
-    // Toggle internal groups (.nav-dropdown) on Mobile
+    // Toggle internal groups (.nav-dropdown) on all screen sizes
     links.querySelectorAll('.nav-toggle').forEach(function (t) {
       t.addEventListener('click', function (e) {
-        if (window.innerWidth <= 768) {
+        e.preventDefault();
+        e.stopPropagation();
+        var parent = this.closest('.nav-dropdown');
+        var isOpen = parent.classList.contains('is-open');
+        // Close all others first
+        document.querySelectorAll('.nav-dropdown').forEach(function (d) {
+          d.classList.remove('is-open');
+        });
+        if (!isOpen) parent.classList.add('is-open');
+      });
+    });
+    // Keyboard Enter/Space to toggle dropdowns (accessibility)
+    links.querySelectorAll('.nav-toggle').forEach(function (t) {
+      t.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          var parent = this.closest('.nav-dropdown');
-          parent.classList.toggle('is-open');
+          t.click();
         }
       });
+    });
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.nav-dropdown')) {
+        document.querySelectorAll('.nav-dropdown').forEach(function (d) {
+          d.classList.remove('is-open');
+        });
+      }
+    });
+    // Keyboard accessibility: close on Escape
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.nav-dropdown').forEach(function (d) {
+          d.classList.remove('is-open');
+        });
+      }
     });
   }
 

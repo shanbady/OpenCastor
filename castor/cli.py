@@ -2061,9 +2061,64 @@ def _cmd_bridge(args) -> None:
         cmd_bridge_setup(args)
         return
 
+    # Handle 'castor bridge discover' — RCAN peer discovery
+    if bridge_subcmd == "discover":
+        _cmd_bridge_discover(args)
+        return
+
     from castor.cloud.bridge import run_bridge
 
     run_bridge(args)
+
+
+def _cmd_bridge_discover(args) -> None:
+    """castor bridge discover — probe RCAN peers and print bridge status."""
+    import os
+
+    from castor.rcan.http_transport import discover_robot
+
+    # Load config
+    config_path = getattr(args, "config", None)
+    if not config_path:
+        # Auto-detect
+        for candidate in ["bob.rcan.yaml", "opencastor.rcan.yaml", "castor.yaml"]:
+            if os.path.exists(candidate):
+                config_path = candidate
+                break
+        if not config_path:
+            import glob
+
+            found = glob.glob("*.rcan.yaml") + glob.glob("config/*.rcan.yaml")
+            config_path = found[0] if found else None
+
+    config = {}
+    if config_path and os.path.exists(config_path):
+        try:
+            import yaml  # type: ignore[import]
+
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"  ⚠ Could not load config: {e}")
+
+    peers = config.get("rcan_protocol", {}).get("peers", [])
+    if not peers:
+        print("  No RCAN peers configured in rcan_protocol.peers")
+        return
+
+    print(f"  Probing {len(peers)} RCAN peer(s)...")
+    for peer in peers:
+        host = peer.get("host")
+        if not host:
+            continue
+        port = peer.get("port", 8000)
+        result = discover_robot(host, port=port)
+        if result:
+            robot_name = result.get("robot_name") or result.get("ruri") or "?"
+            ruri = result.get("ruri") or "?"
+            print(f"  ✓ {host}:{port}: {robot_name} ({ruri})")
+        else:
+            print(f"  ✗ {host}:{port}: unreachable")
 
 
 def _cmd_arm(args) -> None:
@@ -5602,6 +5657,16 @@ def main() -> None:
         help="Generate and optionally install a systemd service for the bridge",
     )
     p_bridge_setup.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="Path to RCAN config (default: auto-detect)",
+    )
+    p_bridge_discover = p_bridge_sub.add_parser(
+        "discover",
+        help="Probe RCAN peers configured in rcan_protocol.peers and print status",
+    )
+    p_bridge_discover.add_argument(
         "--config",
         default=None,
         metavar="PATH",

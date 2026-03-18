@@ -197,6 +197,7 @@ class AppState:
     mdns_broadcaster = None
     mdns_browser = None
     rcan_router = None  # RCAN message router
+    rcan_node_client = None  # rcan.NodeClient (registry connection)
     capability_registry = None  # Capability registry
     offline_fallback = None  # OfflineFallbackManager (optional)
     provider_fallback = None  # ProviderFallbackManager (optional, for quota errors)
@@ -541,6 +542,7 @@ async def get_status(request: Request):
         "brain_active_model": _brain_active_model,
         "speaking": getattr(getattr(state, "speaker", None), "is_speaking", False),
         "caption": getattr(getattr(state, "speaker", None), "current_caption", ""),
+        "rcan_bridge": state.rcan_node_client is not None,
     }
 
     if state.fs:
@@ -4600,6 +4602,19 @@ async def on_startup():
                 logger.info(f"RCAN capabilities: {state.capability_registry.names}")
             except Exception as e:
                 logger.debug(f"RCAN router init skipped: {e}")
+
+            # Initialize RCAN NodeClient (registry connection)
+            try:
+                from rcan import NodeClient
+
+                rcan_cfg = state.config.get("rcan_protocol", {})
+                _rcan_client = NodeClient(
+                    root_url=rcan_cfg.get("registry", "https://rcan.dev"),
+                )
+                state.rcan_node_client = _rcan_client
+                logger.info("RCAN NodeClient connected to registry: %s", rcan_cfg.get("registry", "https://rcan.dev"))
+            except Exception as e:
+                logger.debug(f"RCAN NodeClient init skipped: {e}")
 
             # Initialize brain
             from castor.providers import get_provider

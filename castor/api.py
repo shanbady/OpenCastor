@@ -4471,6 +4471,32 @@ def _handle_channel_message(channel_name: str, chat_id: str, text: str) -> str:
     if state.brain is None:
         return "Robot brain is not initialized. Please load a config first."
 
+    # ── Channel scope gate ────────────────────────────────────────────────
+    # Read the RCAN scope that was set by the channel adapter before invoking
+    # this callback.  Inbound chat messages may not exceed "chat" scope.
+    try:
+        from castor.channels.scope_resolver import _current_sender_scope, clamp_scope
+
+        sender_scope: str = _current_sender_scope.get()
+        _allowed_chat_scopes = {"discover", "status", "chat"}
+        if sender_scope not in _allowed_chat_scopes:
+            logger.warning(
+                "/api/chat: sender_scope=%s not allowed at chat endpoint — downgrading to chat",
+                sender_scope,
+            )
+            sender_scope = "chat"
+        # Clamp: never let an inbound message exceed "chat"
+        sender_scope = clamp_scope(sender_scope, "chat")
+    except Exception:
+        sender_scope = "discover"
+
+    logger.debug(
+        "_handle_channel_message: channel=%s chat_id=%s scope=%s",
+        channel_name,
+        chat_id,
+        sender_scope,
+    )
+
     # Resolve prompt surface from channel name (default: whatsapp)
     surface = _CHANNEL_SURFACE.get(channel_name.lower(), "whatsapp")
 
@@ -4490,6 +4516,10 @@ def _handle_channel_message(channel_name: str, chat_id: str, text: str) -> str:
 
     # Use live camera frame so the brain can see what's in front of it
     image_bytes = _capture_live_frame()
+
+    # Annotate the instruction with the sender's scope so the brain can
+    # apply scope-aware restrictions in its response generation.
+    instruction = f"[rcan_scope={sender_scope}] {instruction}"
 
     active_provider = _get_active_brain()
     try:

@@ -75,7 +75,9 @@ def send_arm_pose_rcan(
 
                 with open(config_path) as _f:
                     cfg = _yaml.safe_load(_f)
-            target_host = cfg.get("rcan_protocol", {}).get("peers", [{}])[0].get("host") if cfg else None
+            target_host = (
+                cfg.get("rcan_protocol", {}).get("peers", [{}])[0].get("host") if cfg else None
+            )
             if target_host:
                 send_message(target_host, msg)
                 logger.info("RCAN arm_pose sent to %s", target_host)

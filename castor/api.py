@@ -4656,7 +4656,10 @@ async def on_startup():
                     root_url=rcan_cfg.get("registry", "https://rcan.dev"),
                 )
                 state.rcan_node_client = _rcan_client
-                logger.info("RCAN NodeClient connected to registry: %s", rcan_cfg.get("registry", "https://rcan.dev"))
+                logger.info(
+                    "RCAN NodeClient connected to registry: %s",
+                    rcan_cfg.get("registry", "https://rcan.dev"),
+                )
             except Exception as e:
                 logger.debug(f"RCAN NodeClient init skipped: {e}")
 

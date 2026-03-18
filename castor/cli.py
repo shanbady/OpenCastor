@@ -186,20 +186,10 @@ def cmd_wizard(args) -> None:
 
 
 def cmd_init(args) -> None:
-    """Scaffold a minimal starter robot.rcan.yaml without an interactive TTY."""
-    from castor.init_config import generate_config, write_config
+    """Interactive setup wizard — generates a .rcan.yaml config (castor init)."""
+    from castor.init_wizard import cmd_init as _wizard_init
 
-    if getattr(args, "print", False):
-        print(generate_config(robot_name=args.name))
-        return
-
-    try:
-        path = write_config(args.output, robot_name=args.name, overwrite=args.overwrite)
-        print(f"✓ Config written to: {path}")
-        print(f"\nNext: edit {path}, then run: castor run --config {path}")
-    except FileExistsError as e:
-        print(f"✗ {e}", file=sys.stderr)
-        raise SystemExit(1) from e
+    _wizard_init(args)
 
 
 def _auto_detect_config(specified: str = "robot.rcan.yaml") -> str:
@@ -1182,20 +1172,10 @@ def cmd_profile(args) -> None:
 
 
 def cmd_quickstart(args) -> None:
-    """castor quickstart — guided zero-to-running setup in two steps."""
-    import subprocess
-    import sys
+    """castor quickstart — init wizard + start gateway in one command."""
+    from castor.init_wizard import cmd_quickstart as _wizard_quickstart
 
-    print("\n  🚀 OpenCastor QuickStart\n")
-    print("  Step 1: Running setup wizard...")
-    result = subprocess.run([sys.executable, "-m", "castor", "wizard"])
-    if result.returncode != 0:
-        print("\n  Wizard failed. Fix the issues above and re-run `castor quickstart`.")
-        return
-
-    print("\n  Step 2: Launching demo...")
-    subprocess.run([sys.executable, "-m", "castor", "demo"])
-    print("\n  QuickStart complete. Run `castor gateway` to start the full runtime.\n")
+    _wizard_quickstart(args)
 
 
 def cmd_record(args) -> None:
@@ -5241,12 +5221,40 @@ def main() -> None:
     p_diff.add_argument("--baseline", required=True, help="Baseline config to compare against")
 
     # castor quickstart
-    sub.add_parser(
+    p_qs = sub.add_parser(
         "quickstart",
-        help="One-command setup: wizard + demo",
-        epilog="Example: castor quickstart",
+        help="Zero-to-fleet in one command: init wizard + start gateway",
+        description="Runs `castor init` then immediately starts the gateway.",
+        epilog=(
+            "Examples:\n"
+            "  castor quickstart\n"
+            "  castor quickstart --name Bob --provider google --no-interactive\n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p_qs.add_argument("--name", "-n", default=None, help="Robot name")
+    p_qs.add_argument(
+        "--provider",
+        default=None,
+        choices=["google", "anthropic", "openai", "local"],
+        help="AI provider (default: google)",
+    )
+    p_qs.add_argument("--port", type=int, default=None, help="Gateway port (default: 8080)")
+    p_qs.add_argument("--api-key", default=None, dest="api_key", help="AI provider API key")
+    p_qs.add_argument(
+        "--firebase-project",
+        default=None,
+        dest="firebase_project",
+        help="Firebase project ID",
+    )
+    p_qs.add_argument("--output", "-o", default=None, help="Output config path")
+    p_qs.add_argument(
+        "--no-interactive",
+        action="store_true",
+        dest="no_interactive",
+        help="Skip prompts — use flags/defaults",
+    )
+    p_qs.add_argument("--overwrite", action="store_true", help="Overwrite existing config")
 
     # castor plugins [install <source>]
     p_plugins = sub.add_parser(
@@ -5562,16 +5570,47 @@ def main() -> None:
         help="Model task filter for --list-models (default: text-generation)",
     )
 
-    # castor init — generate starter config (non-interactive)
+    # castor init — interactive setup wizard (zero-to-fleet onboarding)
     p_init = sub.add_parser(
         "init",
-        help="Generate a minimal starter robot.rcan.yaml config",
-        description="Scaffold a minimal valid robot.rcan.yaml without the interactive wizard.",
+        help="Interactive setup wizard — zero-to-fleet onboarding in under 5 minutes",
+        description=(
+            "Interactive wizard that generates a complete .rcan.yaml config.\n"
+            "Run without arguments for guided prompts.\n"
+            "Use --no-interactive for CI/scripted use."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  castor init\n"
+            "  castor init --name Bob --provider google --port 8080 --no-interactive\n"
+            "  castor init --output my-robot.rcan.yaml --overwrite\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_init.add_argument(
-        "--output", "-o", default="robot.rcan.yaml", help="Output path (default: robot.rcan.yaml)"
+        "--output", "-o", default=None, help="Output path (default: <robot-name>.rcan.yaml)"
     )
-    p_init.add_argument("--name", "-n", default=None, help="Robot name (default: hostname)")
+    p_init.add_argument("--name", "-n", default=None, help="Robot name (default: my-robot)")
+    p_init.add_argument(
+        "--provider",
+        default=None,
+        choices=["google", "anthropic", "openai", "local"],
+        help="AI provider (default: google)",
+    )
+    p_init.add_argument("--port", type=int, default=None, help="Gateway port (default: 8080)")
+    p_init.add_argument("--api-key", default=None, dest="api_key", help="AI provider API key")
+    p_init.add_argument(
+        "--firebase-project",
+        default=None,
+        dest="firebase_project",
+        help="Firebase project ID (default: opencastor)",
+    )
+    p_init.add_argument(
+        "--no-interactive",
+        action="store_true",
+        dest="no_interactive",
+        help="Skip all prompts — use defaults/flags (required for CI)",
+    )
     p_init.add_argument("--overwrite", action="store_true", help="Overwrite existing config file")
     p_init.add_argument(
         "--print", action="store_true", help="Print config to stdout instead of writing to file"

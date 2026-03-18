@@ -1206,7 +1206,7 @@ async def apply_harness(req: _HarnessApplyRequest, request: Request):
 
     Requires at minimum ``operator`` role.
     """
-    _check_min_role(request, "operator")
+    _check_min_role(request, "admin")
     _validate_harness_request(req)
 
     if state.config is None:
@@ -1241,6 +1241,18 @@ async def apply_harness(req: _HarnessApplyRequest, request: Request):
     if req.skills:
         new_config.setdefault("skills", {}).update(req.skills)
 
+    # RCAN §2.6 compliance: safety / auth / p66 top-level keys must never be
+    # modified or removed via the harness API — always restore from original.
+    _HARNESS_FORBIDDEN_KEYS: frozenset[str] = frozenset({"safety", "auth", "p66"})
+    import copy as _copy_mod
+
+    for _fk in _HARNESS_FORBIDDEN_KEYS:
+        _orig_val = state.config.get(_fk)  # type: ignore[union-attr]
+        if _orig_val is not None:
+            new_config[_fk] = _copy_mod.deepcopy(_orig_val)
+        else:
+            new_config.pop(_fk, None)  # remove only if it wasn't in the original
+
     # Persist to config file
     try:
         # Record current config to history before overwriting
@@ -1261,6 +1273,162 @@ async def apply_harness(req: _HarnessApplyRequest, request: Request):
         "status": "applied",
         "config_path": config_path,
         "harness": _build_harness_response(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Slash command registry  (GET /api/skills)
+# ---------------------------------------------------------------------------
+
+#: Mapping from builtin skill name → RCAN command scope
+_SKILL_SCOPE_MAP: dict[str, str] = {
+    "navigate-to": "control",
+    "arm-manipulate": "control",
+    "camera-describe": "status",
+    "web-lookup": "chat",
+    "peer-coordinate": "chat",
+    "code-reviewer": "chat",
+}
+
+#: Static builtin CLI commands exposed via the slash command palette
+_BUILTIN_CLI_COMMANDS: list[dict] = [
+    {"cmd": "/status", "description": "Get robot status", "scope": "status", "instant": True},
+    {"cmd": "/skills", "description": "List active skills", "scope": "status", "instant": True},
+    {"cmd": "/optimize", "description": "Run optimizer pass", "scope": "system", "instant": False},
+    {
+        "cmd": "/upgrade",
+        "description": "Upgrade to latest version",
+        "scope": "system",
+        "instant": False,
+        "args": [{"name": "version", "optional": True}],
+    },
+    {"cmd": "/reboot", "description": "Reboot robot", "scope": "system", "instant": False},
+    {
+        "cmd": "/reload-config",
+        "description": "Reload RCAN config",
+        "scope": "system",
+        "instant": False,
+    },
+    {
+        "cmd": "/share",
+        "description": "Share config to hub",
+        "scope": "system",
+        "instant": False,
+    },
+    {
+        "cmd": "/install",
+        "description": "Install config from hub",
+        "scope": "system",
+        "instant": False,
+        "args": [{"name": "id", "optional": False}],
+    },
+]
+
+
+@app.get("/api/skills")
+async def get_skills(request: Request):
+    """GET /api/skills — Return available skills and CLI commands as slash command registry.
+
+    Public endpoint (no auth required) — returns command metadata only, no config secrets.
+    Used by the Flutter app slash command palette.
+
+    Returns a JSON object with:
+    - ``builtin_commands``: static CLI commands (status, reboot, upgrade, etc.)
+    - ``skills``: enabled skills loaded from RCAN config + skill config.json files
+    - ``rcan_version``: the RCAN protocol version string
+    - ``robot_rrn``: robot identifier from metadata config
+    """
+    cfg = state.config or {}
+
+    # Determine enabled skills from RCAN config
+    skills_cfg = cfg.get("skills", {})
+    # Support both "builtin_skills" list format and keyed format
+    builtin_skills_list: list[str] = []
+    if "builtin_skills" in skills_cfg:
+        raw = skills_cfg["builtin_skills"]
+        if isinstance(raw, list):
+            builtin_skills_list = [s for s in raw if isinstance(s, str)]
+    else:
+        # Keyed format: {"navigate-to": {"enabled": True}, ...}
+        # Accept both hyphen and underscore variants
+        for skill_key, skill_val in skills_cfg.items():
+            if skill_key in ("builtin_skills",):
+                continue
+            norm_key = skill_key.replace("_", "-")
+            if norm_key in _SKILL_SCOPE_MAP:
+                if isinstance(skill_val, dict) and skill_val.get("enabled", True):
+                    builtin_skills_list.append(norm_key)
+                elif isinstance(skill_val, bool) and skill_val:
+                    builtin_skills_list.append(norm_key)
+
+    # Load skill metadata from config.json files
+    _skills_base = Path(__file__).parent / "skills" / "builtin"
+    skills_entries: list[dict] = []
+
+    for skill_name in builtin_skills_list:
+        scope = _SKILL_SCOPE_MAP.get(skill_name, "chat")
+        config_path = _skills_base / skill_name / "config.json"
+        skill_meta: dict[str, Any] = {}
+        skill_md_path = _skills_base / skill_name / "SKILL.md"
+
+        # Prefer SKILL.md frontmatter for description (richer metadata)
+        description = f"Run {skill_name} skill"
+        if skill_md_path.exists():
+            try:
+                md_text = skill_md_path.read_text(encoding="utf-8")
+                for line in md_text.splitlines():
+                    line = line.strip()
+                    if line.startswith("description:"):
+                        description = line[len("description:") :].strip().strip(">").strip()
+                        break
+            except Exception:
+                pass
+
+        args: list[dict] = []
+        if config_path.exists():
+            try:
+                import json as _json
+
+                skill_meta = _json.loads(config_path.read_text(encoding="utf-8"))
+                # Extract any explicit description from config.json
+                if skill_meta.get("description"):
+                    description = skill_meta["description"]
+                # Extract args if present in config.json
+                if "args" in skill_meta:
+                    args = skill_meta["args"]
+            except Exception:
+                pass
+
+        # Navigate-to: destination arg
+        if skill_name == "navigate-to" and not args:
+            args = [{"name": "destination", "optional": False}]
+        elif skill_name == "arm-manipulate" and not args:
+            args = [{"name": "object", "optional": False}]
+        elif skill_name == "web-lookup" and not args:
+            args = [{"name": "query", "optional": False}]
+        elif skill_name == "peer-coordinate" and not args:
+            args = [{"name": "robot", "optional": False}, {"name": "message", "optional": False}]
+
+        entry: dict[str, Any] = {
+            "cmd": f"/{skill_name}",
+            "description": description,
+            "scope": scope,
+            "instant": False,
+        }
+        if args:
+            entry["args"] = args
+        skills_entries.append(entry)
+
+    robot_rrn = cfg.get("metadata", {}).get("rrn") or cfg.get("metadata", {}).get(
+        "robot_rrn", "RRN-000000000001"
+    )
+    rcan_version = cfg.get("rcan_version", "1.6")
+
+    return {
+        "builtin_commands": _BUILTIN_CLI_COMMANDS,
+        "skills": skills_entries,
+        "rcan_version": rcan_version,
+        "robot_rrn": robot_rrn,
     }
 
 

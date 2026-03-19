@@ -1335,6 +1335,25 @@ _BUILTIN_CLI_COMMANDS: list[dict] = [
         "instant": False,
         "args": [{"name": "id", "optional": False}],
     },
+    {
+        "cmd": "/pause",
+        "description": "Pause the perception-action loop",
+        "scope": "system",
+        "instant": False,
+    },
+    {
+        "cmd": "/resume",
+        "description": "Resume the perception-action loop",
+        "scope": "system",
+        "instant": False,
+    },
+    {"cmd": "/shutdown", "description": "Shutdown robot host", "scope": "system", "instant": False},
+    {
+        "cmd": "/snapshot",
+        "description": "Take a diagnostic snapshot",
+        "scope": "status",
+        "instant": True,
+    },
 ]
 
 

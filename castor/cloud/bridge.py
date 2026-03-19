@@ -401,18 +401,25 @@ class CastorBridge:
         if is_estop:
             return True
 
-        # System scope: only REBOOT and RELOAD_CONFIG are allowed offline.
-        # UPGRADE requires network connectivity (downloads package), so it
-        # must be blocked in offline mode.
+        # System scope: REBOOT, RELOAD_CONFIG, PAUSE, RESUME, SHUTDOWN are
+        # safe offline. UPGRADE/OPTIMIZE/SHARE_CONFIG/INSTALL need network.
         if scope == "system":
             instr_upper = instruction.upper().strip()
-            if instr_upper.startswith("UPGRADE"):
+            _NEEDS_NETWORK = ("UPGRADE", "OPTIMIZE", "SHARE_CONFIG", "INSTALL:")
+            if any(instr_upper.startswith(p) for p in _NEEDS_NETWORK):
                 log.warning(
-                    "OFFLINE MODE: UPGRADE rejected (needs network) — "
-                    "only REBOOT/RELOAD_CONFIG allowed offline (scope=system)"
+                    "OFFLINE MODE: %r rejected (needs network) — "
+                    "only REBOOT/RELOAD_CONFIG/PAUSE/RESUME/SHUTDOWN allowed offline",
+                    instruction,
                 )
                 return False
-            return True  # REBOOT and RELOAD_CONFIG are safe offline
+            return True  # REBOOT, RELOAD_CONFIG, PAUSE, RESUME, SHUTDOWN safe offline
+
+        # Status scope: SNAPSHOT is safe offline (local operation)
+        if scope == "status":
+            _instr_norm = instruction.upper().strip()
+            if _instr_norm == "SNAPSHOT":
+                return True
 
         log.warning("OFFLINE MODE: command rejected (scope=%s) — not an ESTOP", scope)
         return False
@@ -1327,7 +1334,13 @@ class CastorBridge:
             # Bare STATUS → /api/status for the structured status dict.
             _STATUS_COMMAND_INSTRUCTIONS = {"LIST_SKILLS", "DESCRIBE_SKILLS", "CAPABILITIES"}
             _instr_norm = instruction.upper().strip()
-            if _instr_norm in _STATUS_COMMAND_INSTRUCTIONS or (
+            if _instr_norm == "SNAPSHOT":
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/snapshot/take",
+                        headers=headers,
+                    )
+            elif _instr_norm in _STATUS_COMMAND_INSTRUCTIONS or (
                 _instr_norm not in {"STATUS", "GET_STATUS", ""}
                 and not _instr_norm.startswith("STATUS")
             ):
@@ -1398,9 +1411,73 @@ class CastorBridge:
                         f"{self.gateway_url}/api/config/reload",
                         headers=headers,
                     )
+            elif instr_upper == "PAUSE":
+                with httpx.Client(timeout=5.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/runtime/pause",
+                        headers=headers,
+                    )
+            elif instr_upper == "RESUME":
+                with httpx.Client(timeout=5.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/runtime/resume",
+                        headers=headers,
+                    )
+            elif instr_upper == "SHUTDOWN":
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/system/shutdown",
+                        headers=headers,
+                    )
+            elif instr_upper == "OPTIMIZE":
+                with httpx.Client(timeout=60.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/command",
+                        json={
+                            "instruction": "OPTIMIZE",
+                            "scope": "system",
+                            "channel": "opencastor_app",
+                        },
+                        headers=headers,
+                    )
+            elif instr_upper == "SHARE_CONFIG":
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/command",
+                        json={
+                            "instruction": "SHARE_CONFIG",
+                            "scope": "system",
+                            "channel": "opencastor_app",
+                        },
+                        headers=headers,
+                    )
+            elif instr_upper.startswith("INSTALL:"):
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/command",
+                        json={
+                            "instruction": instruction,
+                            "scope": "system",
+                            "channel": "opencastor_app",
+                        },
+                        headers=headers,
+                    )
             else:
-                log.warning("bridge: unknown system instruction %r — ignored", instruction)
-                return {"status": "ignored", "reason": f"unknown system instruction: {instruction}"}
+                # Unknown system instruction — route to /api/command as fallback
+                # so the agent can interpret it rather than silently dropping it.
+                log.warning(
+                    "bridge: unknown system instruction %r — routing to /api/command", instruction
+                )
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/command",
+                        json={
+                            "instruction": instruction,
+                            "scope": "system",
+                            "channel": "opencastor_app",
+                        },
+                        headers=headers,
+                    )
 
         elif scope in ("chat", "control"):
             payload: dict[str, Any] = {

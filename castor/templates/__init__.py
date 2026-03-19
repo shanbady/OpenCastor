@@ -20,7 +20,9 @@ def load_template(name: str) -> str:
     # Try importlib.resources first (works when installed via pip)
     try:
         parts = name.replace("\\", "/").split("/")
-        subpkg = "castor.templates." + ".".join(parts[:-1]) if len(parts) > 1 else "castor.templates"
+        subpkg = (
+            "castor.templates." + ".".join(parts[:-1]) if len(parts) > 1 else "castor.templates"
+        )
         filename = parts[-1]
         ref = _res.files(subpkg).joinpath(filename)
         return ref.read_text(encoding="utf-8")

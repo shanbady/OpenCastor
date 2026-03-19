@@ -578,9 +578,7 @@ def enable_attestation_service(
 
     Returns a status dict with ``ok``, ``message``, and ``service_path``.
     """
-    service_content = generate_attestation_service_file(
-        config_path, user, python_path, working_dir
-    )
+    service_content = generate_attestation_service_file(config_path, user, python_path, working_dir)
 
     try:
         ATTESTATION_SERVICE_PATH.write_text(service_content)

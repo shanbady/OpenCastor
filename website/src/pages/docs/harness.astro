@@ -118,21 +118,21 @@ flowchart TD
         </div>
         <div class="mermaid">
 flowchart TD
-    IN["Incoming command"] --> E1{"ESTOP?"}
-    E1 -->|YES| BYPASS["Immediate stop<br/>Bypasses all hooks, context, log"]
+    CMD["Incoming command"] --> E1{"ESTOP?"}
+    E1 -->|YES| BYPASS["Immediate stop\nBypasses all hooks, context, log"]
     E1 -->|NO| E2{"Physical tool?"}
     E2 -->|YES| E3{"Consent granted?"}
-    E3 -->|NO| BLOCK["Blocked<br/>Bot sends ask-first message"]
+    E3 -->|NO| BLOCK["Blocked\nBot sends ask-first message"]
     E3 -->|YES| E4{"LoA sufficient?"}
-    E4 -->|NO| LOA["Blocked<br/>Escalation required"]
-    E4 -->|YES| AUDIT["Execute<br/>Audit record written"]
-    E2 -->|NO| PASS["Execute normally<br/>No physical gate"]
+    E4 -->|NO| LOA["Blocked\nEscalation required"]
+    E4 -->|YES| AUDIT["Execute\nAudit record written"]
+    E2 -->|NO| EXEC["Execute normally\nNo physical gate"]
 
     style BYPASS fill:#ef4444,color:#fff,stroke:#dc2626
     style BLOCK fill:#f97316,color:#fff,stroke:#ea580c
     style LOA fill:#f97316,color:#fff,stroke:#ea580c
     style AUDIT fill:#22c55e,color:#fff,stroke:#16a34a
-    style PASS fill:#22c55e,color:#fff,stroke:#16a34a
+    style EXEC fill:#22c55e,color:#fff,stroke:#16a34a
         </div>
       </div>
 
@@ -180,7 +180,7 @@ timeline
     v2026.3.17.4 : SkillSystem : SkillSelector : 5 Agent Tools : castor eval CLI
     v2026.3.17.5 : DualModelHarness : DriftDetectionHook : castor trajectory CLI
     v2026.3.17.6 : castor share/install/explore : Two-tier autoresearch
-    v2026.3.17.13 : RCAN v1.6 100/100 : Community Hub : Mission threads : 219 tests passing
+    v2026.3.17.13 : RCAN v1.6.1 100/100 : Community Hub : Harness research pipeline : 7804 tests passing
         </div>
       </div>
 

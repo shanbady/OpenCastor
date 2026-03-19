@@ -1322,8 +1322,24 @@ class CastorBridge:
         headers = self._auth_headers()
 
         if scope == "status":
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.get(f"{self.gateway_url}/api/status", headers=headers)
+            # Route rich-instruction status commands to /api/command so the LLM
+            # can answer them (e.g. LIST_SKILLS, DESCRIBE_SKILLS, CAPABILITIES).
+            # Bare STATUS → /api/status for the structured status dict.
+            _STATUS_COMMAND_INSTRUCTIONS = {"LIST_SKILLS", "DESCRIBE_SKILLS", "CAPABILITIES"}
+            _instr_norm = instruction.upper().strip()
+            if _instr_norm in _STATUS_COMMAND_INSTRUCTIONS or (
+                _instr_norm not in {"STATUS", "GET_STATUS", ""}
+                and not _instr_norm.startswith("STATUS")
+            ):
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(
+                        f"{self.gateway_url}/api/command",
+                        json={"instruction": instruction, "scope": "status", "channel": "opencastor_app"},
+                        headers=headers,
+                    )
+            else:
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.get(f"{self.gateway_url}/api/status", headers=headers)
 
         elif scope == "safety":
             if "estop" in instruction.lower():

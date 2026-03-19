@@ -1125,6 +1125,22 @@ class CastorBridge:
             # --- Dispatch to local gateway -----------------------------------
             result = self._dispatch_to_gateway(scope, instruction, doc, media_chunks=media_chunks)
 
+            # --- Mission thread: write robot response back to Firestore ------
+            if doc.get("context") == "mission_thread":
+                response_text: str = ""
+                if isinstance(result, dict):
+                    response_text = (
+                        result.get("thought", "")
+                        or result.get("response", "")
+                        or result.get("result", "")
+                        or result.get("raw", "")
+                        or str(result)
+                    )
+                elif isinstance(result, str):
+                    response_text = result
+                if response_text:
+                    self._write_mission_response(doc, response_text, cmd_id)
+
             # --- GAP-08: Build audit entry with sender_type -----------------
             complete_entry: dict[str, Any] = {
                 "status": "complete",
@@ -1202,15 +1218,105 @@ class CastorBridge:
     # Gateway dispatch
     # ------------------------------------------------------------------
 
+    def _build_mission_context(self, doc: dict[str, Any]) -> Optional[str]:
+        """Build a mission system-context string when context == 'mission_thread'.
+
+        Returns a prepend string for the agent's system prompt, or None if
+        this is not a mission thread command.
+        """
+        if doc.get("context") != "mission_thread":
+            return None
+
+        mission_id: str = doc.get("mission_id", "unknown")
+        participants: list[str] = doc.get("participants", [])
+
+        # Build a readable participant list
+        participant_names: list[str] = []
+        for rrn in participants:
+            # We only know RRNs here; use them directly
+            participant_names.append(f"{rrn}")
+
+        parts_str = ", ".join(participant_names) if participant_names else "unknown"
+
+        context_block = (
+            f"You are in a multi-robot mission (id: {mission_id}) "
+            f"with participants: {parts_str}. "
+            "You can @mention other robots by their RRN. "
+            "When you respond, your message will be visible to all participants in the mission thread. "
+            "Stay collaborative and concise."
+        )
+        return context_block
+
+    def _write_mission_response(
+        self,
+        doc: dict[str, Any],
+        response_text: str,
+        cmd_id: str,
+    ) -> None:
+        """Write the robot's response back to the mission messages subcollection.
+
+        This enables all mission participants (robots + humans) to see the response
+        in real-time via the Flutter app's onSnapshot listener.
+        """
+        mission_id: str = doc.get("mission_id", "")
+        if not mission_id or not self._db:
+            return
+
+        try:
+            import uuid as _uuid
+            from datetime import datetime, timezone
+
+            msg_id = f"msg-{_uuid.uuid4().hex[:12]}"
+            now = datetime.now(timezone.utc).isoformat()
+
+            msg_doc: dict[str, Any] = {
+                "id": msg_id,
+                "from_type": "robot",
+                "from_rrn": self.rrn,
+                "from_name": self.robot_name,
+                "content": response_text,
+                "mentions": [],
+                "timestamp": now,
+                "scope": "chat",
+                "status": "responded",
+                "in_reply_to_cmd": cmd_id,
+                "in_reply_to_msg": doc.get("mission_msg_id", ""),
+            }
+
+            self._db.collection("missions").document(mission_id).collection("messages").document(
+                msg_id
+            ).set(msg_doc)
+
+            # Update last_message_at on the mission doc
+            self._db.collection("missions").document(mission_id).update({"last_message_at": now})
+
+            log.info(
+                "Mission response written: mission_id=%s msg_id=%s robot=%s",
+                mission_id,
+                msg_id,
+                self.rrn,
+            )
+        except Exception as exc:
+            log.warning(
+                "Failed to write mission response to Firestore: %s (mission_id=%s)",
+                exc,
+                mission_id,
+            )
+
     def _dispatch_to_gateway(
         self,
         scope: str,
         instruction: str,
         doc: dict[str, Any],
         media_chunks: Optional[list[dict[str, Any]]] = None,
+        mission_context: Optional[str] = None,
     ) -> dict[str, Any]:
         """Forward a validated command to the local castor gateway."""
         import httpx
+
+        # Build mission context from doc if not explicitly provided
+        if mission_context is None:
+            mission_context = self._build_mission_context(doc)
 
         headers = self._auth_headers()
 
@@ -1281,6 +1387,9 @@ class CastorBridge:
                 "channel": "opencastor_app",
                 "context": "opencastor_fleet_ui",
             }
+            # Mission thread: inject system context for multi-robot coordination
+            if mission_context:
+                payload["system_context"] = mission_context
             # v1.6 GAP-18: pass media_chunks as context for vision-capable providers
             if media_chunks:
                 payload["media_chunks"] = media_chunks
@@ -1297,6 +1406,8 @@ class CastorBridge:
                 "channel": "opencastor_app",
                 "context": "opencastor_fleet_ui",
             }
+            if mission_context:
+                payload_else["system_context"] = mission_context
             if media_chunks:
                 payload_else["media_chunks"] = media_chunks
             with httpx.Client(timeout=30.0) as client:

@@ -333,6 +333,8 @@ class CommandRequest(BaseModel):
     # v1.6 RCAN fields
     transport: str = "http"  # GAP-17: transport encoding ("http" | "compact")
     media_chunks: list[dict] = []  # GAP-18: multi-modal payload chunks
+    # R2R2H mission thread context (§2.8) — if present, prepended to agent system prompt
+    system_context: Optional[str] = None  # mission_context from bridge
 
 
 class ActionRequest(BaseModel):
@@ -617,6 +619,13 @@ async def send_command(cmd: CommandRequest, request: Request):
     # Resolve surface from channel/context fields (bridge sends "opencastor_app")
     _surface = cmd.channel or cmd.context or "whatsapp"
     _think_t0 = time.perf_counter()
+
+    # §2.8 R2R2H Mission context — prepend to instruction so the agent is aware
+    # of the multi-robot mission context without modifying the system prompt globally.
+    if cmd.system_context:
+        cmd = cmd.model_copy(
+            update={"instruction": f"[MISSION CONTEXT] {cmd.system_context}\n\n{cmd.instruction}"}
+        )
 
     # ── Agent Harness (when enabled in RCAN config) ──────────────────────────
     _agent_cfg = (state.config or {}).get("agent", {})
@@ -7933,6 +7942,145 @@ async def hardware_scan(
         },
         "timestamp": time.time(),
         "cached": not refresh,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Hardware profile for LLMFit Model Garage
+# ---------------------------------------------------------------------------
+
+
+def _compute_hardware_tier(ram_gb: float, cpu_model: str, accelerators: list) -> str:
+    """Determine a human-readable hardware tier for LLMFit model matching."""
+    if "hailo" in str(accelerators).lower():
+        return "pi5-hailo"
+    if ram_gb >= 16:
+        return "server"
+    if ram_gb >= 8:
+        return "pi5-8gb" if "a76" in cpu_model.lower() else "pi4-8gb"
+    if ram_gb >= 4:
+        return "pi5-4gb" if "a76" in cpu_model.lower() else "pi4-4gb"
+    return "minimal"
+
+
+def _read_cpuinfo() -> tuple[str, int]:
+    """Parse /proc/cpuinfo on Linux; returns (cpu_model, cpu_cores)."""
+    cpu_model = ""
+    cpu_cores = os.cpu_count() or 1
+    try:
+        with open("/proc/cpuinfo") as f:
+            text = f.read()
+        for line in text.splitlines():
+            if "model name" in line.lower() or "hardware" in line.lower():
+                parts = line.split(":", 1)
+                if len(parts) == 2 and not cpu_model:
+                    cpu_model = parts[1].strip()
+            if "processor" in line.lower():
+                cpu_cores = max(cpu_cores, 1)
+        # Fallback: count "processor\t:" occurrences
+        cpu_cores = max(text.lower().count("processor\t:"), cpu_cores, 1)
+    except OSError:
+        pass
+    return cpu_model, cpu_cores
+
+
+def _get_ollama_models() -> list[str]:
+    """Run `ollama list` and return pulled model names; fails silently."""
+    try:
+        import subprocess as _sp
+
+        result = _sp.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return []
+        lines = result.stdout.strip().splitlines()
+        models = []
+        for line in lines[1:]:  # skip header
+            parts = line.split()
+            if parts:
+                models.append(parts[0])
+        return models
+    except Exception:
+        return []
+
+
+@app.get("/api/hardware", dependencies=[Depends(verify_token)])
+async def get_hardware(request: Request):
+    """GET /api/hardware — Return robot hardware profile for LLMFit matching.
+
+    Returns cpu, ram_gb, accelerators, storage_gb, arch, hostname, platform.
+    Requires token auth (operator role).
+    """
+    import platform as _platform
+
+    hostname = _platform.node()
+    arch = _platform.machine()
+    plat = _platform.system().lower()
+
+    cpu_model, cpu_cores = _read_cpuinfo()
+    if not cpu_model:
+        cpu_model = _platform.processor() or "unknown"
+
+    # RAM / storage via psutil (optional)
+    ram_gb: float = 0.0
+    ram_available_gb: float = 0.0
+    storage_free_gb: float = 0.0
+    try:
+        import psutil  # type: ignore[import]
+
+        mem = psutil.virtual_memory()
+        ram_gb = round(mem.total / (1024**3), 1)
+        ram_available_gb = round(mem.available / (1024**3), 1)
+        disk = psutil.disk_usage("/")
+        storage_free_gb = round(disk.free / (1024**3), 1)
+    except ImportError:
+        # Fallback: read /proc/meminfo
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        kb = int(line.split()[1])
+                        ram_gb = round(kb / (1024**2), 1)
+                    elif line.startswith("MemAvailable:"):
+                        kb = int(line.split()[1])
+                        ram_available_gb = round(kb / (1024**2), 1)
+        except OSError:
+            pass
+
+    # Declared accessories from RCAN config
+    rcan_hardware: dict = {}
+    accessories: list[str] = []
+    accelerators: list[str] = []
+    if state.config:
+        rcan_hardware = state.config.get("hardware", {})
+        accessories = rcan_hardware.get("accessories", [])
+        accelerators = rcan_hardware.get("accelerators", [])
+        # auto-detect hailo from accessories if not in accelerators
+        for acc in accessories:
+            if "hailo" in str(acc).lower() and not any("hailo" in a.lower() for a in accelerators):
+                accelerators.append(acc)
+
+    hardware_tier = _compute_hardware_tier(ram_gb, cpu_model, accelerators)
+    ollama_models = _get_ollama_models()
+
+    return {
+        "hostname": hostname,
+        "arch": arch,
+        "platform": plat,
+        "cpu_model": cpu_model,
+        "cpu_cores": cpu_cores,
+        "ram_gb": ram_gb,
+        "ram_available_gb": ram_available_gb,
+        "storage_free_gb": storage_free_gb,
+        "accelerators": accelerators,
+        "accessories": accessories,
+        "hardware_tier": hardware_tier,
+        "ollama_models": ollama_models,
+        "rcan_hardware": rcan_hardware,
     }
 
 

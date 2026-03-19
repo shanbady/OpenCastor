@@ -7,6 +7,11 @@ metadata:
   author: craigm26
   rrn: RRN-000000000005
   rrn_uri: rrn://craigm26/robot/opencastor-pi5-arm/alex-001
+  # §2 required fields for L1 conformance
+  manufacturer: OpenCastor
+  model: SO-ARM101-Pi5
+  version: '1.0'
+  device_id: alex-001
 
 agent:
   provider: google
@@ -23,6 +28,18 @@ agent:
     - scope: safety
       min_confidence: 0.90
       on_fail: block
+  # §16 L3 conformance — human-in-the-loop gates for physical actions
+  hitl_gates:
+    - action_types:
+        - move
+        - actuate
+        - grip
+        - rotate
+        - extend
+        - retract
+      require_auth: true
+      on_fail: block
+      timeout_s: 30
 
 tiered_brain:
   fast_provider: ollama
@@ -146,6 +163,11 @@ rcan_protocol:
     - gripper
   enable_mdns: true
   enable_jwt: false
+  # §8 L2 conformance — JWT validation mode (enforcement in rcan_bridge)
+  jwt_auth:
+    enabled: true
+    algorithm: HS256
+    require_rrn_claim: true
 
 r2ram:
   scopes:

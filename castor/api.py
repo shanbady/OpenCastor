@@ -881,15 +881,19 @@ async def system_upgrade(request: Request):
     if not _in_venv:
         cmd.insert(-1, "--break-system-packages")
 
-    # Build a self-restart wrapper: pip install, then os.execv to reload with new code
+    # Build a restart wrapper: pip install, then SIGTERM the parent gateway process.
+    # NOTE: os.execv(sys.executable, sys.argv) does NOT work here because this
+    # script runs as `python -c <script>`, so sys.argv == ['-c'] — execv would
+    # just rerun the no-op subprocess, never restarting the actual gateway.
+    # Instead we kill the gateway (our parent); systemd Restart=on-failure revives it.
     _restart_script = "\n".join(
         [
-            "import subprocess, sys, os, time",
+            "import subprocess, sys, os, time, signal",
             f"pip_cmd = {cmd!r}",
             "res = subprocess.run(pip_cmd, capture_output=True)",
             "if res.returncode == 0:",
-            "    time.sleep(2)  # let pip finalize",
-            "    os.execv(sys.executable, [sys.executable] + sys.argv[:])",
+            "    time.sleep(2)  # let pip finalize before restart",
+            "    os.kill(os.getppid(), signal.SIGTERM)  # kill gateway; systemd restarts it",
             "else:",
             "    print('pip failed:', res.stderr.decode(), file=sys.stderr)",
         ]

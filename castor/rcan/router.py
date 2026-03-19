@@ -219,12 +219,13 @@ class MessageRouter:
         required_scope = _CAP_SCOPE_MAP.get(capability, Scope.STATUS)
 
         if principal is None or not principal.has_scope(required_scope):
+            have = principal.scopes.to_strings() if principal is not None else []
             return RCANMessage.error(
                 source=source_ruri,
                 target=message.source,
                 code="UNAUTHORIZED",
                 detail=f"Missing scope for capability '{capability}': "
-                f"need {required_scope.to_strings()}, have {principal.scopes.to_strings()}",
+                f"need {required_scope.to_strings()}, have {have}",
                 reply_to=message.id,
             )
 

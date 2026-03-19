@@ -454,18 +454,26 @@ class TestSystemDispatch:
         bridge.gateway_token = "test-token"
         return bridge
 
-    def test_unknown_system_instruction_rejected(self) -> None:
-        """Unknown system instructions must be ignored (not dispatched)."""
+    def test_unknown_system_instruction_routed_to_command(self) -> None:
+        """Unknown system instructions are routed to /api/command (not silently dropped)."""
         bridge = self._make_bridge_with_httpx()
         doc = _cmd_doc(scope="system", instruction="SELF_DESTRUCT")
 
-        with patch("httpx.Client") as mock_client:
-            result = bridge._dispatch_to_gateway("system", "SELF_DESTRUCT", doc)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "ok"}
+        mock_http = MagicMock()
+        mock_http.__enter__ = MagicMock(return_value=mock_http)
+        mock_http.__exit__ = MagicMock(return_value=False)
+        mock_http.post.return_value = mock_resp
 
-        # httpx must NOT have been called
-        mock_client.assert_not_called()
-        assert result.get("status") == "ignored"
-        assert "unknown system instruction" in result.get("reason", "").lower()
+        with patch("httpx.Client", return_value=mock_http):
+            bridge._dispatch_to_gateway("system", "SELF_DESTRUCT", doc)
+
+        # Unknown instructions are forwarded to /api/command (not dropped)
+        mock_http.post.assert_called_once()
+        called_url = mock_http.post.call_args[0][0]
+        assert "/api/command" in called_url
 
     def test_upgrade_instruction_dispatched(self) -> None:
         """UPGRADE instruction is dispatched to /api/system/upgrade."""
@@ -544,21 +552,29 @@ class TestSystemDispatch:
         called_url = mock_http.post.call_args[0][0]
         assert "/api/config/reload" in called_url
 
-    def test_multiple_unknown_instructions_all_rejected(self) -> None:
-        """A range of unknown instructions must all be rejected."""
+    def test_multiple_unknown_instructions_routed_to_command(self) -> None:
+        """Unknown system instructions are routed to /api/command for agent interpretation."""
         bridge = self._make_bridge_with_httpx()
         unknown_instructions = [
             "DELETE_ALL",
             "FORMAT_DISK",
             "EXFILTRATE",
-            "exec rm -rf /",
             "UNKNOWN_COMMAND",
         ]
         for instr in unknown_instructions:
             doc = _cmd_doc(scope="system", instruction=instr)
-            with patch("httpx.Client") as mock_client:
-                result = bridge._dispatch_to_gateway("system", instr, doc)
-            mock_client.assert_not_called()
-            assert result.get("status") == "ignored", (
-                f"Unknown instruction {instr!r} must be rejected"
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"status": "ok"}
+            mock_http = MagicMock()
+            mock_http.__enter__ = MagicMock(return_value=mock_http)
+            mock_http.__exit__ = MagicMock(return_value=False)
+            mock_http.post.return_value = mock_resp
+            with patch("httpx.Client", return_value=mock_http):
+                bridge._dispatch_to_gateway("system", instr, doc)
+            # Unknown instructions are forwarded to /api/command, not dropped
+            mock_http.post.assert_called_once()
+            called_url = mock_http.post.call_args[0][0]
+            assert "/api/command" in called_url, (
+                f"Unknown instruction {instr!r} must be routed to /api/command"
             )

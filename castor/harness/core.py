@@ -637,6 +637,8 @@ class AgentHarness:
         self,
         ctx: HarnessContext,
         built: Any,
+        run_id: str | None = None,
+        root_span: Any = None,
     ) -> tuple[Thought, list[ToolCallRecord], int]:
         """Run model inference + tool execution loop.
 

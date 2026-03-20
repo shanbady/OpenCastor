@@ -243,9 +243,7 @@ class TestGatedModelProvider:
         assert provider.status.available is True
         assert provider.status.consecutive_failures == 0
 
-    def test_model_not_in_list(self):
-        import asyncio
-
+    async def test_model_not_in_list(self):
         provider = GatedModelProvider(
             {
                 "name": "test",
@@ -253,9 +251,7 @@ class TestGatedModelProvider:
                 "models": ["model-a", "model-b"],
             }
         )
-        result = asyncio.get_event_loop().run_until_complete(
-            provider.inference(model="model-c", prompt="test")
-        )
+        result = await provider.inference(model="model-c", prompt="test")
         assert result.error is not None
         assert "not available" in result.error
 

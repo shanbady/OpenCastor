@@ -5,5 +5,4 @@
 /spec       https://rcan.dev/spec/  302
 /discord    https://discord.gg/jMjA8B26Bq  302
 
-/docs/getting-started   /docs.html   302
-/docs/getting-started/  /docs.html   302
+# /docs/getting-started routes to the actual page (removed stale redirect)

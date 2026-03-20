@@ -35,14 +35,23 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
       <div class="reveal" style="max-width:760px;margin:0 auto">
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          Every OpenCastor robot has an AI accelerator (typically Hailo-8L at 26 TOPS) that sits idle between tasks.
-          <code>castor contribute</code> puts that idle compute to work on distributed science projects &mdash; climate
-          modeling, biodiversity monitoring, protein folding, and humanitarian AI.
+          <strong>OpenCastor is an open-source runtime layer that sits between a robot's hardware and its AI.</strong>
+          It runs on any compute board &mdash; a Raspberry Pi with a Hailo NPU, a Jetson Orin, a Coral TPU, or a plain
+          ARM/x86 CPU. Every OpenCastor robot has compute that sits idle between tasks. <code>castor contribute</code>
+          puts that idle compute to work on distributed science &mdash; climate modeling, biodiversity monitoring,
+          protein folding, humanitarian AI.
         </p>
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          Contribute is <strong>opt-in only</strong>. It never activates unless explicitly enabled in the RCAN config
-          or started via CLI. When active, it runs at the lowest priority &mdash; any incoming command immediately
-          preempts the current work unit.
+          The runtime detects whatever hardware is present and profiles it automatically. Coordinators match work
+          units to capability: NPU-equipped robots get inference tasks, GPU robots get batch compute, CPU-only robots
+          get lightweight processing. All robots contribute what they can.
+        </p>
+        <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+          Contribute is <strong>opt-in only</strong>. It never activates unless explicitly enabled in the
+          <a href="https://rcan.dev" style="color:var(--accent)">RCAN</a> config or started via CLI. When active,
+          it runs at the lowest priority &mdash; any incoming command immediately preempts the current work unit.
+          OpenCastor implements the RCAN specification (Robot Communication &amp; Authentication Network), which
+          defines robot identity, scopes, message types, and safety invariants as an open protocol.
         </p>
 
         <div class="wizard-tip" style="margin-top:24px">
@@ -234,22 +243,29 @@ flowchart TD
         <p class="section-desc">What each robot reports to the coordinator for work unit matching.</p>
       </div>
 
+      <div class="reveal" style="max-width:760px;margin:0 auto">
+        <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary);margin-bottom:16px">
+          The runtime automatically detects available hardware and reports a profile to the coordinator.
+          Work units are matched to capability &mdash; no manual configuration needed.
+        </p>
+      </div>
+
       <div class="bento reveal" style="max-width:760px;margin:0 auto;grid-template-columns:1fr 1fr">
         <div class="card">
-          <h3>Hailo-8L NPU</h3>
-          <p>26 TOPS, 16MB SRAM, supports HEF compiled models. Primary inference target for contribute work units. Power draw: ~2W under load.</p>
+          <h3>NPU Accelerators</h3>
+          <p>Hailo-8L (26 TOPS), Coral TPU (4 TOPS), or any edge AI accelerator. Get inference-optimized work units &mdash; model scoring, classification, object detection. Power draw: 1&ndash;4W.</p>
         </div>
         <div class="card">
-          <h3>Pi 5 CPU</h3>
-          <p>ARM Cortex-A76 (4-core), ~10 TOPS equivalent for text/tabular workloads. Used for CPU-only coordinators like Folding@home.</p>
+          <h3>GPU Compute</h3>
+          <p>Jetson Orin (40+ TOPS), CUDA GPUs, or integrated graphics. Get batch inference or training work units that leverage parallel compute.</p>
         </div>
         <div class="card">
-          <h3>OAK-D Camera</h3>
-          <p>Real-time stereo depth + RGB. Available for vision-based projects (species identification, satellite ground-truth) when <code>use_camera: true</code>.</p>
+          <h3>CPU (any architecture)</h3>
+          <p>ARM, x86, RISC-V &mdash; any board with 1+ cores. Gets CPU-appropriate tasks: data preprocessing, lightweight inference, aggregation. Every robot can contribute.</p>
         </div>
         <div class="card">
-          <h3>Microphone</h3>
-          <p>USB or I2S audio input. BirdNET bioacoustics at ~0.1W. Available when <code>use_microphone: true</code>.</p>
+          <h3>Sensors (opt-in)</h3>
+          <p>Cameras, microphones, depth sensors. When enabled (<code>use_camera</code> / <code>use_microphone</code>), contribute situated science &mdash; BirdNET bioacoustics, species identification, environmental monitoring.</p>
         </div>
       </div>
     </div>
@@ -436,21 +452,27 @@ flowchart TD
       </div>
 
       <div class="reveal" style="max-width:760px;margin:0 auto">
+        <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary);margin-bottom:16px">
+          Impact scales with fleet size and hardware diversity. A fleet of NPU-equipped robots contributes
+          more raw inference TOPS; CPU-only robots contribute less per-unit but still add up. The key insight
+          is that <em>every</em> robot has idle compute, and the aggregate across a heterogeneous fleet is significant.
+        </p>
+
         <table class="arch-table">
-          <thead><tr><th>Fleet Size</th><th>Daily Idle Hours</th><th>TOPS-Hours/Day</th><th>Equivalent</th></tr></thead>
+          <thead><tr><th>Fleet Size</th><th>Daily Idle Hours</th><th>Aggregate Impact</th></tr></thead>
           <tbody>
-            <tr><td>1 robot</td><td>8h</td><td>208</td><td>&mdash;</td></tr>
-            <tr><td>100 robots</td><td>8h</td><td>20,800</td><td>Small workstation GPU</td></tr>
-            <tr><td>1,000 robots</td><td>8h</td><td>208,000</td><td>Small GPU cluster</td></tr>
-            <tr><td>10,000 robots</td><td>8h</td><td>2,080,000</td><td>Large research cluster</td></tr>
+            <tr><td>10 robots</td><td>8h</td><td>Continuous background processing; equivalent to a dedicated edge node</td></tr>
+            <tr><td>100 robots</td><td>8h</td><td>Small compute cluster &mdash; meaningful throughput for BOINC projects</td></tr>
+            <tr><td>1,000 robots</td><td>8h</td><td>Substantial distributed compute with geographic diversity</td></tr>
+            <tr><td>10,000+ robots</td><td>8h</td><td>Research-grade infrastructure with situated sensor data</td></tr>
           </tbody>
         </table>
 
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary);margin-top:24px">
-          The value isn't just raw TOPS. It's <em>situated compute</em> &mdash; AI nodes with physical sensors
+          The value isn't just raw TOPS &mdash; it's <em>situated compute</em>. AI nodes with physical sensors
           deployed in real environments. A traditional GPU cluster can fold proteins. A fleet of OpenCastor robots
           can fold proteins <em>and</em> monitor bird populations <em>and</em> classify local weather &mdash;
-          from the places where the data lives.
+          from the places where the data lives. The hardware varies; the infrastructure is the same.
         </p>
       </div>
     </div>

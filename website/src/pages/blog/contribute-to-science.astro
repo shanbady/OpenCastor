@@ -4,7 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
 <BaseLayout
   title="From Robot Runtime to Climate Sensor — OpenCastor Blog"
-  description="How OpenCastor robots are donating idle AI compute to climate modeling, biodiversity monitoring, protein folding, and humanitarian AI."
+  description="How the OpenCastor runtime layer turns any idle robot into a distributed science node. What RCAN is, why a robot registry matters, and how castor contribute works."
   ogUrl="https://opencastor.com/blog/contribute-to-science"
 >
 
@@ -12,7 +12,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   <!-- HERO -->
   <section class="page-hero" style="padding-bottom:24px">
     <p class="section-label reveal">Blog</p>
-    <h1 class="reveal reveal-d1" style="max-width:720px;margin:0 auto">From Robot Runtime to Climate Sensor:<br><span class="gradient-text">How OpenCastor Robots Are Donating Idle Compute to Science</span></h1>
+    <h1 class="reveal reveal-d1" style="max-width:720px;margin:0 auto">From Robot Runtime to Climate Sensor:<br><span class="gradient-text">How OpenCastor Turns Idle Robots Into Science Nodes</span></h1>
     <p class="reveal reveal-d2" style="font-size:0.9rem;color:var(--text-muted);margin-top:16px">March 19, 2026 &middot; Craig Merry</p>
   </section>
 
@@ -29,86 +29,117 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
         </p>
       </div>
 
+      <!-- What is OpenCastor -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">What is OpenCastor?</h2>
+
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        When Chris posted this, we were sitting in front of a Raspberry Pi 5 with a Hailo-8L NPU strapped to it.
-        The robot it controls &mdash; Bob, our reference platform &mdash; was idle. Had been for twenty minutes. Its 26 TOPS
-        neural processor was doing absolutely nothing, burning about 2 watts for the privilege of being ready.
+        Before the feature, some context. <strong>OpenCastor is an open-source runtime layer that sits between
+        a robot's hardware and its AI.</strong> It doesn't prescribe what your robot looks like. A Raspberry Pi on a desk.
+        A ROS2 rover with a Jetson. A warehouse AGV running Ubuntu. An educational arm in a classroom. If it has
+        a compute board and can run Python, OpenCastor can be its runtime.
       </p>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        That question landed differently for us. We're not building a cloud service or an app &mdash; we're building
-        the runtime layer for physical robots that already have AI accelerators, cameras, and microphones deployed
-        in the real world. The answer to Chris's question isn't "someone should build that." It's: we already have the hardware. We just need to use it.
+        It handles what every robot needs but nobody wants to build from scratch: authentication and access control,
+        safety invariants, telemetry streaming, agent harness management, skill execution, and a standardized API.
+        You bring the hardware and the AI model. OpenCastor connects them safely.
       </p>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        So we built <code>castor contribute</code>.
+        The entire project is <a href="https://github.com/craigm26/OpenCastor" style="color:var(--accent)">open source on GitHub</a>.
+      </p>
+
+      <!-- RCAN -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">RCAN: The protocol robots speak</h2>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        OpenCastor implements the <a href="https://rcan.dev" style="color:var(--accent)">RCAN specification</a> &mdash;
+        the Robot Communication &amp; Authentication Network. RCAN is an open protocol that defines:
+      </p>
+
+      <div class="bento reveal" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">Robot URI (RURI)</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">A canonical identifier for every robot &mdash; like a URL for physical machines. <code>rcan://registry/manufacturer/model/version/serial</code></p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">Scopes &amp; Permissions</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">A hierarchy of access levels: <code>discover</code>, <code>status</code>, <code>chat</code>, <code>contribute</code>, <code>control</code>, <code>safety</code>. A guest can check status but can't drive motors.</p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">Message Types</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Standardized commands, responses, telemetry, and safety signals &mdash; 35+ message types that work across any RCAN-compatible robot.</p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">Safety Invariants</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Protocol-level guarantees like P66 (priority preemption) enforced in code, not prompts. Lower-priority work always yields to commands.</p>
+        </div>
+      </div>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        RCAN is maintained by <a href="https://github.com/continuonai" style="color:var(--accent)">ContinuonAI</a>
+        with reference SDKs in <a href="https://github.com/continuonai/rcan-py" style="color:var(--accent)">Python</a>
+        and <a href="https://github.com/continuonai/rcan-ts" style="color:var(--accent)">TypeScript</a>.
+      </p>
+
+      <!-- Robot Registry -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The Robot Registry</h2>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        Every OpenCastor robot registers with a canonical identity. Each gets a unique RRN (Robot Resource Name),
+        live telemetry streaming, and fleet-level visibility through the
+        <a href="https://app.opencastor.com" style="color:var(--accent)">OpenCastor client app</a>. The registry
+        is an abstraction &mdash; our reference uses Firebase Firestore, but you can back it with any database.
+      </p>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        This registry is what makes fleet coordination possible. You can't coordinate idle compute across robots
+        if you don't know what robots exist, what hardware they have, and whether they're busy.
       </p>
 
       <!-- SETI@Home parallel -->
       <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The SETI@Home parallel</h2>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        SETI@Home ran from 1999 to 2020. At its peak, 5.2 million volunteers donated their home PCs to search
-        for extraterrestrial intelligence. The model worked: Folding@home later proved it could do real science,
-        contributing to COVID-19 research by simulating protein dynamics across millions of consumer CPUs and GPUs.
+        SETI@Home ran from 1999 to 2020. At its peak, 5.2 million volunteers donated their home PCs. Folding@home
+        proved it could do real science during COVID-19. But both relied on humans installing software on personal
+        computers. Robots are different.
       </p>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        But here's what's different in 2026: the nodes aren't just CPUs anymore. An OpenCastor robot is a
-        multimodal AI node with a neural processing unit, a depth camera, a microphone, and physical presence
-        in a real environment. That's not just compute &mdash; it's situated intelligence. A robot on a farm can
-        listen for bird calls. A robot in a school can classify local weather patterns from its camera feed.
-        The sensor data <em>is</em> the science.
+        An OpenCastor robot &mdash; <em>any</em> OpenCastor robot &mdash; is already networked, already authenticated,
+        already reporting telemetry. It might have a Hailo-8L doing 26 TOPS, or a Coral TPU doing 4, or a Jetson
+        Orin doing 40, or just a 4-core ARM CPU. The runtime detects whatever hardware is present and profiles it
+        automatically. The coordinator matches work to capability.
       </p>
-
-      <!-- What robots have -->
-      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">What OpenCastor robots have</h2>
-
-      <div class="bento reveal" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
-        <div class="card" style="padding:20px">
-          <h3 style="font-size:1rem;margin:0 0 8px">Hailo-8L NPU</h3>
-          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">26 TOPS at ~2W. Purpose-built for edge AI inference &mdash; image classification, object detection, audio models.</p>
-        </div>
-        <div class="card" style="padding:20px">
-          <h3 style="font-size:1rem;margin:0 0 8px">OAK-D Depth Camera</h3>
-          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Stereo depth + RGB. Real-time vision processing for species identification, satellite imagery ground-truth, anomaly detection.</p>
-        </div>
-        <div class="card" style="padding:20px">
-          <h3 style="font-size:1rem;margin:0 0 8px">Microphone</h3>
-          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Audio classification at ~0.1W. BirdNET bioacoustics, environmental sound monitoring, acoustic anomaly detection.</p>
-        </div>
-        <div class="card" style="padding:20px">
-          <h3 style="font-size:1rem;margin:0 0 8px">Physical Presence</h3>
-          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Deployed in homes, schools, farms, labs. Distributed sensor network that traditional compute clusters can never be.</p>
-        </div>
-      </div>
 
       <!-- The idle compute problem -->
       <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The idle compute problem</h2>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        A robot waiting for its next command is burning ~3W but producing zero useful work. Bob idles for
-        about 20 hours a day. That's 520 TOPS-hours of wasted neural compute, every single day, from one robot.
+        Robots idle. A lot. Our reference robot "Bob" idles about 20 hours a day, but that's true of most robots &mdash;
+        they spend the majority of their time waiting for commands, charging, or standing by. Whatever compute
+        they have goes to waste.
       </p>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        Scale that to a fleet. 1,000 robots &times; 8 hours idle/day &times; 26 TOPS = 208,000 TOPS-hours/day.
-        That's the equivalent of a small GPU cluster, but physically distributed across real-world environments
-        where it can collect and process data that centralized servers never could.
+        The raw numbers depend on fleet composition. A fleet of NPU-equipped robots contributes more raw TOPS.
+        A fleet of CPU-only robots contributes less per-unit but still adds up. The point isn't any single robot's
+        specs &mdash; it's that the aggregate waste across a fleet of heterogeneous robots is significant, and the
+        infrastructure to coordinate it (RCAN, registry, telemetry) already exists.
       </p>
 
       <!-- What castor contribute does -->
       <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">What <code>castor contribute</code> does</h2>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        The feature is dead simple. Add a block to your RCAN config:
+        Enable it in your robot's config:
       </p>
 
       <div class="code-block reveal" style="margin-bottom:24px">
         <div class="code-header">
           <div class="code-dots"><span></span><span></span><span></span></div>
-          <span class="code-filename">robot.rcan.yaml</span>
+          <span class="code-filename">config.yaml</span>
         </div>
         <div class="code-body">
 <span class="k">agent</span>:
@@ -118,106 +149,125 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     <span class="k">projects</span>:
       - <span class="s">climate</span>
       - <span class="s">biodiversity</span>
-      - <span class="s">science</span>
     <span class="k">coordinator</span>: <span class="s">boinc</span>
         </div>
       </div>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        After 15 minutes of idle time, the robot contacts a work coordinator (BOINC, Folding@home, or
-        OpenCastor's own coordinator for sensor-based projects). It fetches a work unit, runs it on the
-        Hailo NPU or CPU, and submits the result. The moment a real command comes in &mdash; a chat message,
-        a movement instruction, anything &mdash; the contribute work is cancelled within 100ms and the robot
-        returns to full duty.
+        After the idle threshold, the runtime contacts a coordinator (BOINC, or any service implementing the
+        two-method coordinator interface), fetches a work unit, runs it on the best available hardware
+        (NPU &rarr; GPU &rarr; CPU), and submits the result. The moment a real command arrives, the work unit
+        is cancelled within 100ms and the robot returns to full duty.
       </p>
 
+      <!-- Hardware agnostic -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">Hardware-agnostic by design</h2>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        The hardware profiler detects what's available and reports it to the coordinator:
+      </p>
+
+      <div class="bento reveal" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">NPU-equipped robots</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Hailo-8L (26 TOPS), Coral TPU (4 TOPS), etc. Get NPU-optimized inference work units &mdash; model scoring, classification, object detection.</p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">GPU-equipped robots</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Jetson Orin, CUDA GPUs. Get batch inference or training work units that leverage GPU compute.</p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">CPU-only robots</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Any ARM or x86 board. Get CPU-appropriate tasks &mdash; data preprocessing, lightweight inference, aggregation.</p>
+        </div>
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:1rem;margin:0 0 8px">Sensor-equipped robots</h3>
+          <p style="font-size:0.875rem;color:var(--text-secondary);margin:0">Cameras, microphones, depth sensors. Could contribute situated data &mdash; BirdNET bioacoustics, species identification, environmental monitoring.</p>
+        </div>
+      </div>
+
       <!-- Use cases -->
-      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">Use cases by domain</h2>
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">Use cases</h2>
 
       <div class="reveal" style="margin-bottom:32px">
-        <h3 style="font-size:1.25rem;margin-bottom:8px">Climate</h3>
+        <h3 style="font-size:1.25rem;margin-bottom:8px">Climate Modeling</h3>
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          Satellite imagery classification for deforestation monitoring. Federated climate model training
-          where each robot contributes local gradient updates without sharing raw data. Ground-truth weather
-          observation from cameras deployed in the field.
+          climateprediction.net runs ensemble climate simulations &mdash; thousands of independent models,
+          embarrassingly parallel, ~15 minutes each. Perfect for robots that idle for hours.
         </p>
 
-        <h3 style="font-size:1.25rem;margin-top:24px;margin-bottom:8px">Biodiversity</h3>
+        <h3 style="font-size:1.25rem;margin-top:24px;margin-bottom:8px">Biodiversity Monitoring</h3>
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          BirdNET bioacoustics via the onboard microphone &mdash; robots in gardens and parks passively
-          monitoring bird populations at near-zero energy cost. OAK-D depth camera for insect and plant
-          species identification. This is science that only makes sense with distributed physical sensors.
+          Robots deployed in agricultural or conservation settings already have cameras and microphones.
+          During idle time, they can run species identification inference. This is science that only makes
+          sense with distributed physical sensors.
         </p>
 
-        <h3 style="font-size:1.25rem;margin-top:24px;margin-bottom:8px">Science</h3>
+        <h3 style="font-size:1.25rem;margin-top:24px;margin-bottom:8px">Protein Folding</h3>
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          Folding@home-style protein structure prediction on the Hailo NPU. Rosetta@home work units compiled
-          to HEF format for efficient edge inference. Each robot contributes a small piece of a massive
-          distributed computation.
+          Rosetta@home work units involve scoring protein conformations &mdash; pure matrix math that NPUs
+          and GPUs excel at. Edge inference at a fraction of the power cost of data center GPUs.
         </p>
 
         <h3 style="font-size:1.25rem;margin-top:24px;margin-bottom:8px">Humanitarian AI</h3>
         <p style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-          Medical image pre-screening for WHO and MSF deployments. Chest X-ray classification for TB screening
-          in resource-limited settings. Edge inference means results are available in-country without sending
-          patient data to the cloud.
+          Medical image pre-screening for underserved regions. TB detection from chest X-rays. Edge inference
+          keeps patient data local &mdash; no cloud upload required.
         </p>
       </div>
 
-      <!-- Fleet math -->
-      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The fleet math</h2>
+      <!-- P66 safety -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">Safety: P66 preemption</h2>
 
-      <div class="reveal" style="margin-bottom:24px">
+      <div class="wizard-tip reveal" style="margin-bottom:24px">
+        <strong>Protocol 66 guarantee:</strong> Contribute work is immediately preempted by any incoming command.
+        The P66 safety invariant takes absolute precedence &mdash; the robot signals <code>CONTRIBUTE_CANCEL</code>
+        to the coordinator and returns to full duty within 100ms. This is enforced at the runtime level and
+        cannot be disabled by configuration.
+      </div>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        The <code>contribute</code> scope sits at level 2.5 in the RCAN hierarchy &mdash; above <code>chat</code> (2)
+        so conversation doesn't interrupt computation, but below <code>control</code> (3) so any real command
+        takes immediate priority. Science gets the leftovers. In a fleet of idle robots, the leftovers add up.
+      </p>
+
+      <!-- Ecosystem -->
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The full ecosystem</h2>
+
+      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
+        What makes this different from "just run BOINC on a computer" is the integration across an open-source
+        robotics stack &mdash; protocol, runtime, SDKs, client app, and registry working together:
+      </p>
+
+      <div class="reveal" style="margin-bottom:32px">
         <table class="arch-table">
-          <thead><tr><th>Fleet Size</th><th>Daily Idle Hours</th><th>TOPS-Hours/Day</th><th>Equivalent</th></tr></thead>
+          <thead><tr><th>Layer</th><th>Component</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr><td>1 robot</td><td>8h</td><td>208</td><td>&mdash;</td></tr>
-            <tr><td>100 robots</td><td>8h</td><td>20,800</td><td>Small workstation GPU</td></tr>
-            <tr><td>1,000 robots</td><td>8h</td><td>208,000</td><td>Small GPU cluster</td></tr>
-            <tr><td>10,000 robots</td><td>8h</td><td>2,080,000</td><td>Large research cluster</td></tr>
+            <tr><td>Protocol</td><td><a href="https://rcan.dev" style="color:var(--accent)">RCAN v1.7</a></td><td><code>contribute</code> scope, 3 message types, telemetry schema</td></tr>
+            <tr><td>SDKs</td><td><a href="https://github.com/continuonai/rcan-py" style="color:var(--accent)">rcan-py</a> / <a href="https://github.com/continuonai/rcan-ts" style="color:var(--accent)">rcan-ts</a></td><td>Message types, scope validation in Python &amp; TypeScript</td></tr>
+            <tr><td>Runtime</td><td><code>castor/contribute/</code></td><td>Coordinator, runner, hardware profiling, fleet coordination</td></tr>
+            <tr><td>API</td><td>REST endpoints</td><td><code>/api/contribute</code>, <code>/start</code>, <code>/stop</code>, <code>/history</code></td></tr>
+            <tr><td>CLI</td><td><code>castor contribute</code></td><td>Status, start, stop, history from terminal</td></tr>
+            <tr><td>Client</td><td><a href="https://app.opencastor.com" style="color:var(--accent)">Flutter app</a></td><td>Real-time stats, enable/disable toggle, project selection</td></tr>
+            <tr><td>Registry</td><td>Firestore telemetry</td><td>Live contribution stats visible across the fleet</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        The numbers aren't about raw FLOPS competing with an H100. They're about something no GPU cluster has:
-        physical distribution. Ten thousand robots in ten thousand locations, each with a camera, a microphone,
-        and an NPU. That's a planetary sensor network that does science when it's not doing robotics.
-      </p>
-
-      <!-- P66 safety -->
-      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">Safety first, always</h2>
-
-      <div class="wizard-tip reveal" style="margin-bottom:24px">
-        <strong>Protocol 66 guarantee:</strong> Contribute work is immediately preempted by any incoming command.
-        A robot helping fold proteins will drop everything the moment a user sends a message. The P66 safety protocol
-        takes absolute precedence &mdash; the robot signals <code>ContributeCancel</code> to the coordinator and
-        becomes available within 100ms. This is enforced at the kernel level and cannot be disabled by configuration.
-      </div>
-
-      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        We designed this from the start as a background citizen, not a competing process. The contribute scheduler
-        checks for active commands before every work unit fetch. If your robot is needed, it's yours instantly.
-        Science gets the leftovers &mdash; which, in a fleet of idle robots, turns out to be a lot.
-      </p>
-
       <!-- Closing -->
-      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The AGI-era SETI@Home starts here</h2>
+      <h2 class="reveal" style="font-size:1.75rem;margin-top:48px;margin-bottom:16px">The infrastructure already exists</h2>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        Chris Albon asked how long before someone launches SETI@Home for the AGI era. The answer is: the infrastructure
-        already exists. Every OpenCastor robot has an AI accelerator that idles most of the day. We just had to
-        connect the idle cycles to the people who need them.
+        Chris Albon asked how long before someone launches SETI@Home for the AGI era. The answer is: the
+        infrastructure already exists. OpenCastor gives any robot a standardized runtime. RCAN gives it an
+        identity and a protocol. The registry gives it fleet visibility. <code>castor contribute</code> is just
+        the natural consequence &mdash; if you have the infrastructure, the idle compute question answers itself.
       </p>
 
       <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        This is version one. We're starting with BOINC integration and BirdNET bioacoustics. Climate@Home and
-        WHO-TB screening are in the pipeline. If you're a researcher with a distributed inference problem that
-        fits on a 26 TOPS NPU, we want to hear from you.
-      </p>
-
-      <p class="reveal" style="font-size:1.0625rem;line-height:1.8;color:var(--text-secondary)">
-        Your robot is already awake. Let's put it to work.
+        It's opt-in, it's safe, it's preemptible, and it's open source. Your robot was going to idle anyway.
+        Might as well cure something.
       </p>
 
       <!-- CTA -->

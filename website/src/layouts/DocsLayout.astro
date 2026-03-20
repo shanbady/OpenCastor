@@ -17,6 +17,7 @@ if (currentPath === '/docs/index') {
 const sidebarLinks = [
   { group: 'Overview', items: [
     { label: 'Introduction & Quick Start', href: '/docs' },
+    { label: 'Complete Setup Guide', href: '/docs/getting-started' },
     { label: 'Setup Wizard', href: '/docs/setup-wizard' },
     { label: 'Architecture', href: '/docs/architecture' }
   ]},
@@ -25,12 +26,22 @@ const sidebarLinks = [
     { label: 'Hardware & Auto-Detect', href: '/docs/peripherals' },
     { label: 'Safety & Protocol 66', href: '/docs/safety' }
   ]},
+  { group: 'Hardware Guides', items: [
+    { label: 'SO-ARM101 Manipulation', href: '/docs/hardware/so-arm101' },
+    { label: 'Harnesses', href: '/docs/harness' }
+  ]},
   { group: 'Ecosystem', items: [
     { label: 'AI Providers', href: '/docs/providers' },
     { label: 'Ecosystem Reference', href: '/docs/ecosystem' },
     { label: 'Contribute (Idle Compute)', href: '/docs/contribute' }
   ]}
 ];
+
+// Flatten links for automated Next/Prev pagination
+const allLinks = sidebarLinks.flatMap(g => g.items);
+const currentIndex = allLinks.findIndex(l => l.href === currentPath);
+const prevLink = currentIndex > 0 ? allLinks[currentIndex - 1] : null;
+const nextLink = currentIndex >= 0 && currentIndex < allLinks.length - 1 ? allLinks[currentIndex + 1] : null;
 ---
 <BaseLayout title={title} description={description} ogUrl={ogUrl}>
   <div class="docs-container container">
@@ -42,12 +53,21 @@ const sidebarLinks = [
             <input type="text" placeholder="Search docs..." />
             <span class="search-hint">⌘K</span>
           </div>
-          <div class="sidebar-version">
-            <span>v2.1.0 stable</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <div class="sidebar-version-row">
+            <div class="sidebar-version">
+              <span>v2.1.0 stable</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <button class="mobile-sidebar-toggle" id="docsMenuToggle" aria-label="Toggle Documentation Menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
           </div>
         </div>
-        <nav class="sidebar-nav-grouped">
+        <nav class="sidebar-nav-grouped" id="docsNavMenu">
           {sidebarLinks.map(group => (
             <div class="sidebar-group">
               <h4 class="sidebar-group-title">{group.group}</h4>
@@ -68,9 +88,35 @@ const sidebarLinks = [
     </aside>
     <main class="docs-content">
       <slot />
+
+      <!-- Automated Pagination -->
+      <div class="docs-pagination">
+        {prevLink ? (
+          <a href={prevLink.href} class="btn btn-secondary docs-prev-btn">
+            &larr; {prevLink.label}
+          </a>
+        ) : <div />}
+        {nextLink ? (
+          <a href={nextLink.href} class="btn btn-secondary docs-next-btn">
+            Next: {nextLink.label} &rarr;
+          </a>
+        ) : <div />}
+      </div>
     </main>
   </div>
 </BaseLayout>
+
+<script is:inline>
+  document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('docsMenuToggle');
+    const menu = document.getElementById('docsNavMenu');
+    if (toggle && menu) {
+      toggle.addEventListener('click', () => {
+        menu.classList.toggle('is-open');
+      });
+    }
+  });
+</script>
 
 <style>
 .docs-container {
@@ -108,14 +154,24 @@ const sidebarLinks = [
 }
 .sidebar-search input::placeholder { color: var(--text-muted); }
 .search-hint { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+.sidebar-version-row {
+  display: flex; gap: 8px; align-items: center; justify-content: space-between;
+}
 .sidebar-version {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 0.75rem; font-weight: 500; color: var(--text-secondary);
   padding: 6px 10px; background: var(--surface); border-radius: var(--radius-sm);
   cursor: pointer; transition: color var(--dur) var(--ease);
+  flex: 1;
 }
 .sidebar-version:hover { color: var(--text); }
 .sidebar-version svg { width: 14px; height: 14px; }
+.mobile-sidebar-toggle {
+  display: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px; cursor: pointer; color: var(--text);
+  align-items: center; justify-content: center;
+}
+.mobile-sidebar-toggle svg { width: 16px; height: 16px; }
 
 .sidebar-group { margin-bottom: 24px; }
 .sidebar-group:last-child { margin-bottom: 0; }
@@ -150,6 +206,15 @@ const sidebarLinks = [
   min-width: 0;
   max-width: 800px;
 }
+.docs-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.docs-prev-btn, .docs-next-btn { white-space: normal; text-align: left; }
 
 /* Base styling for generated docs pages */
 .docs-content :global(.page-hero) {
@@ -203,9 +268,32 @@ const sidebarLinks = [
   .sidebar-sticky {
     position: relative;
     top: 0;
+    padding: 16px;
+  }
+  .mobile-sidebar-toggle {
+    display: flex;
+  }
+  .sidebar-nav-grouped {
+    display: none;
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .sidebar-nav-grouped.is-open {
+    display: block;
   }
   .docs-content :global(h1) {
     font-size: 2.5rem;
+  }
+  .docs-pagination {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  .docs-prev-btn, .docs-next-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
   }
 }
 </style>

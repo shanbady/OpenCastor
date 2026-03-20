@@ -1,14 +1,12 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
 ---
 
-<BaseLayout
+<DocsLayout
   title="Agent Harness Architecture — OpenCastor"
   description="Visual reference for the OpenCastor Agent Harness — context engineering, tool execution loop, P66 safety invariants, and evolution over time."
   ogUrl="https://opencastor.com/docs/harness"
 >
-
-<main>
   <!-- ── HERO ── -->
   <section class="page-hero" style="padding-bottom:32px">
     <p class="section-label reveal">Architecture</p>
@@ -505,18 +503,15 @@ ESTOP: absolute — bypasses context, hooks, tools, logging
   </section>
 
   <!-- ── Links ── -->
-  <section class="cta-section">
+  <section class="doc-section" style="margin-top: 60px;">
     <h2 class="reveal">Dig deeper</h2>
     <p class="reveal reveal-d1">Source, tests, and the trajectory dataset that feeds autoresearch.</p>
-    <div class="hero-actions reveal reveal-d2">
-      <a href="https://github.com/craigm26/OpenCastor/blob/main/castor/harness.py" class="btn btn-primary btn-lg">
+    <div class="hero-actions reveal reveal-d2" style="justify-content: flex-start;">
+      <a href="https://github.com/craigm26/OpenCastor/blob/main/castor/harness.py" class="btn btn-primary btn-sm">
         harness.py on GitHub →
       </a>
-      <a href="/docs" class="btn btn-secondary btn-lg">← Back to Docs</a>
     </div>
   </section>
-
-</main>
 
 <!-- Mermaid.js (CDN, no build dep) -->
 <script type="module">
@@ -622,4 +617,4 @@ ESTOP: absolute — bypasses context, hooks, tools, logging
   :root[data-theme="dark"] .mermaid svg { filter: invert(0.05) hue-rotate(180deg) brightness(0.95); }
 </style>
 
-</BaseLayout>
+</DocsLayout>

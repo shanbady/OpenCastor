@@ -1,45 +1,16 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
 ---
 
-<BaseLayout
+<DocsLayout
   title="Getting Started — OpenCastor"
   description="Get up and running with OpenCastor in minutes. Install, configure, and connect your first AI-powered robot."
   ogUrl="https://opencastor.com/docs/getting-started"
->
-
-<main>
-
   <!-- Page Hero -->
   <section class="page-hero">
     <p class="section-label reveal">Getting Started</p>
     <h1 class="reveal reveal-d1">Up and running<br>in minutes.</h1>
     <p class="reveal reveal-d2">Install OpenCastor, init your robot, and start issuing commands — all from a single config file.</p>
-  </section>
-
-  <!-- Table of Contents -->
-  <section class="section" style="padding-top:0;padding-bottom:20px">
-    <div class="container">
-      <div class="toc reveal">
-        <h3>📖 On this page</h3>
-        <div class="toc-cols">
-          <div>
-            <a href="#what-is">What is OpenCastor?</a>
-            <a href="#prerequisites">Prerequisites</a>
-            <a href="#quickstart">Install</a>
-            <a href="#first-run">First Run</a>
-          </div>
-          <div>
-            <h4 style="font-family:var(--font-display);font-size:0.875rem;margin-bottom:8px">Learn</h4>
-            <a href="/docs/configuration">Config Basics (RCAN)</a>
-            <a href="#connect">Connect a Robot</a>
-            <a href="/docs/safety">Safety First</a>
-            <a href="/docs/setup-wizard">CLI Reference</a>
-            <a href="#next-steps">Next Steps</a>
-          </div>
-        </div>
-      </div>
-    </div>
   </section>
 
   <!-- What is OpenCastor -->
@@ -450,52 +421,13 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
   </section>
 
   <!-- CTA -->
-  <section class="cta-section">
+  <section class="doc-section" style="margin-top: 60px;">
     <h2 class="reveal">Something not working?</h2>
     <p class="reveal reveal-d1">Run <code>castor doctor</code> first. Still stuck? Open an issue on GitHub.</p>
-    <div class="hero-actions reveal reveal-d2">
-      <a href="https://github.com/craigm26/OpenCastor/issues" class="btn btn-primary btn-lg" target="_blank" rel="noopener">Open an Issue</a>
-      <a href="https://discord.gg/jMjA8B26Bq" class="btn btn-secondary btn-lg" target="_blank" rel="noopener">Join Discord</a>
+    <div class="hero-actions reveal reveal-d2" style="justify-content: flex-start;">
+      <a href="https://github.com/craigm26/OpenCastor/issues" class="btn btn-primary btn-sm" target="_blank" rel="noopener">Open an Issue</a>
+      <a href="https://discord.gg/jMjA8B26Bq" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">Join Discord</a>
     </div>
   </section>
 
-</main>
-
-<footer class="site-footer">
-  <div class="footer-inner">
-    <div class="footer-grid">
-      <div class="footer-brand">
-        <a href="/" class="nav-logo">
-          <div class="nav-logo-img"></div>
-          <span>OpenCastor</span>
-        </a>
-        <p>The universal runtime for embodied AI.</p>
-      </div>
-      <div class="footer-col">
-        <h4>Docs</h4>
-        <a href="/docs/getting-started">Getting Started</a>
-        <a href="/docs/hardware/so-arm101">SO-ARM101</a>
-        <a href="/docs">Full Docs</a>
-        <a href="https://rcan.dev/spec/">RCAN Spec</a>
-      </div>
-      <div class="footer-col">
-        <h4>Resources</h4>
-        <a href="/hardware">Hardware</a>
-        <a href="https://github.com/craigm26/OpenCastor">GitHub</a>
-        <a href="https://github.com/craigm26/OpenCastor/issues">Issues</a>
-        <a href="https://discord.gg/jMjA8B26Bq">Discord</a>
-      </div>
-      <div class="footer-col">
-        <h4>Company</h4>
-        <a href="/hub">Hub</a>
-        <a href="/about">About</a>
-        <a href="mailto:hello@opencastor.com">Contact</a>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <p>&copy; 2025-2026 Craig Merry. Apache 2.0 License.</p>
-    </div>
-  </div>
-</footer>
-
-</BaseLayout>
+</DocsLayout>

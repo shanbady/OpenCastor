@@ -6,7 +6,7 @@ Versions use date-based scheme: `YYYY.MM.DD.patch`.
 
 ---
 
-## [2026.3.20.2] — 2026-03-20
+## [2026.3.20.3] — 2026-03-20
 
 ### Added — RCAN v1.8: Canonical MessageType & Idle Compute Contribution
 

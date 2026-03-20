@@ -454,6 +454,145 @@ def cmd_contribute_cli(args) -> None:
         print(f"\n  Error: {exc}\n  Is the gateway running? (castor run)")
 
 
+def cmd_provider(args) -> None:
+    """Manage gated model providers — test auth, list models, show status."""
+    provider_action = getattr(args, "provider_action", "list")
+
+    if provider_action == "auth":
+        provider_name = getattr(args, "provider_name", "")
+        config_path = getattr(args, "config", "robot.rcan.yaml")
+
+        if not provider_name:
+            print("\n  Usage: castor provider auth <provider-name>")
+            print("  Test authentication for a gated model provider.\n")
+            return
+
+        try:
+            import yaml
+
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f) or {}
+
+            providers = cfg.get("providers", {})
+            if provider_name not in providers:
+                print(f"\n  Provider '{provider_name}' not found in config.")
+                print(f"  Available: {', '.join(providers.keys()) or '(none)'}\n")
+                return
+
+            pcfg = providers[provider_name]
+            auth_config = pcfg.get("auth", {})
+            if not auth_config:
+                print(f"\n  Provider '{provider_name}' has no auth configuration.\n")
+                return
+
+            from castor.auth.provider_auth import create_provider_auth
+
+            print(f"\n  Testing auth for '{provider_name}'...")
+            print(f"  Method: {auth_config.get('method', 'unknown')}")
+
+            handler = create_provider_auth(auth_config)
+            creds = handler.get_credentials()
+
+            if creds.expired:
+                print("  Status: ⚠️  EXPIRED")
+            else:
+                print("  Status: ✅ Valid")
+
+            if creds.headers:
+                # Show header names without values for security
+                header_names = list(creds.headers.keys())
+                print(f"  Headers: {', '.join(header_names)}")
+
+            if creds.client_cert:
+                print(f"  Client cert: {creds.client_cert[0]}")
+
+            if creds.expires_at > 0:
+                import time
+
+                remaining = creds.expires_at - time.time()
+                if remaining > 0:
+                    mins = int(remaining / 60)
+                    print(f"  Expires in: {mins} minutes")
+
+            models = pcfg.get("models", [])
+            if models:
+                print(f"  Models: {', '.join(models)}")
+
+            fallback = pcfg.get("fallback_model")
+            if fallback:
+                provider = pcfg.get("fallback_provider", "local")
+                print(f"  Fallback: {provider}/{fallback}")
+
+            print()
+
+        except FileNotFoundError:
+            print(f"\n  Config file not found: {config_path}\n")
+        except Exception as exc:
+            print(f"\n  Auth failed: {exc}\n")
+
+    elif provider_action == "list":
+        config_path = getattr(args, "config", "robot.rcan.yaml")
+        try:
+            import yaml
+
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f) or {}
+
+            providers = cfg.get("providers", {})
+            if not providers:
+                print("\n  No gated providers configured.")
+                print("  Add providers to your config.yaml under 'providers:'\n")
+                return
+
+            print("\n  Gated Model Providers")
+            print("  " + "─" * 50)
+            for name, pcfg in providers.items():
+                auth = pcfg.get("auth", {})
+                method = auth.get("method", "none")
+                models = pcfg.get("models", [])
+                fallback = pcfg.get("fallback_model", "none")
+                print(f"    {name}")
+                print(f"      Auth: {method}  |  Models: {len(models)}  |  Fallback: {fallback}")
+            print()
+
+        except FileNotFoundError:
+            print(f"\n  Config file not found: {config_path}\n")
+        except Exception as exc:
+            print(f"\n  Error: {exc}\n")
+
+    elif provider_action == "status":
+        try:
+            import httpx
+
+            token = os.getenv("OPENCASTOR_API_TOKEN", "")
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            base = "http://127.0.0.1:8001"
+
+            r = httpx.get(f"{base}/api/status", headers=headers, timeout=5)
+            data = r.json()
+            providers = data.get("gated_providers", [])
+
+            if not providers:
+                print("\n  No gated providers active on the running gateway.\n")
+                return
+
+            print("\n  Active Gated Providers")
+            print("  " + "─" * 50)
+            for p in providers:
+                name = p.get("provider", "unknown")
+                available = "✅" if p.get("available") else "❌"
+                auth_valid = "✅" if p.get("auth_valid") else "❌"
+                method = p.get("auth_method", "unknown")
+                models = p.get("models", [])
+                print(f"    {available} {name} (auth: {auth_valid}, method: {method})")
+                if models:
+                    print(f"        Models: {', '.join(models)}")
+            print()
+
+        except Exception as exc:
+            print(f"\n  Error: {exc}\n  Is the gateway running?\n")
+
+
 def cmd_discover(args) -> None:
     """Discover RCAN peers on the local network."""
     print("\n  Scanning for RCAN peers (5 seconds)...\n")
@@ -4608,6 +4747,23 @@ def main() -> None:
         help="Contribute sub-command (default: status)",
     )
 
+    # castor provider — gated model provider management
+    p_provider = sub.add_parser(
+        "provider",
+        help="Manage gated model providers (auth, list, status)",
+        epilog="Example: castor provider auth pi-foundation --config robot.rcan.yaml",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_provider_sub = p_provider.add_subparsers(dest="provider_action")
+    p_prov_auth = p_provider_sub.add_parser("auth", help="Test provider authentication")
+    p_prov_auth.add_argument(
+        "provider_name", nargs="?", default="", help="Provider name from config"
+    )
+    p_prov_auth.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
+    p_prov_list = p_provider_sub.add_parser("list", help="List configured providers")
+    p_prov_list.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
+    p_provider_sub.add_parser("status", help="Show status of active providers on running gateway")
+
     p_doctor = sub.add_parser(
         "doctor",
         help="Run system health checks",
@@ -6195,7 +6351,25 @@ def main() -> None:
         "explore": _cmd_explore,
         "skills": _cmd_skills,
         "optimize": _cmd_optimize,
+        "provider": cmd_provider,
     }
+
+    # castor provider — gated model provider management
+    p_provider = sub.add_parser(
+        "provider",
+        help="Manage gated model providers (auth, list, status)",
+        epilog="Example: castor provider auth pi-foundation --config robot.rcan.yaml",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_provider_sub = p_provider.add_subparsers(dest="provider_action")
+    p_prov_auth = p_provider_sub.add_parser("auth", help="Test provider authentication")
+    p_prov_auth.add_argument(
+        "provider_name", nargs="?", default="", help="Provider name from config"
+    )
+    p_prov_auth.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
+    p_prov_list = p_provider_sub.add_parser("list", help="List configured providers")
+    p_prov_list.add_argument("--config", default="robot.rcan.yaml", help="RCAN config file")
+    p_provider_sub.add_parser("status", help="Show status of active providers on running gateway")
 
     # castor eval — skill evaluation harness
     p_eval = sub.add_parser("eval", help="Evaluate a skill against its test suite")

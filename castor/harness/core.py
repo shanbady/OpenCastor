@@ -458,6 +458,22 @@ class AgentHarness:
             _CostMeter(_cm_cfg) if _CostMeter and _cm_cfg.get("enabled") else None
         )
 
+        # ── Per-layer provider routing (#724) ───────────────────────────
+        # Each harness layer can specify a provider override. This dict maps
+        # layer names to (provider_name, model_name, fallback_model) tuples.
+        # At inference time, the harness swaps the active provider for the
+        # layer's provider if configured.
+        self._layer_providers: dict[str, dict] = {}
+        for layer in harness_cfg.get("layers", []):
+            layer_name = layer.get("name", "")
+            layer_model = layer.get("model", "")
+            if layer_name and layer_model and "/" in layer_model:
+                self._layer_providers[layer_name] = {
+                    "provider_name": layer_model.split("/", 1)[0],
+                    "model": layer_model.split("/", 1)[1],
+                    "fallback": layer.get("fallback", ""),
+                }
+
         # Register working memory tools if enabled
         if self.working_memory is not None:
             try:
@@ -481,6 +497,50 @@ class AgentHarness:
             self.span_tracer is not None,
             self.cost_meter is not None,
         )
+
+    def get_provider_for_layer(self, layer_name: str) -> BaseProvider:
+        """Get the provider for a specific harness layer.
+
+        If the layer has a provider override configured, attempts to create
+        a GatedModelProvider for it. Falls back to the default provider
+        if the gated provider is unavailable or not configured.
+        """
+        if layer_name not in self._layer_providers:
+            return self._provider
+
+        layer_cfg = self._layer_providers[layer_name]
+        try:
+            from castor.providers.gated import GatedModelProvider
+
+            provider_name = layer_cfg["provider_name"]
+            model = layer_cfg["model"]
+
+            # Look up provider config from the main config
+            providers_cfg = self._config.get("providers", {})
+            if provider_name in providers_cfg:
+                gated = GatedModelProvider(providers_cfg[provider_name])
+                if gated.get_credentials() is not None:
+                    logger.info(
+                        "Layer '%s' using gated provider: %s/%s",
+                        layer_name,
+                        provider_name,
+                        model,
+                    )
+                    return gated  # type: ignore[return-value]
+
+            logger.warning(
+                "Layer '%s' gated provider '%s' unavailable, using default",
+                layer_name,
+                provider_name,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Layer '%s' provider routing failed: %s — using default",
+                layer_name,
+                exc,
+            )
+
+        return self._provider
 
     # ── Public API ────────────────────────────────────────────────────────────
 

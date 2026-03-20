@@ -1360,6 +1360,12 @@ _BUILTIN_CLI_COMMANDS: list[dict] = [
         "scope": "status",
         "instant": True,
     },
+    {
+        "cmd": "/contribute",
+        "description": "Show idle compute contribution status",
+        "scope": "status",
+        "instant": True,
+    },
 ]
 
 
@@ -8645,3 +8651,23 @@ async def circuit_breaker_status(request: Request):
     _check_min_role(request, "status")
     # The circuit breaker is in-process; this endpoint is informational only.
     return {"note": "Circuit breaker state is in-memory per process. Use harness logs for details."}
+
+
+# ── Contribute (idle compute) status ─────────────────────────────────────────
+
+
+@app.get("/api/contribute", dependencies=[Depends(verify_token)])
+async def get_contribute_endpoint(request: Request):
+    """GET /api/contribute — Return idle compute contribution status."""
+    _check_min_role(request, "operator")
+    try:
+        from castor.skills.contribute import get_contribute_status
+
+        return get_contribute_status()
+    except Exception:
+        return {
+            "enabled": False,
+            "active": False,
+            "work_units_total": 0,
+            "contribute_minutes_today": 0,
+        }

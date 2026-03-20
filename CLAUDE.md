@@ -33,6 +33,12 @@ OpenCastor/
 │   │   └── base.py         # BaseProvider ABC + Thought dataclass
 │   ├── drivers/            # Hardware drivers (see full list below)
 │   ├── channels/           # Messaging channels (WhatsApp, Telegram, Discord, ...)
+│   │   └── rcan_mqtt_transport.py  # RCAN-over-MQTT carrier (compact/minimal encoding)
+│   ├── contribute/         # Idle compute donation skill
+│   │   ├── coordinator.py  # BOINC + simulated coordinators
+│   │   ├── runner.py       # Work unit runner with cancellation
+│   │   ├── work_unit.py    # WorkUnit / WorkUnitResult dataclasses
+│   │   └── hardware_profile.py  # NPU/CPU detection
 │   ├── rcan/               # RCAN protocol implementation
 │   │   ├── registry.py     # RRN validation, REGISTRY_REGISTER/RESOLVE (§21)
 │   │   ├── invoke.py       # InvokeRequest/Result, SkillRegistry (§19)
@@ -137,6 +143,8 @@ move(cmd)  ──►  SafetyLayer.check(cmd)  ──►  _move(cmd)  ──►  
 | `POST` | `/rcan` | RCAN message dispatch (INVOKE, COMMAND, REGISTRY_*) |
 | `GET` | `/health` | Gateway health + driver status |
 | `POST` | `/invoke` | Direct skill invocation shortcut |
+| `GET` | `/api/contribute` | Idle compute contribution status |
+| `GET` | `/api/harness` | Current harness configuration |
 
 ## RCAN Protocol (v1.6.1)
 

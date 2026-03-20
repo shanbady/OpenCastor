@@ -263,6 +263,7 @@ def run_harness_eval_unit(
         wu.work_unit_id,
         output={
             "candidate_id": candidate_id,
+            "config": config,
             "score": composite_score,
             "success_rate": success_rate,
             "p66_rate": p66_rate,

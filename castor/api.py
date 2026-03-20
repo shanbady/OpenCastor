@@ -8738,6 +8738,71 @@ async def stop_contribute_endpoint(request: Request):
         return {"error": str(exc)}
 
 
+@app.get("/api/contribute/leaderboard", dependencies=[Depends(verify_token)])
+async def get_contribute_leaderboard_endpoint(request: Request, tier: str | None = None):
+    """GET /api/contribute/leaderboard — Return harness eval leaderboard from Firestore."""
+    _check_min_role(request, "operator")
+    try:
+        import os
+        from pathlib import Path as _Path
+
+        try:
+            from google.cloud import firestore as _firestore  # type: ignore[import-untyped]
+        except ImportError:
+            return {"robots": [], "error": "offline"}
+
+        creds_path = os.environ.get(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            str(_Path.home() / ".config" / "opencastor" / "firebase-sa-key.json"),
+        )
+        try:
+            from google.oauth2 import service_account  # type: ignore[import-untyped]
+
+            creds = service_account.Credentials.from_service_account_file(
+                creds_path,
+                scopes=[
+                    "https://www.googleapis.com/auth/datastore",
+                    "https://www.googleapis.com/auth/cloud-platform",
+                ],
+            )
+            db = _firestore.Client(project="opencastor", credentials=creds)
+        except Exception:
+            import google.auth  # type: ignore[import-untyped]
+
+            _creds, _proj = google.auth.default()
+            db = _firestore.Client(project=_proj or "opencastor", credentials=_creds)
+
+        tiers_to_query = [tier] if tier else []
+        if not tiers_to_query:
+            tier_docs = list(db.collection("harness_leaderboard").stream())
+            tiers_to_query = [doc.id for doc in tier_docs]
+
+        robots = []
+        updated_at = ""
+        for t in tiers_to_query:
+            robots_ref = (
+                db.collection("harness_leaderboard").document(t).collection("robots")
+            )
+            for rdoc in robots_ref.stream():
+                data = rdoc.to_dict() or {}
+                robots.append(
+                    {
+                        "rrn": data.get("rrn", rdoc.id),
+                        "score": float(data.get("last_score", 0.0)),
+                        "candidates_evaluated": int(data.get("candidates_evaluated", 0)),
+                        "last_eval": str(data.get("last_submitted_at", "")),
+                        "trusted": bool(data.get("trusted", True)),
+                        "flags": int(data.get("flags", 0)),
+                    }
+                )
+                if not updated_at and data.get("last_submitted_at"):
+                    updated_at = str(data["last_submitted_at"])
+
+        return {"tier": tier or "", "updated_at": updated_at, "robots": robots}
+    except Exception:
+        return {"robots": [], "error": "offline"}
+
+
 @app.get("/api/contribute/history", dependencies=[Depends(verify_token)])
 async def get_contribute_history_endpoint(request: Request):
     """GET /api/contribute/history — Return daily contribution history (90 days)."""

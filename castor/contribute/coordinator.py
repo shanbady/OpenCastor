@@ -173,6 +173,26 @@ class SimulatedCoordinator(Coordinator):
         return True
 
 
+def reclaim_stale_claims(db, tier: str) -> None:
+    """Reset candidates stuck in 'assigned' state for > 30 min back to pending."""
+    cutoff = int(time.time()) - 1800
+    queue_ref = (
+        db.collection("harness_eval_queue")
+        .document(tier)
+        .collection("candidates")
+    )
+    try:
+        stale = list(
+            queue_ref.where("status", "==", "assigned")
+            .where("assigned_at", "<", cutoff)
+            .stream()
+        )
+        for doc in stale:
+            doc.reference.update({"status": "pending", "assigned_to": None, "assigned_at": None})
+    except Exception as exc:
+        log.debug("reclaim_stale_claims failed: %s", exc)
+
+
 class HarnessEvalCoordinator(Coordinator):
     """Coordinator that pulls harness candidate configs for fleet evaluation.
 
@@ -224,29 +244,51 @@ class HarnessEvalCoordinator(Coordinator):
         hardware_tier = detect_hardware_tier(hw_profile)
         rrn = get_robot_rrn()
 
-        # Try Firestore queue
+        # Try Firestore queue with atomic claim
         try:
             db = self._get_firestore_client()
+            reclaim_stale_claims(db, hardware_tier)
             queue_ref = (
                 db.collection("harness_eval_queue")
                 .document(hardware_tier)
                 .collection("candidates")
             )
-            pending = list(
-                queue_ref.where("status", "==", "pending").limit(1).stream()
-            )
-            if pending:
-                doc = pending[0]
-                data = doc.to_dict() or {}
-                candidate_id = data.get("candidate_id", doc.id)
-                # Mark as assigned
-                doc.reference.update(
-                    {
-                        "status": "assigned",
-                        "assigned_to": rrn,
-                        "assigned_at": int(time.time()),
-                    }
+
+            claimed_doc = None
+            claimed_data: dict = {}
+            for attempt in range(3):
+                pending = list(
+                    queue_ref.where("status", "==", "pending").limit(attempt + 1).stream()
                 )
+                if not pending:
+                    break
+                doc = pending[-1]
+                try:
+                    from google.cloud import firestore as _firestore  # type: ignore[import-untyped]
+
+                    transaction = db.transaction()
+
+                    @_firestore.transactional
+                    def _claim(transaction, ref=doc.reference, _rrn=rrn):
+                        snap = ref.get(transaction=transaction)
+                        d = snap.to_dict() or {}
+                        if d.get("status") != "pending":
+                            raise ValueError("conflict: already claimed")
+                        transaction.update(ref, {
+                            "status": "assigned",
+                            "assigned_to": _rrn,
+                            "assigned_at": int(time.time()),
+                        })
+                        return d
+
+                    claimed_data = _claim(transaction)
+                    claimed_doc = doc
+                    break
+                except Exception:
+                    continue
+
+            if claimed_doc is not None:
+                candidate_id = claimed_data.get("candidate_id", claimed_doc.id)
                 self._backoff_seconds = 5  # reset on success
                 return WorkUnit(
                     work_unit_id=candidate_id,
@@ -255,8 +297,8 @@ class HarnessEvalCoordinator(Coordinator):
                     model_format="harness_eval",
                     input_data={
                         "candidate_id": candidate_id,
-                        "config": data.get("config", {}),
-                        "description": data.get("description", ""),
+                        "config": claimed_data.get("config", {}),
+                        "description": claimed_data.get("description", ""),
                         "hardware_tier": hardware_tier,
                     },
                     timeout_seconds=35,
@@ -281,13 +323,92 @@ class HarnessEvalCoordinator(Coordinator):
         )
 
     def submit_result(self, result: WorkUnitResult) -> bool:
-        # Actual Firestore write is handled inside run_harness_eval_unit.
-        # Here we only update the queue document status if possible.
+        output = result.output or {}
+        hardware_tier = output.get("hardware_tier", "")
+        candidate_id = result.work_unit_id
+
+        # 10% score verification sampling (Karpathy loop anti-cheat)
+        if random.random() < 0.10:
+            try:
+                from .harness_eval import (  # noqa: PLC0415
+                    _ENVIRONMENTS,
+                    _SCENARIOS_PER_ENV,
+                    get_robot_rrn,
+                    run_single_scenario,
+                )
+
+                submitted_score = float(output.get("score", 0.0))
+                config = output.get("config", {})
+
+                scenario_results: list[dict] = []
+                for env in _ENVIRONMENTS:
+                    for i in range(_SCENARIOS_PER_ENV):
+                        scenario_id = f"{env}_{i}"
+                        r = run_single_scenario(config, scenario_id, env, candidate_id=candidate_id)
+                        scenario_results.append(r)
+
+                n = len(scenario_results)
+                if n > 0:
+                    success_rate = sum(1 for r in scenario_results if r["success"]) / n
+                    p66_rate = sum(1 for r in scenario_results if r["p66_compliant"]) / n
+                    thinking_budget = config.get("thinking_budget", 1024)
+                    token_efficiency = max(0.0, 1.0 - thinking_budget / 8000.0)
+                    max_iter = config.get("max_iterations", 6)
+                    latency_score = max(0.0, 0.5 - (max_iter / 24.0))
+                    local_score = (
+                        success_rate * 0.50
+                        + p66_rate * 0.25
+                        + token_efficiency * 0.15
+                        + latency_score * 0.10
+                    )
+
+                    if abs(submitted_score - local_score) > 0.10:
+                        log.warning(
+                            "Score verification failed: submitted=%.4f local=%.4f candidate=%s",
+                            submitted_score,
+                            local_score,
+                            candidate_id,
+                        )
+                        try:
+                            rrn = get_robot_rrn()
+                            db = self._get_firestore_client()
+                            robot_ref = (
+                                db.collection("harness_leaderboard")
+                                .document(hardware_tier)
+                                .collection("robots")
+                                .document(rrn)
+                            )
+                            robot_doc = robot_ref.get()
+                            current_flags = 0
+                            if robot_doc.exists:
+                                current_flags = int(
+                                    (robot_doc.to_dict() or {}).get("flags", 0)
+                                )
+                            new_flags = current_flags + 1
+                            robot_ref.set(
+                                {
+                                    "flags": new_flags,
+                                    "last_flag_reason": (
+                                        f"score_mismatch: submitted={submitted_score:.4f}"
+                                        f" local={local_score:.4f}"
+                                    ),
+                                },
+                                merge=True,
+                            )
+                            if new_flags >= 3:
+                                robot_ref.set({"trusted": False}, merge=True)
+                                log.warning(
+                                    "Robot %s flagged as untrusted after %d flags", rrn, new_flags
+                                )
+                                return True  # do not aggregate
+                        except Exception as flag_exc:
+                            log.debug("Score verification flag skipped: %s", flag_exc)
+            except Exception as verify_exc:
+                log.debug("Score verification skipped: %s", verify_exc)
+
+        # Update queue document status
         try:
             db = self._get_firestore_client()
-            output = result.output or {}
-            hardware_tier = output.get("hardware_tier", "")
-            candidate_id = result.work_unit_id
             if hardware_tier:
                 (
                     db.collection("harness_eval_queue")

@@ -178,8 +178,12 @@ def reclaim_stale_claims(db, tier: str) -> None:
     cutoff = int(time.time()) - 1800
     queue_ref = db.collection("harness_eval_queue").document(tier).collection("candidates")
     try:
+        from google.cloud.firestore_v1.base_query import FieldFilter  # type: ignore[import-untyped]
+
         stale = list(
-            queue_ref.where("status", "==", "assigned").where("assigned_at", "<", cutoff).stream()
+            queue_ref.where(filter=FieldFilter("status", "==", "assigned"))
+            .where(filter=FieldFilter("assigned_at", "<", cutoff))
+            .stream()
         )
         for doc in stale:
             doc.reference.update({"status": "pending", "assigned_to": None, "assigned_at": None})
@@ -199,9 +203,14 @@ class HarnessEvalCoordinator(Coordinator):
         self.credentials_path = credentials_path
         self._last_fetch_attempt: float = 0
         self._backoff_seconds: int = 5
+        self._queue_empty_until: float = 0.0
+        self._db = None  # cached Firestore client
 
     def _get_firestore_client(self):
-        """Create Firestore client; raises on failure."""
+        """Return cached Firestore client, initializing once on first call."""
+        if self._db is not None:
+            return self._db
+
         import os
 
         from google.cloud import firestore as _firestore  # type: ignore[import-untyped]
@@ -220,12 +229,13 @@ class HarnessEvalCoordinator(Coordinator):
                     "https://www.googleapis.com/auth/cloud-platform",
                 ],
             )
-            return _firestore.Client(project=self.project, credentials=creds)
+            self._db = _firestore.Client(project=self.project, credentials=creds)
         except Exception:
             import google.auth  # type: ignore[import-untyped]
 
             creds, proj = google.auth.default()
-            return _firestore.Client(project=proj or self.project, credentials=creds)
+            self._db = _firestore.Client(project=proj or self.project, credentials=creds)
+        return self._db
 
     def fetch_work_unit(self, hw_profile: dict, projects: list[str]) -> WorkUnit | None:
         from .harness_eval import detect_hardware_tier, get_robot_rrn
@@ -238,6 +248,20 @@ class HarnessEvalCoordinator(Coordinator):
         hardware_tier = detect_hardware_tier(hw_profile)
         rrn = get_robot_rrn()
 
+        # Skip Firestore if queue was recently empty (5-min cooldown)
+        if now < self._queue_empty_until:
+            self._backoff_seconds = min(self._backoff_seconds * 2, 300)
+            synthetic = self._make_synthetic_candidate(hardware_tier)
+            return WorkUnit(
+                work_unit_id=synthetic["candidate_id"],
+                project="harness_research",
+                coordinator_url="synthetic://localhost",
+                model_format="harness_eval",
+                input_data=synthetic,
+                timeout_seconds=35,
+                hardware_tier=hardware_tier,
+            )
+
         # Try Firestore queue with atomic claim
         try:
             db = self._get_firestore_client()
@@ -249,8 +273,12 @@ class HarnessEvalCoordinator(Coordinator):
             claimed_doc = None
             claimed_data: dict = {}
             for attempt in range(3):
+                from google.cloud.firestore_v1.base_query import FieldFilter  # type: ignore[import-untyped]
+
                 pending = list(
-                    queue_ref.where("status", "==", "pending").limit(attempt + 1).stream()
+                    queue_ref.where(filter=FieldFilter("status", "==", "pending"))
+                    .limit(attempt + 1)
+                    .stream()
                 )
                 if not pending:
                     break
@@ -299,7 +327,8 @@ class HarnessEvalCoordinator(Coordinator):
                     timeout_seconds=35,
                     hardware_tier=hardware_tier,
                 )
-            # Queue empty — use synthetic fallback
+            # Queue empty — cache for 5 min to avoid repeated Firestore reads
+            self._queue_empty_until = time.time() + 300
             log.debug(
                 "Harness eval queue empty for tier %s — using synthetic candidate", hardware_tier
             )

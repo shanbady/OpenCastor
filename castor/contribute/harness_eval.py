@@ -23,6 +23,10 @@ log = logging.getLogger("OpenCastor.Contribute")
 _ENVIRONMENTS = ["home", "industrial", "general", "outdoor", "edge"]
 _SCENARIOS_PER_ENV = 2
 
+# Module-level singletons to avoid re-initialization on every call
+_db_client = None
+_champion_cache: dict[str, tuple[float, float]] = {}  # tier → (score, expires_at)
+
 
 def detect_hardware_tier(hw_profile: dict) -> str:
     """Map a hw_profile dict to a hardware tier string."""
@@ -97,15 +101,38 @@ def run_single_scenario(
 
 
 def get_robot_rrn() -> str:
-    """Read robot RRN from env var or ~/.config/opencastor/robot_config.json."""
+    """Read robot RRN from env var, RCAN config YAML, or JSON config fallback."""
     rrn = os.environ.get("OPENCASTOR_RRN")
     if rrn:
         return rrn
 
-    config_path = Path.home() / ".config" / "opencastor" / "robot_config.json"
+    # Try RCAN config YAML (primary source — same as api.py uses)
+    config_file = os.environ.get("OPENCASTOR_CONFIG", "robot.rcan.yaml")
     try:
+        import yaml  # type: ignore[import-untyped]
+
+        config_path = Path(config_file)
+        if not config_path.is_absolute():
+            # Check CWD and home dir
+            for base in (Path.cwd(), Path.home() / "OpenCastor", Path.home()):
+                candidate = base / config_file
+                if candidate.exists():
+                    config_path = candidate
+                    break
         if config_path.exists():
-            data = json.loads(config_path.read_text())
+            data = yaml.safe_load(config_path.read_text()) or {}
+            meta = data.get("metadata", {})
+            rrn = meta.get("rrn") or meta.get("rrn_uri") or meta.get("robot_rrn")
+            if rrn:
+                return rrn
+    except Exception:
+        pass
+
+    # Fallback: JSON config
+    json_config_path = Path.home() / ".config" / "opencastor" / "robot_config.json"
+    try:
+        if json_config_path.exists():
+            data = json.loads(json_config_path.read_text())
             return data.get("rrn", "RRN-UNKNOWN")
     except Exception:
         pass
@@ -113,29 +140,62 @@ def get_robot_rrn() -> str:
 
 
 def _get_firestore_client():
-    """Create Firestore client using service account or ADC."""
-    from google.cloud import firestore as _firestore  # type: ignore[import-untyped]
+    """Return cached Firestore client, initializing once on first call."""
+    global _db_client
+    if _db_client is not None:
+        return _db_client
 
-    creds_path = os.environ.get(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        str(Path.home() / ".config" / "opencastor" / "firebase-sa-key.json"),
-    )
     try:
-        from google.oauth2 import service_account  # type: ignore[import-untyped]
+        from google.cloud import firestore as _firestore  # type: ignore[import-untyped]
 
-        creds = service_account.Credentials.from_service_account_file(
-            creds_path,
-            scopes=[
-                "https://www.googleapis.com/auth/datastore",
-                "https://www.googleapis.com/auth/cloud-platform",
-            ],
+        creds_path = os.environ.get(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            str(Path.home() / ".config" / "opencastor" / "firebase-sa-key.json"),
         )
-        return _firestore.Client(project="opencastor", credentials=creds)
-    except Exception:
-        import google.auth  # type: ignore[import-untyped]
+        try:
+            from google.oauth2 import service_account  # type: ignore[import-untyped]
 
-        creds, project = google.auth.default()
-        return _firestore.Client(project=project or "opencastor", credentials=creds)
+            creds = service_account.Credentials.from_service_account_file(
+                creds_path,
+                scopes=[
+                    "https://www.googleapis.com/auth/datastore",
+                    "https://www.googleapis.com/auth/cloud-platform",
+                ],
+            )
+            _db_client = _firestore.Client(project="opencastor", credentials=creds)
+        except Exception:
+            import google.auth  # type: ignore[import-untyped]
+
+            creds, project = google.auth.default()
+            _db_client = _firestore.Client(project=project or "opencastor", credentials=creds)
+    except Exception:
+        return None
+    return _db_client
+
+
+def _get_champion_score(tier: str, db) -> float:
+    """Return champion score for tier, cached for 5 minutes."""
+    now = time.time()
+    cached = _champion_cache.get(tier)
+    if cached is not None and now < cached[1]:
+        return cached[0]
+
+    try:
+        champ_ref = (
+            db.collection("harness_leaderboard")
+            .document(tier)
+            .collection("robots")
+            .order_by("last_score", direction="DESCENDING")
+            .limit(1)
+            .stream()
+        )
+        champ_docs = list(champ_ref)
+        score = champ_docs[0].to_dict().get("last_score", 0.0) if champ_docs else 0.0
+    except Exception:
+        score = 0.0
+
+    _champion_cache[tier] = (score, now + 300)
+    return score
 
 
 def run_harness_eval_unit(
@@ -253,21 +313,8 @@ def run_harness_eval_unit(
             hardware_tier,
         )
 
-        # Determine champion score for beat_champion flag
-        try:
-            champ_ref = (
-                db.collection("harness_leaderboard")
-                .document(hardware_tier)
-                .collection("robots")
-                .order_by("last_score", direction="DESCENDING")
-                .limit(1)
-                .stream()
-            )
-            champ_docs = list(champ_ref)
-            champion_score = champ_docs[0].to_dict().get("last_score", 0.0) if champ_docs else 0.0
-        except Exception:
-            champion_score = 0.0
-
+        # Determine champion score for beat_champion flag (cached 5 min)
+        champion_score = _get_champion_score(hardware_tier, db)
         beat_champion = composite_score > champion_score
 
         # Count contributors in this tier to determine rare_tier

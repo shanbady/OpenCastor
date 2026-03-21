@@ -150,7 +150,7 @@ class ContributeSkill:
                 result = run_work_unit(wu, cancelled_flag=self._cancel_flag)
                 if result.status == "complete":
                     coordinator.submit_result(result)
-                    elapsed_min = max(1, int((time.time() - start_t) / 60))
+                    elapsed_min = int((time.time() - start_t) / 60)
                     self._stats["work_units_total"] = self._stats.get("work_units_total", 0) + 1
                     self._stats["work_units_today"] = self._stats.get("work_units_today", 0) + 1
                     self._stats["contribute_minutes_today"] = (

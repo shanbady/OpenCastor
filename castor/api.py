@@ -22,6 +22,7 @@ import re as _re
 import signal
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -1373,6 +1374,98 @@ _BUILTIN_CLI_COMMANDS: list[dict] = [
         "instant": True,
     },
 ]
+
+
+@app.get("/api/research/status", dependencies=[Depends(verify_token)])
+async def research_status():
+    """GET /api/research/status — Return harness research pipeline status.
+
+    Reads OPENCASTOR_OPS_DIR env var (default ~/opencastor-ops).
+    All fields are returned with graceful fallback on file errors.
+    Firestore queue_depth requires firebase_admin; returns null if unavailable.
+    """
+    ops_dir = Path(os.environ.get("OPENCASTOR_OPS_DIR", Path.home() / "opencastor-ops"))
+    harness_dir = ops_dir / "harness-research"
+    champion_path = harness_dir / "champion.yaml"
+    candidates_dir = harness_dir / "candidates"
+
+    def _safe_yaml(p: Path) -> dict:
+        try:
+            return yaml.safe_load(p.read_text()) or {}
+        except Exception:
+            return {}
+
+    # Champion
+    champion_data: dict | None = None
+    try:
+        raw = _safe_yaml(champion_path)
+        if raw:
+            champion_data = {
+                "id": raw.get("candidate_id", "unknown"),
+                "score": raw.get("score", 0.0),
+                "date": raw.get("date"),
+                "config": raw.get("config", {}),
+            }
+    except Exception:
+        pass
+
+    # Last run — most recent *-winner.yaml
+    last_run: dict | None = None
+    total_runs = 0
+    try:
+        if candidates_dir.exists():
+            winner_files = sorted(candidates_dir.glob("*-winner.yaml"), reverse=True)
+            total_runs = len(winner_files)
+            if winner_files:
+                latest = _safe_yaml(winner_files[0])
+                champ_score = champion_data["score"] if champion_data else 0.0
+                best_score = latest.get("score", 0.0)
+                last_run = {
+                    "date": latest.get("date") or winner_files[0].name.replace("-winner.yaml", ""),
+                    "candidates": latest.get("candidates_evaluated", None),
+                    "improved": best_score > champ_score,
+                    "best_challenger_score": best_score,
+                }
+    except Exception:
+        pass
+
+    # Queue depth from Firestore
+    queue_depth: dict | None = None
+    try:
+        if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+            import firebase_admin
+            from firebase_admin import credentials as fb_creds
+            from firebase_admin import firestore as fb_store
+
+            if not firebase_admin._apps:
+                cred = fb_creds.ApplicationDefault()
+                firebase_admin.initialize_app(cred)
+
+            db = fb_store.client()
+            docs = db.collection("harness_research_queue").where("status", "==", "pending").stream()
+            counts: dict[str, int] = {}
+            for doc in docs:
+                d = doc.to_dict() or {}
+                tier = d.get("hardware_tier", "unknown")
+                counts[tier] = counts.get(tier, 0) + 1
+            queue_depth = counts
+    except Exception:
+        queue_depth = None
+
+    # Next run estimate: next occurrence of 08:00 UTC
+    now_utc = datetime.now(timezone.utc)
+    next_run = now_utc.replace(hour=8, minute=0, second=0, microsecond=0)
+    if now_utc.hour >= 8:
+        next_run += timedelta(days=1)
+    next_run_iso = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    return {
+        "champion": champion_data,
+        "last_run": last_run,
+        "queue_depth": queue_depth,
+        "next_run_estimate": next_run_iso,
+        "total_runs": total_runs,
+    }
 
 
 @app.get("/api/skills")

@@ -8904,3 +8904,150 @@ async def get_credits_leaderboard_endpoint():
         return {"leaderboard": get_credits_leaderboard()}
     except Exception as exc:
         return {"leaderboard": [], "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Competitions — Threshold Race (#736)
+# ---------------------------------------------------------------------------
+
+_threshold_race_manager = None
+
+
+def _get_threshold_race_manager():
+    global _threshold_race_manager
+    if _threshold_race_manager is None:
+        from castor.competitions.threshold_race import ThresholdRaceManager
+
+        _threshold_race_manager = ThresholdRaceManager()
+    return _threshold_race_manager
+
+
+@app.get("/api/competitions/races", dependencies=[Depends(verify_token)])
+async def list_threshold_races(request: Request):
+    """GET /api/competitions/races — List all open threshold races (#736)."""
+    _check_min_role(request, "viewer")
+    try:
+        mgr = _get_threshold_race_manager()
+        races = mgr.list_open_races()
+        return {"races": [r.to_dict() for r in races]}
+    except Exception as exc:
+        return {"races": [], "error": str(exc)}
+
+
+@app.get("/api/competitions/races/{race_id}/standings", dependencies=[Depends(verify_token)])
+async def get_race_standings(race_id: str, request: Request):
+    """GET /api/competitions/races/{race_id}/standings — Sorted entries for a race (#736)."""
+    _check_min_role(request, "viewer")
+    try:
+        mgr = _get_threshold_race_manager()
+        entries = mgr.get_standings(race_id)
+        return {"race_id": race_id, "standings": [e.to_dict() for e in entries]}
+    except Exception as exc:
+        return {"race_id": race_id, "standings": [], "error": str(exc)}
+
+
+@app.post("/api/competitions/races", dependencies=[Depends(verify_token)])
+async def create_threshold_race(request: Request):
+    """POST /api/competitions/races — Create a new threshold race (admin only) (#736)."""
+    _check_min_role(request, "admin")
+    try:
+        from datetime import datetime, timezone
+
+        body = await request.json()
+        name = body["name"]
+        hardware_tier = body["hardware_tier"]
+        model_id = body.get("model_id")
+        target_score = float(body["target_score"])
+        prize_pool = int(body.get("prize_pool_credits", 0))
+        soft_deadline_raw = body.get("soft_deadline")
+        if soft_deadline_raw is not None:
+            soft_deadline = datetime.fromisoformat(str(soft_deadline_raw))
+        else:
+            soft_deadline = datetime.max.replace(tzinfo=timezone.utc)
+        scenario_pack_id = body.get("scenario_pack_id", "default")
+
+        mgr = _get_threshold_race_manager()
+        race = mgr.create_race(
+            name=name,
+            hardware_tier=hardware_tier,
+            model_id=model_id,
+            target_score=target_score,
+            prize_pool=prize_pool,
+            soft_deadline=soft_deadline,
+            scenario_pack_id=scenario_pack_id,
+        )
+        return {"race": race.to_dict()}
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"Missing required field: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Competition endpoints (#735)
+# ---------------------------------------------------------------------------
+
+
+class CreateSprintRequest(BaseModel):
+    name: str = Field(..., description="Competition display name")
+    hardware_tiers: list[str] = Field(..., description="Eligible hardware tier strings")
+    model_id: Optional[str] = Field(None, description="Optional model constraint")
+    starts_at: str = Field(..., description="ISO 8601 start datetime (UTC)")
+    ends_at: str = Field(..., description="ISO 8601 end datetime (UTC)")
+    prize_pool_credits: int = Field(..., description="Total credits to award to top-3")
+
+
+@app.get("/api/competitions", dependencies=[Depends(verify_token)])
+async def list_competitions_endpoint(request: Request, status: str | None = None):
+    """GET /api/competitions — List active/upcoming sprint competitions."""
+    _check_min_role(request, "operator")
+    try:
+        from castor.competitions.models import CompetitionStatus
+        from castor.competitions.sprint import SprintManager
+
+        mgr = SprintManager()
+        status_filter = CompetitionStatus(status) if status else None
+        comps = mgr.list_competitions(status=status_filter)
+        return {"competitions": [c.to_dict() for c in comps]}
+    except Exception as exc:
+        return {"competitions": [], "error": str(exc)}
+
+
+@app.get("/api/competitions/{competition_id}/leaderboard", dependencies=[Depends(verify_token)])
+async def get_competition_leaderboard_endpoint(request: Request, competition_id: str):
+    """GET /api/competitions/{id}/leaderboard — Return leaderboard entries with rank."""
+    _check_min_role(request, "operator")
+    try:
+        from castor.competitions.sprint import SprintManager
+
+        mgr = SprintManager()
+        entries = mgr.get_leaderboard(competition_id)
+        return {"competition_id": competition_id, "entries": [e.to_dict() for e in entries]}
+    except Exception as exc:
+        return {"competition_id": competition_id, "entries": [], "error": str(exc)}
+
+
+@app.post("/api/competitions", dependencies=[Depends(verify_token)])
+async def create_sprint_endpoint(request: Request, body: CreateSprintRequest):
+    """POST /api/competitions — Create a new sprint competition (admin only)."""
+    _check_min_role(request, "admin")
+    try:
+        from datetime import datetime, timezone
+
+        from castor.competitions.sprint import SprintManager
+
+        def _parse(s: str) -> datetime:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+        mgr = SprintManager()
+        comp = mgr.create_sprint(
+            name=body.name,
+            hardware_tiers=body.hardware_tiers,
+            model_id=body.model_id,
+            starts_at=_parse(body.starts_at),
+            ends_at=_parse(body.ends_at),
+            prize_pool=body.prize_pool_credits,
+        )
+        return comp.to_dict()
+    except Exception as exc:
+        return {"error": str(exc)}

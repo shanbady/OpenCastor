@@ -8716,12 +8716,19 @@ async def get_contribute_endpoint(request: Request):
 
 @app.post("/api/contribute/start", dependencies=[Depends(verify_token)])
 async def start_contribute_endpoint(request: Request):
-    """POST /api/contribute/start — Start idle compute contribution."""
+    """POST /api/contribute/start — Start idle compute contribution.
+
+    Accepts optional JSON body: {"projects": ["harness_research"], "enabled": true}
+    """
     _check_min_role(request, "operator")
     try:
         from castor.skills.contribute import start_contribute
 
-        return start_contribute()
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        return start_contribute(config=body if body else None)
     except Exception as exc:
         return {"error": str(exc)}
 

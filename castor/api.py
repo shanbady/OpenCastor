@@ -5476,6 +5476,23 @@ async def on_startup():
             except Exception as e:
                 logger.debug("RCAN-MQTT startup skipped: %s", e)
 
+    # Auto-start contribute (opt-in via agent.contribute.enabled in RCAN config)
+    if state.config:
+        contribute_cfg = state.config.get("agent", {}).get("contribute", {})
+        if contribute_cfg.get("enabled"):
+            try:
+                from castor.skills.contribute import start_contribute
+
+                result = start_contribute(config=contribute_cfg)
+                logger.info(
+                    "Contribute auto-started: project=%s tier=%s units=%s",
+                    contribute_cfg.get("projects"),
+                    result.get("hardware_tier", "unknown"),
+                    result.get("work_units_total", 0),
+                )
+            except Exception as _contrib_exc:
+                logger.debug("Contribute auto-start skipped: %s", _contrib_exc)
+
     await _start_channels()
 
     host = os.getenv("OPENCASTOR_API_HOST", "127.0.0.1")
@@ -8833,20 +8850,26 @@ async def get_credits_endpoint(request: Request):
             db = _get_firestore_client()
             robot_doc = db.collection("robots").document(rrn).get()
             owner_uid = (
-                (robot_doc.to_dict() or {}).get("owner_uid", rrn)
-                if robot_doc.exists
-                else rrn
+                (robot_doc.to_dict() or {}).get("owner_uid", rrn) if robot_doc.exists else rrn
             )
         except Exception:
             owner_uid = rrn
 
         return get_credits(owner_uid)
     except Exception as exc:
-        return {"credits": 0, "credits_redeemable": 0, "badge": "none", "credit_log": [], "error": str(exc)}
+        return {
+            "credits": 0,
+            "credits_redeemable": 0,
+            "badge": "none",
+            "credit_log": [],
+            "error": str(exc),
+        }
 
 
 class RedeemRequest(BaseModel):
-    type: str = Field(..., description="Redemption type: pro_month, harness_run, api_boost, champion_badge")
+    type: str = Field(
+        ..., description="Redemption type: pro_month, harness_run, api_boost, champion_badge"
+    )
 
 
 @app.post("/api/credits/redeem", dependencies=[Depends(verify_token)])
@@ -8862,9 +8885,7 @@ async def redeem_credits_endpoint(request: Request, body: RedeemRequest):
             db = _get_firestore_client()
             robot_doc = db.collection("robots").document(rrn).get()
             owner_uid = (
-                (robot_doc.to_dict() or {}).get("owner_uid", rrn)
-                if robot_doc.exists
-                else rrn
+                (robot_doc.to_dict() or {}).get("owner_uid", rrn) if robot_doc.exists else rrn
             )
         except Exception:
             owner_uid = rrn

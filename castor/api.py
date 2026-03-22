@@ -1565,6 +1565,196 @@ async def research_contributors():
     }
 
 
+@app.post("/api/harness/apply-champion", dependencies=[Depends(verify_token)])
+async def apply_champion_harness(request: Request):
+    """POST /api/harness/apply-champion — Apply the current research champion config.
+
+    Reads the champion config from Firestore (harness_pending) or ops repo champion.yaml
+    and applies it to this robot's live harness via the same merge path as POST /api/harness.
+
+    This is the opt-in deployment endpoint — champion configs are NEVER auto-applied.
+    Users trigger this explicitly from the app, CLI, or by enabling auto_apply_champion.
+
+    Body (optional):
+      {} — apply champion to this robot only
+      {"dry_run": true} — preview what would change without applying
+
+    Requires: operator role minimum.
+    Response:
+      {"applied": true, "candidate_id": str, "score": float, "config": {...}}
+      {"applied": false, "reason": "no_pending_champion"}
+    """
+    _check_min_role(request, "operator")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    dry_run = bool((body or {}).get("dry_run", False))
+
+    ops_dir = Path(os.environ.get("OPENCASTOR_OPS_DIR", Path.home() / "opencastor-ops"))
+    champion_path = ops_dir / "harness-research" / "champion.yaml"
+
+    # ── Load champion ─────────────────────────────────────────────────────────
+    champion_data: dict | None = None
+
+    # 1. Try Firestore harness_pending for this robot's RRN
+    rrn = getattr(state, "rrn", None) or os.environ.get("CASTOR_RRN")
+    if rrn:
+        try:
+            import firebase_admin
+            from firebase_admin import credentials as fb_creds
+            from firebase_admin import firestore as fb_store
+
+            sa_path = Path.home() / ".config" / "opencastor" / "firebase-sa-key.json"
+            if not firebase_admin._apps and sa_path.exists():
+                cred = fb_creds.Certificate(str(sa_path))
+                firebase_admin.initialize_app(cred)
+
+            db = fb_store.client()
+            robot_doc = db.collection("robots").document(rrn).get()
+            if robot_doc.exists:
+                robot_data = robot_doc.to_dict() or {}
+                pending = robot_data.get("harness_pending")
+                if pending:
+                    champion_data = {
+                        "candidate_id": pending.pop("_candidate_id", "unknown"),
+                        "score": pending.pop("_score", 0.0),
+                        "config": {k: v for k, v in pending.items()
+                                   if not k.startswith("_")},
+                    }
+                    pending.pop("_pending_since", None)
+        except Exception as exc:
+            logger.debug("Firestore pending lookup failed: %s", exc)
+
+    # 2. Fall back to ops repo champion.yaml
+    if champion_data is None and champion_path.exists():
+        try:
+            raw = yaml.safe_load(champion_path.read_text()) or {}
+            if raw.get("config"):
+                champion_data = {
+                    "candidate_id": raw.get("candidate_id", raw.get("id", "unknown")),
+                    "score": raw.get("score", 0.0),
+                    "config": raw["config"],
+                }
+        except Exception as exc:
+            logger.warning("champion.yaml read failed: %s", exc)
+
+    if not champion_data or not champion_data.get("config"):
+        return {"applied": False, "reason": "no_champion_available"}
+
+    config = champion_data["config"]
+    candidate_id = champion_data["candidate_id"]
+    score = champion_data["score"]
+
+    if dry_run:
+        return {
+            "applied": False,
+            "dry_run": True,
+            "candidate_id": candidate_id,
+            "score": score,
+            "config": config,
+            "message": "dry_run=true — no changes made",
+        }
+
+    # ── Apply: merge tunables into live config via same path as POST /api/harness ──
+    TUNABLE_KEYS = {
+        "max_iterations", "thinking_budget", "context_budget",
+        "p66_consent_threshold", "retry_on_error", "drift_detection",
+        "cost_gate_usd", "enabled",
+    }
+
+    if state.config is None:
+        return {"applied": False, "reason": "config_not_loaded"}
+
+    import copy
+    new_config = copy.deepcopy(state.config)
+    agent = new_config.setdefault("agent", {})
+    harness = agent.setdefault("harness", {})
+
+    applied_keys: dict = {}
+    for key, value in config.items():
+        if key in TUNABLE_KEYS:
+            harness[key] = value
+            applied_keys[key] = value
+
+    # P66 invariant: never touch safety hooks
+    harness.pop("p66_audit", None)  # ensure we never disable it
+
+    # Write back to config file
+    config_path = os.getenv("OPENCASTOR_CONFIG", "robot.rcan.yaml")
+    try:
+        with open(config_path, "w") as f:
+            yaml.dump(new_config, f, default_flow_style=False)
+        state.config = new_config
+        logger.info(
+            "Applied champion harness '%s' (score=%.4f): %s",
+            candidate_id, score, applied_keys,
+        )
+    except Exception as exc:
+        return {"applied": False, "reason": f"write_failed: {exc}"}
+
+    # Clear pending flag from Firestore
+    if rrn:
+        try:
+            from firebase_admin import firestore as fb_store
+            db = fb_store.client()
+            db.collection("robots").document(rrn).update({
+                "harness_pending": fb_store.DELETE_FIELD,
+                "harness_tunables": applied_keys,
+            })
+        except Exception:
+            pass
+
+    return {
+        "applied": True,
+        "candidate_id": candidate_id,
+        "score": score,
+        "config": applied_keys,
+    }
+
+
+@app.post("/api/harness/auto-apply", dependencies=[Depends(verify_token)])
+async def set_auto_apply_champion(request: Request):
+    """POST /api/harness/auto-apply — Toggle auto-apply of future champion configs.
+
+    Body: {"enabled": true|false}
+    When enabled=true, future champion promotions will be applied immediately to this robot.
+    When enabled=false (default), champion configs are stored as pending for manual review.
+
+    Requires: operator role.
+    """
+    _check_min_role(request, "operator")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    enabled = bool((body or {}).get("enabled", False))
+
+    rrn = getattr(state, "rrn", None) or os.environ.get("CASTOR_RRN")
+    if not rrn:
+        return {"error": "robot RRN not available"}
+
+    try:
+        import firebase_admin
+        from firebase_admin import credentials as fb_creds
+        from firebase_admin import firestore as fb_store
+
+        sa_path = Path.home() / ".config" / "opencastor" / "firebase-sa-key.json"
+        if not firebase_admin._apps and sa_path.exists():
+            cred = fb_creds.Certificate(str(sa_path))
+            firebase_admin.initialize_app(cred)
+
+        db = fb_store.client()
+        db.collection("robots").document(rrn).update({
+            "contribute.auto_apply_champion": enabled,
+        })
+        logger.info("Set auto_apply_champion=%s for robot %s", enabled, rrn)
+        return {"auto_apply_champion": enabled, "rrn": rrn}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @app.get("/api/skills")
 async def get_skills(request: Request):
     """GET /api/skills — Return available skills and CLI commands as slash command registry.

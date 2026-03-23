@@ -1620,8 +1620,7 @@ async def apply_champion_harness(request: Request):
                     champion_data = {
                         "candidate_id": pending.pop("_candidate_id", "unknown"),
                         "score": pending.pop("_score", 0.0),
-                        "config": {k: v for k, v in pending.items()
-                                   if not k.startswith("_")},
+                        "config": {k: v for k, v in pending.items() if not k.startswith("_")},
                     }
                     pending.pop("_pending_since", None)
         except Exception as exc:
@@ -1659,15 +1658,21 @@ async def apply_champion_harness(request: Request):
 
     # ── Apply: merge tunables into live config via same path as POST /api/harness ──
     TUNABLE_KEYS = {
-        "max_iterations", "thinking_budget", "context_budget",
-        "p66_consent_threshold", "retry_on_error", "drift_detection",
-        "cost_gate_usd", "enabled",
+        "max_iterations",
+        "thinking_budget",
+        "context_budget",
+        "p66_consent_threshold",
+        "retry_on_error",
+        "drift_detection",
+        "cost_gate_usd",
+        "enabled",
     }
 
     if state.config is None:
         return {"applied": False, "reason": "config_not_loaded"}
 
     import copy
+
     new_config = copy.deepcopy(state.config)
     agent = new_config.setdefault("agent", {})
     harness = agent.setdefault("harness", {})
@@ -1689,7 +1694,9 @@ async def apply_champion_harness(request: Request):
         state.config = new_config
         logger.info(
             "Applied champion harness '%s' (score=%.4f): %s",
-            candidate_id, score, applied_keys,
+            candidate_id,
+            score,
+            applied_keys,
         )
     except Exception as exc:
         return {"applied": False, "reason": f"write_failed: {exc}"}
@@ -1698,11 +1705,14 @@ async def apply_champion_harness(request: Request):
     if rrn:
         try:
             from firebase_admin import firestore as fb_store
+
             db = fb_store.client()
-            db.collection("robots").document(rrn).update({
-                "harness_pending": fb_store.DELETE_FIELD,
-                "harness_tunables": applied_keys,
-            })
+            db.collection("robots").document(rrn).update(
+                {
+                    "harness_pending": fb_store.DELETE_FIELD,
+                    "harness_tunables": applied_keys,
+                }
+            )
         except Exception:
             pass
 
@@ -1746,9 +1756,11 @@ async def set_auto_apply_champion(request: Request):
             firebase_admin.initialize_app(cred)
 
         db = fb_store.client()
-        db.collection("robots").document(rrn).update({
-            "contribute.auto_apply_champion": enabled,
-        })
+        db.collection("robots").document(rrn).update(
+            {
+                "contribute.auto_apply_champion": enabled,
+            }
+        )
         logger.info("Set auto_apply_champion=%s for robot %s", enabled, rrn)
         return {"auto_apply_champion": enabled, "rrn": rrn}
     except Exception as exc:

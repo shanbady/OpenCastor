@@ -1465,7 +1465,7 @@ async def research_status():
         "queue_depth": queue_depth,
         "next_run_estimate": next_run_iso,
         "total_runs": total_runs,
-        "search_space_size": 263424,
+        "search_space_size": 790272,
     }
 
 
@@ -1482,11 +1482,11 @@ async def research_contributors():
         "contributors": [{"rrn": str, "work_units_total": int,
                           "champion_evals": int, "credit_share_pct": float}],
         "total_evaluated": int,
-        "search_space_size": 263424,
+        "search_space_size": 790272,
         "explored_pct": float,
       }
     """
-    SEARCH_SPACE_SIZE = 263424
+    SEARCH_SPACE_SIZE = 790272
 
     ops_dir = Path(os.environ.get("OPENCASTOR_OPS_DIR", Path.home() / "opencastor-ops"))
     champion_path = ops_dir / "harness-research" / "champion.yaml"

@@ -71,6 +71,13 @@ __all__ = [
     "SecurityContext",
     "TelemetryEvent",
     "TelemetryExporter",
+    # visual planner
+    "VISUAL_PLANNER_LAYER_SCHEMA",
+    "VISUAL_PLANNER_MODELS",
+    "VisualPlannerConfig",
+    "VisualPlannerLayer",
+    "VisualPlannerResult",
+    "make_visual_planner",
 ]
 from castor.harness.memory import (
     FilesystemBackend,
@@ -92,4 +99,12 @@ from castor.harness.security import (
     SecurityContext,
     TelemetryEvent,
     TelemetryExporter,
+)
+from castor.harness.visual_planner import (
+    VISUAL_PLANNER_LAYER_SCHEMA,
+    VISUAL_PLANNER_MODELS,
+    VisualPlannerConfig,
+    VisualPlannerLayer,
+    VisualPlannerResult,
+    make_visual_planner,
 )

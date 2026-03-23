@@ -127,8 +127,14 @@ function FeedbackSheet({ onClose }: { onClose: () => void }) {
   const toggleInterest = (v: string) =>
     setInterests(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
 
-  const submit = () => {
-    // No backend — open a pre-filled GitHub Issue so feedback lands in the repo.
+  const buildSummary = () => [
+    `Robot ownership: ${ownership || '(not answered)'}`,
+    `Interests: ${interests.length ? interests.join(', ') : '(none selected)'}`,
+    `Open feedback: ${openText || '(none)'}`,
+  ].join('\n')
+
+  const submitPublic = () => {
+    // Opens a pre-filled GitHub Issue (public, linked to your account)
     const body = [
       `**Robot ownership:** ${ownership || '(not answered)'}`,
       '',
@@ -137,7 +143,7 @@ function FeedbackSheet({ onClose }: { onClose: () => void }) {
       `**Open feedback:** ${openText || '(none)'}`,
       '',
       '---',
-      '*Submitted via the OpenCastor demo leaderboard feedback form.*',
+      '*Submitted via the OpenCastor demo leaderboard.*',
     ].join('\n')
 
     const url = new URL('https://github.com/craigm26/opencastor-ops/issues/new')
@@ -145,6 +151,16 @@ function FeedbackSheet({ onClose }: { onClose: () => void }) {
     url.searchParams.set('body', body)
     url.searchParams.set('labels', 'demo-feedback')
     window.open(url.toString(), '_blank')
+    setStep('thanks')
+  }
+
+  const submitPrivate = () => {
+    // mailto: — opens user's email client, goes directly to Craig, no account needed
+    const subject = encodeURIComponent('[OpenCastor Demo] Private feedback')
+    const body = encodeURIComponent(
+      buildSummary() + '\n\n---\nSent via craigm26.github.io/OpenCastor'
+    )
+    window.open(`mailto:craigm26@gmail.com?subject=${subject}&body=${body}`, '_self')
     setStep('thanks')
   }
 
@@ -202,12 +218,23 @@ function FeedbackSheet({ onClose }: { onClose: () => void }) {
               />
             </div>
 
-            <button
-              onClick={submit}
-              style={{ width: '100%', padding: '11px 0', background: 'var(--cyan)', color: '#0e1416', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-head)' }}
-            >
-              Submit feedback
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={submitPrivate}
+                style={{ width: '100%', padding: '11px 0', background: 'var(--cyan)', color: '#0e1416', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-head)', cursor: 'pointer' }}
+              >
+                ✉️ Send privately — craigm26@gmail.com
+              </button>
+              <button
+                onClick={submitPublic}
+                style={{ width: '100%', padding: '10px 0', background: 'transparent', color: 'var(--text-muted)', borderRadius: 8, border: '1px solid var(--border)', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-head)', cursor: 'pointer' }}
+              >
+                Post as public GitHub issue
+              </button>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                Private feedback opens your email client. No account needed.
+              </p>
+            </div>
           </>
         )}
       </div>

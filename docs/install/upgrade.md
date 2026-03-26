@@ -181,3 +181,59 @@ castor doctor
 ```
 
 This checks CPU/memory/disk, RCAN compliance, and — after installing hardware deps — reports any missing optional packages detected by `suggest_extras()`.
+
+---
+
+## Upgrading to RCAN v2.1
+
+v2.1 is a **clean break** from v1.x. After upgrading OpenCastor, run the migration tool before restarting:
+
+```bash
+git pull origin main
+pip install -e .
+castor migrate --config robot.rcan.yaml   # upgrades any version → 2.1
+```
+
+### New required steps after migration
+
+**1. Generate and sign your firmware manifest**
+
+```bash
+castor attest generate
+castor attest sign --key /path/to/robot-private.pem
+```
+
+**2. Generate and publish your SBOM**
+
+```bash
+castor sbom generate
+castor sbom publish --token <your-rrf-token>
+```
+
+**3. Enable the authority handler in your config**
+
+```yaml
+# robot.rcan.yaml
+authority_handler_enabled: true
+audit_retention_days: 3650   # 10yr — required for EU AI Act Art. 12
+```
+
+**4. Verify L5 compliance**
+
+```bash
+castor doctor
+castor conformance --json | python3 -m json.tool
+```
+
+Firmware and SBOM artifacts live at `/run/opencastor/` (runtime-generated). They are `warn` not `fail` if absent at startup — generate them at least once before the EU AI Act deadline: **August 2, 2026**.
+
+### Breaking changes from v1.x
+
+| Before (v1.x) | After (v2.1) |
+|---|---|
+| `rcan_version: "1.10"` | `rcan_version: "2.1"` |
+| `LevelOfAssurance.HARDWARE_TOKEN` | `Role.ADMIN` or `Role.CREATOR` |
+| `MessageType.ALERT` | `MessageType.FAULT_REPORT` |
+| `MessageType.AUDIT` | `MessageType.TRANSPARENCY` |
+| `MessageType.FEDERATION_SYNC` | `MessageType.FLEET_COMMAND` |
+| `signature: "pending"` in wire format | **Rejected at parse time** |

@@ -22,13 +22,15 @@ logger = logging.getLogger("OpenCastor.Auth.M2MTrusted")
 # Active session tracking
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class M2MTrustedSession:
     """Tracks an active M2M_TRUSTED orchestrator session."""
-    orchestrator_id: str            # JWT sub claim
-    fleet_rrns: list[str]           # Authorized robot RRNs from JWT
-    exp: int                        # JWT expiry (Unix timestamp)
-    token_hash: str                 # SHA-256 of raw JWT (for revocation matching)
+
+    orchestrator_id: str  # JWT sub claim
+    fleet_rrns: list[str]  # Authorized robot RRNs from JWT
+    exp: int  # JWT expiry (Unix timestamp)
+    token_hash: str  # SHA-256 of raw JWT (for revocation matching)
     started_at: float = field(default_factory=time.time)
 
     @property
@@ -60,6 +62,7 @@ def has_active_m2m_trusted_sessions() -> bool:
 # Token validation
 # ---------------------------------------------------------------------------
 
+
 class M2MTrustedAuthError(Exception):
     def __init__(self, message: str, code: str = "M2M_AUTH_ERROR"):
         super().__init__(message)
@@ -68,6 +71,7 @@ class M2MTrustedAuthError(Exception):
 
 def _token_hash(token: str) -> str:
     import hashlib
+
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -93,10 +97,11 @@ def validate_m2m_trusted_message(
     try:
         import base64
         import json as _json
-        parts = token.split('.')
+
+        parts = token.split(".")
         if len(parts) < 2:
             raise M2MTrustedAuthError("Invalid JWT structure", "M2M_INVALID_TOKEN")
-        b64 = parts[1] + '=' * (4 - len(parts[1]) % 4)
+        b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
         payload = _json.loads(base64.urlsafe_b64decode(b64))
     except M2MTrustedAuthError:
         raise
@@ -166,7 +171,9 @@ def register_session(session: M2MTrustedSession) -> None:
     _active_sessions[session.orchestrator_id] = session
     logger.info(
         "M2M_TRUSTED session started: orchestrator=%s fleet=%s exp=%s",
-        session.orchestrator_id, session.fleet_rrns, session.exp,
+        session.orchestrator_id,
+        session.fleet_rrns,
+        session.exp,
     )
 
 
@@ -181,6 +188,7 @@ def terminate_session(orchestrator_id: str, reason: str = "normal") -> None:
 # Revocation cache
 # ---------------------------------------------------------------------------
 
+
 class RevocationCache:
     """Thread-safe in-memory RRF revocation cache.
 
@@ -192,6 +200,7 @@ class RevocationCache:
         self._revoked_jtis: set[str] = set()
         self._fetched_at: float = 0.0
         import threading
+
         self._lock = threading.Lock()
 
     def update(self, revoked_orchestrators: list[str], revoked_jtis: list[str]) -> None:
@@ -210,7 +219,7 @@ class RevocationCache:
 
     @property
     def age_seconds(self) -> float:
-        return time.time() - self._fetched_at if self._fetched_at else float('inf')
+        return time.time() - self._fetched_at if self._fetched_at else float("inf")
 
     @property
     def is_stale(self) -> bool:

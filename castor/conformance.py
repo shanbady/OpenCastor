@@ -1772,7 +1772,6 @@ class ConformanceChecker:
             ),
         )
 
-
     # -----------------------------------------------------------------------
     # RCAN v2.1 / L5 Supply Chain + EU AI Act checks
     # -----------------------------------------------------------------------
@@ -1792,16 +1791,20 @@ class ConformanceChecker:
         try:
             parts = [int(x) for x in ver.split(".")[:2]]
             major, minor = parts[0], parts[1] if len(parts) > 1 else 0
-            ok = (major == 2 and minor >= 1)
+            ok = major == 2 and minor >= 1
         except Exception:
             ok = False
         if ok:
             return ConformanceResult(
-                check_id=cid, category="rcan_v21", status="pass",
+                check_id=cid,
+                category="rcan_v21",
+                status="pass",
                 detail=f"rcan_version is '{ver}' — satisfies v2.1 requirement",
             )
         return ConformanceResult(
-            check_id=cid, category="rcan_v21", status="fail",
+            check_id=cid,
+            category="rcan_v21",
+            status="fail",
             detail=f"rcan_version is '{ver}' — must be 2.1 or higher for v2.1 compliance",
             fix="Set rcan_version: '2.1' in your config and run `castor migrate`",
         )
@@ -1809,6 +1812,7 @@ class ConformanceChecker:
     def _v21_firmware_manifest(self) -> ConformanceResult:
         cid = "rcan_v21.firmware_manifest"
         import os
+
         manifest_paths = [
             "/run/opencastor/rcan-firmware-manifest.json",
             "/tmp/opencastor-firmware-manifest.json",
@@ -1817,22 +1821,29 @@ class ConformanceChecker:
             if os.path.exists(p):
                 try:
                     import json as _json
+
                     d = _json.loads(open(p).read())
                     has_sig = bool(d.get("signature"))
                     if has_sig:
                         return ConformanceResult(
-                            check_id=cid, category="rcan_v21", status="pass",
+                            check_id=cid,
+                            category="rcan_v21",
+                            status="pass",
                             detail=f"Signed firmware manifest found at {p}",
                         )
                     return ConformanceResult(
-                        check_id=cid, category="rcan_v21", status="warn",
+                        check_id=cid,
+                        category="rcan_v21",
+                        status="warn",
                         detail=f"Firmware manifest exists at {p} but is UNSIGNED",
                         fix="Run: castor attest sign --key <robot-private.pem>",
                     )
                 except Exception:
                     pass
         return ConformanceResult(
-            check_id=cid, category="rcan_v21", status="warn",
+            check_id=cid,
+            category="rcan_v21",
+            status="warn",
             detail="No firmware manifest found (required for EU AI Act Art. 16(d) in production)",
             fix="Run: castor attest generate && castor attest sign --key <robot-private.pem>",
         )
@@ -1840,6 +1851,7 @@ class ConformanceChecker:
     def _v21_sbom_attestation(self) -> ConformanceResult:
         cid = "rcan_v21.sbom_attestation"
         import os
+
         sbom_paths = [
             "/run/opencastor/rcan-sbom.json",
             "/tmp/opencastor-rcan-sbom.json",
@@ -1848,23 +1860,30 @@ class ConformanceChecker:
             if os.path.exists(p):
                 try:
                     import json as _json
+
                     d = _json.loads(open(p).read())
                     rcan = d.get("x-rcan", {})
                     has_countersig = bool(rcan.get("rrf_countersig"))
                     if has_countersig:
                         return ConformanceResult(
-                            check_id=cid, category="rcan_v21", status="pass",
+                            check_id=cid,
+                            category="rcan_v21",
+                            status="pass",
                             detail=f"SBOM found at {p} with RRF countersignature",
                         )
                     return ConformanceResult(
-                        check_id=cid, category="rcan_v21", status="warn",
+                        check_id=cid,
+                        category="rcan_v21",
+                        status="warn",
                         detail=f"SBOM found at {p} but not yet RRF-countersigned",
                         fix="Run: castor sbom publish --token <rrf-token>",
                     )
                 except Exception:
                     pass
         return ConformanceResult(
-            check_id=cid, category="rcan_v21", status="warn",
+            check_id=cid,
+            category="rcan_v21",
+            status="warn",
             detail="No SBOM found (required for EU AI Act Art. 16(a) in production)",
             fix="Run: castor sbom generate && castor sbom publish --token <rrf-token>",
         )
@@ -1874,6 +1893,7 @@ class ConformanceChecker:
         # Check if the authority module is importable and configured
         try:
             from castor.authority import AuthorityRequestHandler  # noqa: F401
+
             # Check if handler is registered in harness YAML (optional deeper check)
             harness = self._cfg.get("harness", {})
             handlers = harness.get("message_handlers", {})
@@ -1886,11 +1906,15 @@ class ConformanceChecker:
             )
             if has_handler:
                 return ConformanceResult(
-                    check_id=cid, category="rcan_v21", status="pass",
+                    check_id=cid,
+                    category="rcan_v21",
+                    status="pass",
                     detail="AUTHORITY_ACCESS (41) handler registered",
                 )
             return ConformanceResult(
-                check_id=cid, category="rcan_v21", status="warn",
+                check_id=cid,
+                category="rcan_v21",
+                status="warn",
                 detail="castor.authority module available but handler not explicitly registered",
                 fix=(
                     "Add authority_handler_enabled: true to config, or register handler in "
@@ -1899,7 +1923,9 @@ class ConformanceChecker:
             )
         except ImportError:
             return ConformanceResult(
-                check_id=cid, category="rcan_v21", status="fail",
+                check_id=cid,
+                category="rcan_v21",
+                status="fail",
                 detail="castor.authority module not found — AUTHORITY_ACCESS handler not available",
                 fix="Ensure castor/authority.py is installed (OpenCastor v2026.4+)",
             )
@@ -1910,17 +1936,23 @@ class ConformanceChecker:
         retention_days = self._cfg.get("audit_retention_days", 0)
         if retention_days >= 3650:
             return ConformanceResult(
-                check_id=cid, category="rcan_v21", status="pass",
+                check_id=cid,
+                category="rcan_v21",
+                status="pass",
                 detail=f"Audit chain retention: {retention_days} days (≥ 3650 days required by EU AI Act Art. 12)",
             )
         if retention_days > 0:
             return ConformanceResult(
-                check_id=cid, category="rcan_v21", status="warn",
+                check_id=cid,
+                category="rcan_v21",
+                status="warn",
                 detail=f"Audit chain retention: {retention_days} days — EU AI Act Art. 12 requires min 10 years (3650 days)",
                 fix="Set audit_retention_days: 3650 in your config",
             )
         return ConformanceResult(
-            check_id=cid, category="rcan_v21", status="warn",
+            check_id=cid,
+            category="rcan_v21",
+            status="warn",
             detail="audit_retention_days not configured — EU AI Act Art. 12 requires min 10 years",
             fix="Set audit_retention_days: 3650 in your config",
         )
@@ -1950,17 +1982,37 @@ class ConformanceChecker:
             "rcan_version": self._cfg.get("rcan_version", "unknown"),
             "checks": [
                 {
-                    "id":     r.check_id,
+                    "id": r.check_id,
                     "status": r.status,
                     "detail": r.detail,
-                    "fix":    r.fix,
+                    "fix": r.fix,
                 }
                 for r in results
             ],
             "eu_ai_act_mapping": [
-                {"article": "Art. 16(a)", "provision": "§12 SBOM",               "status": next((r.status for r in results if "sbom" in r.check_id), "unknown")},
-                {"article": "Art. 16(d)", "provision": "§11 Firmware Manifest",   "status": next((r.status for r in results if "firmware" in r.check_id), "unknown")},
-                {"article": "Art. 12",    "provision": "§16 Commitment Chain",    "status": next((r.status for r in results if "audit" in r.check_id), "unknown")},
-                {"article": "Art. 16(j)", "provision": "§13 Authority Access",    "status": next((r.status for r in results if "authority" in r.check_id), "unknown")},
+                {
+                    "article": "Art. 16(a)",
+                    "provision": "§12 SBOM",
+                    "status": next((r.status for r in results if "sbom" in r.check_id), "unknown"),
+                },
+                {
+                    "article": "Art. 16(d)",
+                    "provision": "§11 Firmware Manifest",
+                    "status": next(
+                        (r.status for r in results if "firmware" in r.check_id), "unknown"
+                    ),
+                },
+                {
+                    "article": "Art. 12",
+                    "provision": "§16 Commitment Chain",
+                    "status": next((r.status for r in results if "audit" in r.check_id), "unknown"),
+                },
+                {
+                    "article": "Art. 16(j)",
+                    "provision": "§13 Authority Access",
+                    "status": next(
+                        (r.status for r in results if "authority" in r.check_id), "unknown"
+                    ),
+                },
             ],
         }

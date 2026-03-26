@@ -209,9 +209,7 @@ def _migrate_1_10_to_2_1(config: dict) -> dict:
             f"Deprecated RCAN v1.x message type aliases in config: {found_aliases}. "
             "These are removed in v2.1 — update to canonical type names."
         )
-        logger.warning(
-            "RCAN v2.1 migration: deprecated aliases found in config: %s", found_aliases
-        )
+        logger.warning("RCAN v2.1 migration: deprecated aliases found in config: %s", found_aliases)
 
     return config
 

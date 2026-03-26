@@ -32,6 +32,7 @@ def is_accepted_version(version: str) -> bool:
 # ComplianceReport dataclass
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclasses.dataclass
 class ComplianceReport:
     """Structured compliance report for a robot config."""
@@ -77,12 +78,16 @@ class ComplianceReport:
 # Printing helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def print_report_text(report: ComplianceReport, file: IO[str] = sys.stdout) -> None:
     status_line = "✅ COMPLIANT" if report.compliant else "❌ NON-COMPLIANT"
     print(f"\nRCAN v{report.spec_version} Compliance Report", file=file)
     print("=" * 40, file=file)
     print(f"Status: {status_line}", file=file)
-    print(f"Score:  {report.score}/100  (pass={report.passed} warn={report.warned} fail={report.failed})", file=file)
+    print(
+        f"Score:  {report.score}/100  (pass={report.passed} warn={report.warned} fail={report.failed})",
+        file=file,
+    )
     print(file=file)
     for check in report.checks:
         icon = {"pass": "✅", "warn": "⚠️ ", "fail": "❌"}.get(check.get("status", ""), "❓")
@@ -100,13 +105,16 @@ def print_report_json(report: ComplianceReport, file: IO[str] = sys.stdout) -> N
 # Report generation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _get_rcan_py_version() -> str | None:
     try:
         from rcan.version import SDK_VERSION
+
         return SDK_VERSION
     except Exception:
         try:
             import importlib.metadata
+
             return importlib.metadata.version("rcan")
         except Exception:
             return None
@@ -115,6 +123,7 @@ def _get_rcan_py_version() -> str | None:
 def _get_opencastor_version() -> str:
     try:
         import castor
+
         return getattr(castor, "__version__", "unknown")
     except Exception:
         return "unknown"
@@ -122,6 +131,7 @@ def _get_opencastor_version() -> str:
 
 def _load_config(config_path: str) -> dict[str, Any]:
     import yaml
+
     with open(config_path) as f:
         return yaml.safe_load(f) or {}
 
@@ -130,6 +140,7 @@ def _run_conformance_checks(config: dict[str, Any], config_path: str) -> list[di
     """Run all conformance checks via ConformanceChecker."""
     try:
         from castor.conformance import ConformanceChecker
+
         checker = ConformanceChecker(config, config_path=config_path)
         results = checker.run_all()
         return [
@@ -142,7 +153,9 @@ def _run_conformance_checks(config: dict[str, Any], config_path: str) -> list[di
             for r in results
         ]
     except Exception as exc:
-        return [{"check_id": "conformance.error", "status": "fail", "message": str(exc), "detail": None}]
+        return [
+            {"check_id": "conformance.error", "status": "fail", "message": str(exc), "detail": None}
+        ]
 
 
 def generate_report(config_path: str) -> ComplianceReport:

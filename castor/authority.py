@@ -27,13 +27,14 @@ logger = logging.getLogger("OpenCastor.Authority")
 # Payload types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AuthorityAccessPayload:
     request_id: str
     authority_id: str
-    requested_data: list[str]   # "audit_chain", "transparency_records", "sbom", "firmware_manifest"
+    requested_data: list[str]  # "audit_chain", "transparency_records", "sbom", "firmware_manifest"
     justification: str
-    expires_at: int             # Unix timestamp
+    expires_at: int  # Unix timestamp
 
     @classmethod
     def from_dict(cls, d: dict) -> AuthorityAccessPayload:
@@ -70,6 +71,7 @@ class AuthorityResponseData:
 # Error codes
 # ---------------------------------------------------------------------------
 
+
 class AuthorityError(Exception):
     code: str = "AUTHORITY_ERROR"
 
@@ -97,6 +99,7 @@ class AuthorityRequestExpiredError(AuthorityError):
 # ---------------------------------------------------------------------------
 # Audit data export
 # ---------------------------------------------------------------------------
+
 
 class AuditDataExporter:
     """Packages audit data for AUTHORITY_RESPONSE."""
@@ -129,6 +132,7 @@ class AuditDataExporter:
         """Export recent commitment chain entries."""
         try:
             from castor.rcan.commitment_chain import CommitmentChain
+
             chain = CommitmentChain.load()
             # Export up to 1000 most recent entries
             return chain.to_list()[-1000:]
@@ -140,6 +144,7 @@ class AuditDataExporter:
         """Export TRANSPARENCY (type 18) log entries."""
         try:
             from castor.audit import load_audit_log
+
             records = load_audit_log(event_type="transparency")
             return [r for r in records][-500:]
         except Exception as e:
@@ -160,6 +165,7 @@ class AuditDataExporter:
 # ---------------------------------------------------------------------------
 # Authority request handler
 # ---------------------------------------------------------------------------
+
 
 class AuthorityRequestHandler:
     """Validates and processes AUTHORITY_ACCESS (41) messages."""
@@ -235,10 +241,10 @@ class AuthorityRequestHandler:
             self._log_to_chain(req, outcome="responded")
 
             return {
-                "request_id":  req.request_id,
-                "rrn":         self.rrn,
+                "request_id": req.request_id,
+                "rrn": self.rrn,
                 "provided_at": int(time.time()),
-                "data":        data.to_dict(),
+                "data": data.to_dict(),
             }
 
         except AuthorityError:
@@ -289,15 +295,18 @@ class AuthorityRequestHandler:
         """Log authority access event to commitment chain."""
         try:
             from castor.rcan.commitment_chain import CommitmentChain
+
             chain = CommitmentChain.load()
-            chain.append({
-                "event_type":   "authority_access",
-                "authority_id": req.authority_id,
-                "request_id":   req.request_id,
-                "outcome":      outcome,
-                "timestamp":    int(time.time()),
-                "rrn":          self.rrn,
-            })
+            chain.append(
+                {
+                    "event_type": "authority_access",
+                    "authority_id": req.authority_id,
+                    "request_id": req.request_id,
+                    "outcome": outcome,
+                    "timestamp": int(time.time()),
+                    "rrn": self.rrn,
+                }
+            )
         except Exception as e:
             logger.error("Failed to log AUTHORITY_ACCESS to commitment chain: %s", e)
 
@@ -305,6 +314,7 @@ class AuthorityRequestHandler:
 # ---------------------------------------------------------------------------
 # Convenience builder
 # ---------------------------------------------------------------------------
+
 
 def send_authority_response(
     request_payload: dict,
@@ -345,10 +355,10 @@ def send_authority_response(
     response_payload = handler.handle(request_payload)
 
     return {
-        "version":         "2.1.0",
-        "message_id":      str(uuid.uuid4()),
-        "source_ruri":     source_ruri,
-        "target_ruri":     target_ruri,
-        "type":            int(MessageType.AUTHORITY_RESPONSE),
-        "payload":         response_payload,
+        "version": "2.1.0",
+        "message_id": str(uuid.uuid4()),
+        "source_ruri": source_ruri,
+        "target_ruri": target_ruri,
+        "type": int(MessageType.AUTHORITY_RESPONSE),
+        "payload": response_payload,
     }

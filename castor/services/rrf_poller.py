@@ -84,9 +84,7 @@ class RRFRevocationPoller:
                 continue
 
             try:
-                data = await asyncio.get_event_loop().run_in_executor(
-                    None, self._fetch_revocations
-                )
+                data = await asyncio.get_event_loop().run_in_executor(None, self._fetch_revocations)
                 revoked_orchestrators = data.get("revoked_orchestrators", [])
                 revoked_jtis = data.get("revoked_jtis", [])
                 revocation_cache.update(revoked_orchestrators, revoked_jtis)
@@ -126,13 +124,16 @@ class RRFRevocationPoller:
         """Log revocation to commitment chain as TRANSPARENCY (16)."""
         try:
             from castor.rcan.commitment_chain import CommitmentChain
+
             chain = CommitmentChain.load()
-            chain.append({
-                "event_type":     "m2m_trusted_revoked",
-                "orchestrator_id": orchestrator_id,
-                "timestamp":      int(time.time()),
-                "source":         "rrf_revocation_list",
-            })
+            chain.append(
+                {
+                    "event_type": "m2m_trusted_revoked",
+                    "orchestrator_id": orchestrator_id,
+                    "timestamp": int(time.time()),
+                    "source": "rrf_revocation_list",
+                }
+            )
         except Exception as e:
             logger.error("Failed to log M2M_TRUSTED revocation to commitment chain: %s", e)
 

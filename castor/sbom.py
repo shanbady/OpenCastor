@@ -40,12 +40,13 @@ RRF_SBOM_PUBLISH_URL = "https://robot-registry-foundation.pages.dev/v2/robots/{r
 # Data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SBOMComponent:
-    type: str                  # "library", "framework", "operating-system"
+    type: str  # "library", "framework", "operating-system"
     name: str
     version: str
-    purl: str                  # package URL, e.g. "pkg:pypi/opencastor@2026.3.26.0"
+    purl: str  # package URL, e.g. "pkg:pypi/opencastor@2026.3.26.0"
     bom_ref: str = ""
     hashes: list[dict] = field(default_factory=list)
 
@@ -61,6 +62,7 @@ class RCANSBOMExtensions:
 @dataclass
 class RCANBOM:
     """CycloneDX 1.5 SBOM with RCAN extensions."""
+
     bom_format: str = "CycloneDX"
     spec_version: str = "1.5"
     serial_number: str = ""
@@ -71,17 +73,17 @@ class RCANBOM:
 
     def to_dict(self) -> dict:
         d = {
-            "bomFormat":    self.bom_format,
-            "specVersion":  self.spec_version,
+            "bomFormat": self.bom_format,
+            "specVersion": self.spec_version,
             "serialNumber": self.serial_number,
-            "version":      self.version,
-            "metadata":     self.metadata,
+            "version": self.version,
+            "metadata": self.metadata,
             "components": [
                 {
-                    "type":     c.type,
-                    "name":     c.name,
-                    "version":  c.version,
-                    "purl":     c.purl,
+                    "type": c.type,
+                    "name": c.name,
+                    "version": c.version,
+                    "purl": c.purl,
                     **({"bom-ref": c.bom_ref} if c.bom_ref else {}),
                     **({"hashes": c.hashes} if c.hashes else {}),
                 }
@@ -90,11 +92,12 @@ class RCANBOM:
         }
         if self.rcan:
             d["x-rcan"] = {
-                "rrn":            self.rcan.rrn,
-                "spec_version":   self.rcan.spec_version,
+                "rrn": self.rcan.rrn,
+                "spec_version": self.rcan.spec_version,
                 "attestation_ref": self.rcan.attestation_ref,
-                **({"rrf_countersig": self.rcan.rrf_countersig}
-                   if self.rcan.rrf_countersig else {}),
+                **(
+                    {"rrf_countersig": self.rcan.rrf_countersig} if self.rcan.rrf_countersig else {}
+                ),
             }
         return d
 
@@ -102,14 +105,16 @@ class RCANBOM:
     def from_dict(cls, d: dict) -> RCANBOM:
         components = []
         for c in d.get("components", []):
-            components.append(SBOMComponent(
-                type=c.get("type", "library"),
-                name=c.get("name", ""),
-                version=c.get("version", ""),
-                purl=c.get("purl", ""),
-                bom_ref=c.get("bom-ref", ""),
-                hashes=c.get("hashes", []),
-            ))
+            components.append(
+                SBOMComponent(
+                    type=c.get("type", "library"),
+                    name=c.get("name", ""),
+                    version=c.get("version", ""),
+                    purl=c.get("purl", ""),
+                    bom_ref=c.get("bom-ref", ""),
+                    hashes=c.get("hashes", []),
+                )
+            )
         rcan_ext = None
         if "x-rcan" in d:
             xr = d["x-rcan"]
@@ -134,6 +139,7 @@ class RCANBOM:
 # Generation
 # ---------------------------------------------------------------------------
 
+
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -141,6 +147,7 @@ def _sha256_hex(data: bytes) -> str:
 def _serial_number() -> str:
     """Generate a CycloneDX-compliant URN serial number."""
     import uuid
+
     return f"urn:uuid:{uuid.uuid4()}"
 
 
@@ -170,15 +177,17 @@ def generate_sbom(rrn: str, sbom_url: str = "") -> RCANBOM:
         "timestamp": now,
         "tools": [{"vendor": "OpenCastor", "name": "castor sbom", "version": oc_version}],
         "component": {
-            "type":    "firmware",
-            "name":    "opencastor",
+            "type": "firmware",
+            "name": "opencastor",
             "version": oc_version,
-            "purl":    _make_purl("opencastor", oc_version),
+            "purl": _make_purl("opencastor", oc_version),
         },
     }
 
     components = []
-    for dist in sorted(importlib_metadata.distributions(), key=lambda d: (d.metadata.get("Name") or "").lower()):
+    for dist in sorted(
+        importlib_metadata.distributions(), key=lambda d: (d.metadata.get("Name") or "").lower()
+    ):
         name = dist.metadata.get("Name") or ""
         version = dist.metadata.get("Version") or "unknown"
         if not name:
@@ -186,14 +195,16 @@ def generate_sbom(rrn: str, sbom_url: str = "") -> RCANBOM:
         purl = _make_purl(name, version)
         # Hash the dist info Name+Version for a stable component hash
         h = _sha256_hex(f"{name}=={version}".encode())
-        components.append(SBOMComponent(
-            type="library",
-            name=name,
-            version=version,
-            purl=purl,
-            bom_ref=f"{name.lower()}-{version}",
-            hashes=[{"alg": "SHA-256", "content": h}],
-        ))
+        components.append(
+            SBOMComponent(
+                type="library",
+                name=name,
+                version=version,
+                purl=purl,
+                bom_ref=f"{name.lower()}-{version}",
+                hashes=[{"alg": "SHA-256", "content": h}],
+            )
+        )
 
     rcan_ext = RCANSBOMExtensions(
         rrn=rrn,
@@ -212,6 +223,7 @@ def generate_sbom(rrn: str, sbom_url: str = "") -> RCANBOM:
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------
+
 
 def _sbom_path() -> Path:
     p = _DEFAULT_SBOM_FILE
@@ -242,13 +254,18 @@ def load_sbom(path: Optional[Path] = None) -> RCANBOM:
 # RRF publishing
 # ---------------------------------------------------------------------------
 
+
 def publish_sbom_to_rrf(sbom: RCANBOM, rrf_token: str) -> dict:
     """POST the SBOM to the RRF registry.
 
     Returns the JSON response (including rrf_countersig if provided).
     Raises RuntimeError on failure.
     """
-    publish_url = RRF_SBOM_PUBLISH_URL.format(rrn=(sbom.rcan.rrn if sbom.rcan else "unknown")) if "{rrn}" in RRF_SBOM_PUBLISH_URL else RRF_SBOM_PUBLISH_URL
+    publish_url = (
+        RRF_SBOM_PUBLISH_URL.format(rrn=(sbom.rcan.rrn if sbom.rcan else "unknown"))
+        if "{rrn}" in RRF_SBOM_PUBLISH_URL
+        else RRF_SBOM_PUBLISH_URL
+    )
     payload = json.dumps(sbom.to_dict()).encode()
     req = Request(
         publish_url,
@@ -271,19 +288,28 @@ def publish_sbom_to_rrf(sbom: RCANBOM, rrf_token: str) -> dict:
 # castor sbom CLI entry points
 # ---------------------------------------------------------------------------
 
+
 def cmd_sbom_generate(args) -> None:
     """castor sbom generate — build SBOM from installed packages."""
     import yaml as _yaml
+
     _cp = getattr(args, "config", None)
     config = (_yaml.safe_load(open(_cp)) if _cp else {}) if _cp else {}
     # also check metadata subkey
     config.get("metadata", config)
-    rrn = config.get("rrn") or config.get("metadata", {}).get("rrn") or config.get("robot_rrn") or "RRN-UNKNOWN"
+    rrn = (
+        config.get("rrn")
+        or config.get("metadata", {}).get("rrn")
+        or config.get("robot_rrn")
+        or "RRN-UNKNOWN"
+    )
 
     # Derive SBOM URL from robot's RURI or a configured base URL
     config.get("ruri", "")
     sbom_url = getattr(args, "sbom_url", None) or (
-        f"https://robot-registry-foundation.pages.dev/v2/robots/{rrn}/sbom" if rrn != "RRN-UNKNOWN" else ""
+        f"https://robot-registry-foundation.pages.dev/v2/robots/{rrn}/sbom"
+        if rrn != "RRN-UNKNOWN"
+        else ""
     )
 
     sbom = generate_sbom(rrn=rrn, sbom_url=sbom_url)

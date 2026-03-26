@@ -33,6 +33,7 @@ _FALLBACK_MANIFEST_FILE = Path("/tmp/opencastor-firmware-manifest.json")
 # Data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FirmwareComponent:
     name: str
@@ -44,18 +45,18 @@ class FirmwareComponent:
 class FirmwareManifest:
     rrn: str
     firmware_version: str
-    build_hash: str       # "sha256:<hex>" of all component hashes concatenated
+    build_hash: str  # "sha256:<hex>" of all component hashes concatenated
     components: list[FirmwareComponent] = field(default_factory=list)
     signed_at: str = ""
     signature: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {
-            "rrn":              self.rrn,
+            "rrn": self.rrn,
             "firmware_version": self.firmware_version,
-            "build_hash":       self.build_hash,
-            "components":       [asdict(c) for c in self.components],
-            "signed_at":        self.signed_at,
+            "build_hash": self.build_hash,
+            "components": [asdict(c) for c in self.components],
+            "signed_at": self.signed_at,
         }
         if self.signature:
             d["signature"] = self.signature
@@ -63,9 +64,7 @@ class FirmwareManifest:
 
     @classmethod
     def from_dict(cls, d: dict) -> FirmwareManifest:
-        components = [
-            FirmwareComponent(**c) for c in d.get("components", [])
-        ]
+        components = [FirmwareComponent(**c) for c in d.get("components", [])]
         return cls(
             rrn=d.get("rrn", ""),
             firmware_version=d.get("firmware_version", ""),
@@ -83,6 +82,7 @@ class FirmwareIntegrityError(Exception):
 # ---------------------------------------------------------------------------
 # Manifest generation
 # ---------------------------------------------------------------------------
+
 
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -106,9 +106,16 @@ def _get_opencastor_version() -> str:
 def _get_python_packages() -> list[FirmwareComponent]:
     """Return key installed packages as firmware components."""
     important = {
-        "opencastor", "castor", "rcan-py", "rcan",
-        "fastapi", "uvicorn", "pydantic",
-        "cryptography", "PyNaCl", "PyJWT",
+        "opencastor",
+        "castor",
+        "rcan-py",
+        "rcan",
+        "fastapi",
+        "uvicorn",
+        "pydantic",
+        "cryptography",
+        "PyNaCl",
+        "PyJWT",
     }
     components = []
     for dist in importlib_metadata.distributions():
@@ -122,11 +129,13 @@ def _get_python_packages() -> list[FirmwareComponent]:
                 h = f"sha256:{_sha256_hex(record_bytes)}"
             except Exception:
                 h = f"sha256:{_sha256_hex(f'{name}=={version}'.encode())}"
-            components.append(FirmwareComponent(
-                name=name,
-                version=version,
-                hash=h,
-            ))
+            components.append(
+                FirmwareComponent(
+                    name=name,
+                    version=version,
+                    hash=h,
+                )
+            )
     return sorted(components, key=lambda c: c.name.lower())
 
 
@@ -177,17 +186,18 @@ def generate_manifest(rrn: str, firmware_version: Optional[str] = None) -> Firmw
 # Canonical JSON for signing
 # ---------------------------------------------------------------------------
 
+
 def canonical_manifest_json(m: FirmwareManifest) -> bytes:
     """Return deterministic JSON bytes (sorted keys, no signature field)."""
     obj = {
-        "build_hash":       m.build_hash,
+        "build_hash": m.build_hash,
         "components": sorted(
             [{"hash": c.hash, "name": c.name, "version": c.version} for c in m.components],
             key=lambda c: c["name"].lower(),
         ),
         "firmware_version": m.firmware_version,
-        "rrn":              m.rrn,
-        "signed_at":        m.signed_at,
+        "rrn": m.rrn,
+        "signed_at": m.signed_at,
     }
     return json.dumps(obj, sort_keys=False, separators=(",", ":")).encode()
 
@@ -195,6 +205,7 @@ def canonical_manifest_json(m: FirmwareManifest) -> bytes:
 # ---------------------------------------------------------------------------
 # Sign / Verify
 # ---------------------------------------------------------------------------
+
 
 def sign_manifest(m: FirmwareManifest, private_key_pem: str) -> FirmwareManifest:
     """Sign the manifest using an Ed25519 private key (PEM).
@@ -221,6 +232,7 @@ def sign_manifest(m: FirmwareManifest, private_key_pem: str) -> FirmwareManifest
     sig_b64url = base64.urlsafe_b64encode(sig_bytes).rstrip(b"=").decode()
 
     import copy
+
     signed = copy.copy(m)
     signed.signature = sig_b64url
     return signed
@@ -270,6 +282,7 @@ def firmware_hash_from_manifest(m: FirmwareManifest) -> str:
 # Persistence
 # ---------------------------------------------------------------------------
 
+
 def _manifest_path() -> Path:
     p = _DEFAULT_MANIFEST_FILE
     try:
@@ -299,10 +312,14 @@ def load_manifest(path: Optional[Path] = None) -> FirmwareManifest:
 # castor attest CLI entry points
 # ---------------------------------------------------------------------------
 
+
 def cmd_attest_generate(args) -> None:
     """castor attest generate — build firmware manifest from installed packages."""
     import yaml as _yaml
-    def load_config(p): return (_yaml.safe_load(open(p)) if p else {}) if p else {}
+
+    def load_config(p):
+        return (_yaml.safe_load(open(p)) if p else {}) if p else {}
+
     config = load_config(getattr(args, "config", None))
     meta = config.get("metadata", {})
     rrn = config.get("rrn") or meta.get("rrn") or config.get("robot_rrn") or "RRN-UNKNOWN"

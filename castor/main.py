@@ -929,7 +929,7 @@ def main():
 
     # 6. mDNS BROADCAST (opt-in)
     mdns_broadcaster = None
-    rcan_proto = config["rcan_protocol"]
+    rcan_proto = config.get("rcan_protocol", {})
     if rcan_proto.get("enable_mdns"):
         try:
             from castor.rcan.mdns import RCANServiceBroadcaster

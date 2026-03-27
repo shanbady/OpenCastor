@@ -91,9 +91,12 @@ class ESP32BLEDriver:
         self._client: Optional[Any] = None  # BleakClient instance
 
         if not HAS_BLEAK:
+            from castor import install_hint
+
             logger.info(
                 "ESP32BLEDriver: bleak not installed — mock mode "
-                "(install: pip install opencastor[ble])"
+                "(install: %s)",
+                install_hint("spike"),
             )
             return
 

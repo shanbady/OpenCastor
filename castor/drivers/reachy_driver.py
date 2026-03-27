@@ -60,9 +60,12 @@ class ReachyDriver(DriverBase):
             self._host = self._auto_detect_host()
 
         if not HAS_REACHY2_SDK:
+            from castor import install_hint
+
             logger.warning(
                 "reachy2-sdk not installed — ReachyDriver running in mock mode. "
-                "Install with: pip install opencastor[reachy]"
+                "Install with: %s",
+                install_hint("reachy"),
             )
             return
 

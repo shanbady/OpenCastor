@@ -69,9 +69,12 @@ class ROS2Driver(DriverBase):
         if HAS_RCLPY:
             self._init_ros2()
         else:
+            from castor import install_hint
+
             logger.warning(
                 "rclpy not installed — ROS2 driver running in mock mode. "
-                "Install via your ROS2 distro or: pip install opencastor[ros2]"
+                "Install via your ROS2 distro or: %s",
+                install_hint("ros2"),
             )
 
     # ------------------------------------------------------------------
@@ -179,7 +182,9 @@ class ROS2Driver(DriverBase):
         if self._last_odom:
             result["odom"] = self._last_odom
         if not HAS_RCLPY:
-            result["error"] = "rclpy not installed — run: pip install opencastor[ros2]"
+            from castor import install_hint
+
+            result["error"] = f"rclpy not installed — run: {install_hint('ros2')}"
         return result
 
     @property

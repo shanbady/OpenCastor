@@ -118,9 +118,12 @@ class FeetechDriver(DriverBase):
             self._port = self._auto_detect_port()
 
         if not HAS_SCSERVO:
+            from castor import install_hint
+
             logger.warning(
-                "scservo_sdk not installed — FeetechDriver running in mock mode. "
-                "Install with: pip install opencastor[lerobot]"
+                "feetech_servo_sdk not installed — FeetechDriver running in mock mode. "
+                "Install with: %s",
+                install_hint("lerobot"),
             )
             return
 

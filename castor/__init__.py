@@ -40,4 +40,28 @@ def initialize_safety(safety_layer, config: dict):
     return monitor
 
 
-__all__ = ["__version__", "initialize_safety"]
+def install_hint(extra: str) -> str:
+    """Return the install command for an optional extra, aware of uv environments.
+
+    When the current Python environment is managed by **uv**, the standard
+    ``pip install`` command won't persist across ``uv run`` invocations.
+    This helper detects that case and returns a ``uv`` command instead.
+    """
+    import os
+    import sys
+
+    cfg_path = os.path.join(sys.prefix, "pyvenv.cfg")
+    try:
+        with open(cfg_path) as fh:
+            for line in fh:
+                if line.startswith("uv"):
+                    return (
+                        f"uv pip install opencastor[{extra}]  "
+                        f"(or: uv run --extra {extra} castor …)"
+                    )
+    except OSError:
+        pass
+    return f"pip install opencastor[{extra}]"
+
+
+__all__ = ["__version__", "initialize_safety", "install_hint"]

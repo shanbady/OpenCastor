@@ -44,8 +44,10 @@ def install_hint(extra: str) -> str:
     """Return the install command for an optional extra, aware of uv environments.
 
     When the current Python environment is managed by **uv**, the standard
-    ``pip install`` command won't persist across ``uv run`` invocations.
-    This helper detects that case and returns a ``uv`` command instead.
+    ``pip install`` command won't persist across ``uv run`` invocations
+    (``uv sync`` removes packages not in the lockfile).  This helper detects
+    that case and returns ``uv add`` instead, which adds the extra to the
+    project lockfile so it survives future syncs.
     """
     import os
     import sys
@@ -55,10 +57,7 @@ def install_hint(extra: str) -> str:
         with open(cfg_path) as fh:
             for line in fh:
                 if line.startswith("uv"):
-                    return (
-                        f"uv pip install opencastor[{extra}]  "
-                        f"(or: uv run --extra {extra} castor …)"
-                    )
+                    return f"uv add opencastor[{extra}]"
     except OSError:
         pass
     return f"pip install opencastor[{extra}]"

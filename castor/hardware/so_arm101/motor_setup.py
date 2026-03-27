@@ -112,11 +112,13 @@ def setup_motors(
             return {m["joint"]: ok for m in motor_list}
 
     try:
-        from feetech_servo_sdk import PacketHandler, PortHandler  # type: ignore[import]
+        from scservo_sdk import PacketHandler, PortHandler  # type: ignore[import]
     except ImportError:
+        from castor import install_hint
+
         print_fn(
-            "\n⚠  feetech_servo_sdk not installed. "
-            "Install with: pip install opencastor[lerobot]\n"
+            "\n⚠  scservo_sdk not installed. "
+            f"Install with: {install_hint('lerobot')}\n"
             "   or: pip install feetech-servo-sdk\n"
         )
         if not dry_run:
@@ -237,9 +239,9 @@ def verify_motors(port: str, arm: str = "follower", baud: int = DEFAULT_BAUD) ->
     results: dict[str, bool] = {}
 
     try:
-        from feetech_servo_sdk import PacketHandler, PortHandler  # type: ignore[import]
+        from scservo_sdk import PacketHandler, PortHandler  # type: ignore[import]
     except ImportError:
-        logger.warning("feetech_servo_sdk not installed")
+        logger.warning("scservo_sdk not installed (pip install feetech-servo-sdk)")
         return {m["joint"]: False for m in motor_list}
 
     port_handler = PortHandler(port)

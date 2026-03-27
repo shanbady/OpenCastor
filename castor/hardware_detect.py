@@ -1345,7 +1345,7 @@ def suggest_extras(hw: dict) -> list[str]:
         for pkg, import_name in [
             ("gym-pusht", "gym_pusht"),
             ("gym-aloha", "gym_aloha"),
-            ("feetech-servo-sdk", "feetech_servo_sdk"),
+            ("feetech-servo-sdk", "scservo_sdk"),
         ]:
             try:
                 __import__(import_name)

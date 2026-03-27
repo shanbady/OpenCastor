@@ -28,7 +28,8 @@ from castor.drivers.base import DriverBase
 logger = logging.getLogger("OpenCastor.FeetechDriver")
 
 try:
-    from feetech_servo_sdk import (  # type: ignore[import]
+    # PyPI package "feetech-servo-sdk" ships its module as "scservo_sdk"
+    from scservo_sdk import (  # type: ignore[import]
         GroupSyncRead,
         GroupSyncWrite,
         PacketHandler,
@@ -121,7 +122,7 @@ class FeetechDriver(DriverBase):
             from castor import install_hint
 
             logger.warning(
-                "feetech_servo_sdk not installed — FeetechDriver running in mock mode. "
+                "scservo_sdk not installed — FeetechDriver running in mock mode. "
                 "Install with: %s",
                 install_hint("lerobot"),
             )

@@ -362,14 +362,21 @@ class OllamaProvider(BaseProvider):
     def _ping(self) -> bool:
         """Check if Ollama is running.
 
+        Hits the root ``/`` endpoint which returns plain text (``"Ollama is
+        running"``), so we bypass ``_http_request`` (which expects JSON) and
+        do a simple HTTP status-code check instead.
+
         Returns:
-            True if Ollama responds.
+            True if Ollama responds with HTTP 200.
 
         Raises:
             OllamaConnectionError: If the server is unreachable.
         """
-        _http_request(f"{self.host}/", timeout=self.health_timeout)
-        return True
+        try:
+            resp = urlopen(Request(f"{self.host}/"), timeout=self.health_timeout)
+            return resp.status == 200
+        except (URLError, OSError, ConnectionRefusedError) as exc:
+            raise OllamaConnectionError(self.host, exc) from exc
 
     def _ensure_model_available(self, model: str) -> None:
         """Ensure a model is available locally, optionally pulling it.
